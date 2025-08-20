@@ -5,11 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
 import { Database, Plus, Trash2, TestTube, Eye, EyeOff, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
-import { useConnectionContext } from "@/connection-context";
-import ApiHealthCheck from "@/components/ui/api-health-check";
+import { useConnectionContext } from "@/context/connection-context";
 
 export function ConnectDBTab() {
   const [selectedDb, setSelectedDb] = useState<string>("postgres");
@@ -17,35 +16,8 @@ export function ConnectDBTab() {
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [connectionMessage, setConnectionMessage] = useState("");
-  const [apiHealthStatus, setApiHealthStatus] = useState<'checking' | 'healthy' | 'unhealthy' | null>(null);
-  const [apiHealthMessage, setApiHealthMessage] = useState("");
   const { toast } = useToast();
   const { savedConnections, refreshConnections, setCurrentConnection } = useConnectionContext();
-  
-  // Check API health on component mount
-  useEffect(() => {
-    const checkApiHealth = async () => {
-      try {
-        setApiHealthStatus('checking');
-        const response = await dbService.checkApiHealth();
-        if (response.status === 'success' && response.data && response.data.status === 'ok') {
-          setApiHealthStatus('healthy');
-          setApiHealthMessage("API is operational");
-          console.log("API Health Check: Healthy", response.data);
-        } else {
-          setApiHealthStatus('unhealthy');
-          setApiHealthMessage(response.error || "API service is unavailable");
-          console.error("API Health Check: Unhealthy", response.error);
-        }
-      } catch (error) {
-        setApiHealthStatus('unhealthy');
-        setApiHealthMessage("Failed to connect to API");
-        console.error("API Health Check: Error", error);
-      }
-    };
-    
-    checkApiHealth();
-  }, []);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -85,7 +57,7 @@ export function ConnectDBTab() {
     });
   };
 
-  // Test connection
+  // Test connection - this now actually tests the connection via the API
   const testConnection = async () => {
     setConnectionStatus('testing');
     setIsLoading(true);
@@ -228,9 +200,6 @@ export function ConnectDBTab() {
       transition={{ duration: 0.5 }}
       className="space-y-6"
     >
-      {/* API Health Check */}
-      <ApiHealthCheck />
-      
       {/* Connection Form */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -359,7 +328,7 @@ export function ConnectDBTab() {
               <Button 
                 className="bg-gradient-primary flex items-center gap-2"
                 onClick={saveConnection}
-                disabled={isLoading || connectionStatus !== 'success' || !formData.name}
+                disabled={isLoading || !formData.name || !formData.host || !formData.database || !formData.user || !formData.password}
               >
                 <Plus className="w-4 h-4" />
                 Save Connection
@@ -380,24 +349,6 @@ export function ConnectDBTab() {
             <CardTitle>Connection Status</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* API Health Status */}
-            {apiHealthStatus && (
-              <div className={`mb-4 px-4 py-2 rounded-md flex items-center gap-2 ${
-                apiHealthStatus === 'healthy' ? 'bg-success/10 text-success border border-success/20' : 
-                apiHealthStatus === 'unhealthy' ? 'bg-destructive/10 text-destructive border border-destructive/20' : 
-                'bg-muted/30 text-muted-foreground border border-muted/20'
-              }`}>
-                {apiHealthStatus === 'checking' && <Loader2 className="w-4 h-4 animate-spin" />}
-                {apiHealthStatus === 'healthy' && <CheckCircle className="w-4 h-4" />}
-                {apiHealthStatus === 'unhealthy' && <AlertCircle className="w-4 h-4" />}
-                <span className="text-sm font-medium">
-                  API Status: {apiHealthStatus === 'checking' ? 'Checking API...' : 
-                              apiHealthStatus === 'healthy' ? apiHealthMessage : 
-                              apiHealthMessage}
-                </span>
-              </div>
-            )}
-            
             <div className="bg-surface-elevated rounded-lg p-6 border border-border/50">
               {connectionStatus === 'idle' ? (
                 <div className="text-center space-y-3">

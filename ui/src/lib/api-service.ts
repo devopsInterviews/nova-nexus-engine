@@ -5,6 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 
 // Types for database connections
 export interface DbConnection {
+  id?: string;
   host: string;
   port: number;
   user: string;
@@ -12,7 +13,6 @@ export interface DbConnection {
   database: string;
   database_type: string;
   name?: string;
-  id?: string;
 }
 
 // Types for responses
@@ -103,32 +103,38 @@ export const dbService = {
 
   // List database tables
   listTables: async (connection: DbConnection): Promise<ApiResponse<string[]>> => {
-    const res = await fetchApi<{ tables: string[] }>(`/api/list-tables`, {
+    const response = await fetchApi<string[]>('/api/list-tables', {
       method: 'POST',
       body: JSON.stringify(connection),
     });
-    if (res.status === 'success' && res.data) {
-      return { status: 'success', data: res.data.tables as unknown as string[] };
+    
+    // Handle the response format from backend
+    if (response.status === 'success' && response.data) {
+      return {
+        status: 'success',
+        data: response.data
+      };
     }
-    return res as unknown as ApiResponse<string[]>;
+    return response;
   },
 
   // Describe table columns
-  describeColumns: async (connection: DbConnection & { table: string; limit: number; space: string; title: string }): 
-    Promise<ApiResponse<Array<{ column: string; description: string }>>> => {
-    return fetchApi('/describe-all-columns', {
+  describeColumns: async (connection: DbConnection & { table: string; limit?: number }): 
+    Promise<ApiResponse<Array<{ column: string; description: string; data_type: string }>>> => {
+    return fetchApi('/api/describe-columns', {
       method: 'POST',
-      body: JSON.stringify(connection),
+      body: JSON.stringify({
+        ...connection,
+        limit: connection.limit || 100
+      }),
     });
   },
 
   // Suggest columns based on natural language query
   suggestColumns: async (connection: DbConnection & { 
     user_prompt: string;
-    confluenceSpace: string;
-    confluenceTitle: string;
-  }): Promise<ApiResponse<{ suggested_keys: string[] }>> => {
-    return fetchApi('/suggest-keys', {
+  }): Promise<ApiResponse<{ suggested_columns: Array<{ name: string; description: string; data_type: string }> }>> => {
+    return fetchApi('/api/suggest-columns', {
       method: 'POST',
       body: JSON.stringify(connection),
     });
@@ -137,11 +143,9 @@ export const dbService = {
   // Run analytics query
   runAnalyticsQuery: async (connection: DbConnection & { 
     analytics_prompt: string;
-    system_prompt: string;
-    confluenceSpace?: string;
-    confluenceTitle?: string;
+    system_prompt?: string;
   }): Promise<ApiResponse<{ rows: Record<string, any>[] }>> => {
-    return fetchApi('/analytics-query', {
+    return fetchApi('/api/analytics-query', {
       method: 'POST',
       body: JSON.stringify(connection),
     });
