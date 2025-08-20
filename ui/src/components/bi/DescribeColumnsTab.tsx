@@ -5,53 +5,65 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { FileText, ArrowRight, Save, Eye } from "lucide-react";
+import { FileText, ArrowRight, Save, Eye, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useConnectionContext } from "@/connection-context";
+import { dbService } from "@/lib/api-service";
+import { useToast } from "@/components/ui/use-toast";
 
 export function DescribeColumnsTab() {
-  const columns = [
-    { 
-      name: "user_id", 
-      type: "INTEGER", 
-      nullable: false, 
-      description: "",
-      aiSuggestion: "Primary key identifier for user records"
-    },
-    { 
-      name: "email", 
-      type: "VARCHAR(255)", 
-      nullable: false, 
-      description: "User's email address",
-      aiSuggestion: "Unique email address for user authentication and communication"
-    },
-    { 
-      name: "created_at", 
-      type: "TIMESTAMP", 
-      nullable: false, 
-      description: "",
-      aiSuggestion: "Timestamp when the user account was created"
-    },
-    { 
-      name: "last_login", 
-      type: "TIMESTAMP", 
-      nullable: true, 
-      description: "",
-      aiSuggestion: "Most recent login timestamp, null if user never logged in"
-    },
-    { 
-      name: "subscription_tier", 
-      type: "ENUM", 
-      nullable: true, 
-      description: "User subscription level",
-      aiSuggestion: "User's current subscription plan (free, premium, enterprise)"
-    },
-    { 
-      name: "profile_data", 
-      type: "JSON", 
-      nullable: true, 
-      description: "",
-      aiSuggestion: "Flexible JSON storage for user profile information and preferences"
-    },
-  ];
+  const { currentConnection } = useConnectionContext();
+  const { toast } = useToast();
+  const [tables, setTables] = useState<string[]>([]);
+  const [selectedTable, setSelectedTable] = useState<string>("");
+  const [space, setSpace] = useState("AAA");
+  const [title, setTitle] = useState("Demo - database keys description");
+  const [limit, setLimit] = useState<number>(2000);
+  const [loadingTables, setLoadingTables] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [descriptions, setDescriptions] = useState<Array<{column: string; description: string}>>([]);
+
+  const disabled = !currentConnection;
+
+  useEffect(() => {
+    const loadTables = async () => {
+      if (!currentConnection) return;
+      setLoadingTables(true);
+      const res = await dbService.listTables(currentConnection);
+      if (res.status === 'success' && res.data) {
+        setTables(res.data);
+        if (res.data.length > 0) setSelectedTable(res.data[0]);
+      } else {
+        toast({ variant: 'destructive', title: 'Error', description: res.error || 'Failed to load tables' });
+      }
+      setLoadingTables(false);
+    };
+    loadTables();
+  }, [currentConnection]);
+
+  const onUpdateConfluence = async () => {
+    if (!currentConnection || !selectedTable) {
+      toast({ variant: 'destructive', title: 'Missing info', description: 'Select a table and ensure connection is set' });
+      return;
+    }
+    setSaving(true);
+    const payload = {
+      ...currentConnection,
+      table: selectedTable,
+      limit,
+      space,
+      title,
+    } as any;
+    const res = await dbService.describeColumns(payload);
+    if (res.status === 'success' && res.data) {
+      const rows = (res.data as any).descriptions || [];
+      setDescriptions(rows);
+      toast({ title: 'Confluence Updated', description: `Described ${rows.length} columns for ${selectedTable}` });
+    } else {
+      toast({ variant: 'destructive', title: 'Error', description: res.error || 'Failed to describe/update' });
+    }
+    setSaving(false);
+  };
 
   const typeColors = {
     "INTEGER": "bg-primary/10 text-primary border-primary/20",
@@ -59,7 +71,7 @@ export function DescribeColumnsTab() {
     "TIMESTAMP": "bg-accent/10 text-accent border-accent/20",
     "ENUM": "bg-warning/10 text-warning border-warning/20",
     "JSON": "bg-destructive/10 text-destructive border-destructive/20",
-  };
+  } as const;
 
   return (
     <motion.div
@@ -85,14 +97,14 @@ export function DescribeColumnsTab() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Database</label>
-                <Select>
+                <Select value={currentConnection?.database || undefined} disabled>
                   <SelectTrigger className="bg-surface-elevated">
                     <SelectValue placeholder="Select database" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="production">Production DB</SelectItem>
-                    <SelectItem value="staging">Staging DB</SelectItem>
-                    <SelectItem value="analytics">Analytics DB</SelectItem>
+                    {currentConnection?.database && (
+                      <SelectItem value={currentConnection.database}>{currentConnection.database}</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -113,14 +125,14 @@ export function DescribeColumnsTab() {
               
               <div className="space-y-2">
                 <label className="text-sm font-medium">Table</label>
-                <Select>
+                <Select value={selectedTable} onValueChange={setSelectedTable} disabled={disabled || loadingTables}>
                   <SelectTrigger className="bg-surface-elevated">
-                    <SelectValue placeholder="Select table" />
+                    <SelectValue placeholder={loadingTables ? "Loading tables..." : "Select table"} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="users">users</SelectItem>
-                    <SelectItem value="orders">orders</SelectItem>
-                    <SelectItem value="products">products</SelectItem>
+                    {tables.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -143,9 +155,12 @@ export function DescribeColumnsTab() {
             </CardHeader>
             <CardContent className="flex-1 overflow-auto">
               <div className="space-y-4">
-                {columns.map((column, index) => (
+                {descriptions.length === 0 && (
+                  <div className="text-sm text-muted-foreground">No descriptions loaded yet. Choose a table and click Update Confluence.</div>
+                )}
+                {descriptions.map((column, index) => (
                   <motion.div
-                    key={column.name}
+                    key={column.column}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5 + index * 0.1 }}
@@ -153,32 +168,18 @@ export function DescribeColumnsTab() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <code className="font-mono font-medium text-primary">{column.name}</code>
-                        <Badge variant="outline" className={typeColors[column.type as keyof typeof typeColors]}>
-                          {column.type}
-                        </Badge>
-                        {!column.nullable && (
-                          <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
-                            NOT NULL
-                          </Badge>
-                        )}
+                        <code className="font-mono font-medium text-primary">{column.column}</code>
                       </div>
                     </div>
                     
                     <div className="space-y-2">
                       <Textarea
-                        placeholder={column.aiSuggestion}
-                        value={column.description}
+                        placeholder="Description"
+                        value={(column as any).description || ""}
                         className="bg-surface text-sm resize-none"
                         rows={2}
+                        readOnly
                       />
-                      
-                      {column.aiSuggestion && !column.description && (
-                        <Button size="sm" variant="outline" className="text-xs">
-                          <span className="mr-1">🤖</span>
-                          Use AI Suggestion
-                        </Button>
-                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -202,26 +203,17 @@ export function DescribeColumnsTab() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Confluence Space</label>
-                <Input placeholder="DATA-DOCS" className="bg-surface-elevated" />
+                <Input placeholder="AAA" className="bg-surface-elevated" value={space} onChange={(e)=>setSpace(e.target.value)} />
               </div>
               
               <div className="space-y-2">
                 <label className="text-sm font-medium">Page Title</label>
-                <Input placeholder="Database Schema Documentation" className="bg-surface-elevated" />
+                <Input placeholder="Demo - database keys description" className="bg-surface-elevated" value={title} onChange={(e)=>setTitle(e.target.value)} />
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium">Update Mode</label>
-                <Select>
-                  <SelectTrigger className="bg-surface-elevated">
-                    <SelectValue placeholder="Append to existing" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="append">Append to existing</SelectItem>
-                    <SelectItem value="replace">Replace section</SelectItem>
-                    <SelectItem value="new">Create new page</SelectItem>
-                  </SelectContent>
-                </Select>
+                <label className="text-sm font-medium">Sample Size Limit</label>
+                <Input type="number" className="bg-surface-elevated" value={limit} onChange={(e)=>setLimit(parseInt(e.target.value || '0')||0)} />
               </div>
             </CardContent>
           </Card>
@@ -271,13 +263,14 @@ export function DescribeColumnsTab() {
           <Card className="glass border-border/50">
             <CardContent className="pt-6">
               <div className="flex gap-3">
-                <Button className="bg-gradient-primary flex-1">
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Descriptions
-                </Button>
-                <Button variant="outline" className="flex-1">
-                  <ArrowRight className="w-4 h-4 mr-2" />
-                  Update Confluence
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  disabled={disabled || saving || !selectedTable}
+                  onClick={onUpdateConfluence}
+                >
+                  {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />}
+                  {saving ? 'Updating…' : 'Describe & Update Confluence'}
                 </Button>
               </div>
             </CardContent>

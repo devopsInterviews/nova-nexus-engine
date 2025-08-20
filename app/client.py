@@ -834,11 +834,31 @@ async def suggest_keys_api(request: Request):
         full_text = "\n".join(m.text for m in parts2 if getattr(m, "text", None))
         logger.debug("suggest_keys_api: raw suggestion text length=%d chars", len(full_text))
 
-        keys = [k.strip() for k in full_text.replace(",", "\n").splitlines() if k.strip()]
+        # Normalize into lines, support comma or newline separated
+        lines = [ln.strip() for ln in full_text.replace(",", "\n").splitlines() if ln.strip()]
+
+        # Legacy flat list for backward compatibility
+        keys = []
+        # Structured map: "table.column" -> [description, type]
+        suggestions_map = {}
+
+        for ln in lines:
+            # expected: "table.column - description - type"
+            parts = [p.strip() for p in ln.split(" - ")]  # keep hyphen-space delimiter
+            key = parts[0] if parts else ln
+            desc = parts[1] if len(parts) > 1 else ""
+            typ  = parts[2] if len(parts) > 2 else ""
+            if key:
+                keys.append(key)
+                suggestions_map[key] = [desc, typ]
+
         logger.info("suggest_keys_api: extracted %d suggested key(s)", len(keys))
         logger.debug("suggest_keys_api: suggested keys sample=%s", _sample_list(keys))
 
-        return JSONResponse({"suggested_keys": keys})
+        return JSONResponse({
+            "suggested_keys": keys,                # legacy
+            "suggestions_map": suggestions_map     # new structured output
+        })
 
     except Exception as e:
         logger.error("Error in suggest_keys_api: %s", e, exc_info=True)
