@@ -120,6 +120,13 @@ export const dbService = {
     return fetchApi('/api/get-connections');
   },
 
+  // Delete a saved connection
+  deleteConnection: async (connectionId: string): Promise<ApiResponse<{ message: string }>> => {
+    return fetchApi(`/api/delete-connection/${connectionId}`, {
+      method: 'DELETE',
+    });
+  },
+
   // List database tables
   listTables: async (connection: DbConnection): Promise<ApiResponse<string[]>> => {
     const body = buildPayload(connection);
@@ -143,9 +150,11 @@ export const dbService = {
   // Suggest columns based on natural language query
   suggestColumns: async (connection: DbConnection & { 
     user_prompt: string;
+    confluenceSpace?: string;
+    confluenceTitle?: string;
   }): Promise<ApiResponse<{ suggested_columns: Array<{ name: string; description: string; data_type: string }> }>> => {
-    const { user_prompt, ...conn } = connection as any;
-    const body = buildPayload(conn as DbConnection, { user_prompt });
+    const { user_prompt, confluenceSpace, confluenceTitle, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { user_prompt, confluenceSpace, confluenceTitle });
     return fetchApi<{ suggested_columns: Array<{ name: string; description: string; data_type: string }> }>('/api/suggest-columns', {
       method: 'POST',
       body: JSON.stringify(body),
