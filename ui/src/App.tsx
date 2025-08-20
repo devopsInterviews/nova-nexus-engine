@@ -10,7 +10,7 @@ import BI from "./pages/BI";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
-import { ConnectionProvider } from "@/connection-context";
+import { ConnectionProvider } from "@/context/connection-context";
 
 const queryClient = new QueryClient();
 
