@@ -28,6 +28,8 @@ async function fetchApi<T>(
 ): Promise<ApiResponse<T>> {
   try {
     const url = `${API_BASE_URL}${endpoint}`;
+    console.log(`Making API request to: ${url}`, options);
+    
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -36,12 +38,22 @@ async function fetchApi<T>(
       },
     });
 
-    const data = await response.json();
+    // Try to parse the response as JSON
+    let data;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      console.warn('Response was not JSON:', text);
+      data = { message: text };
+    }
 
     if (!response.ok) {
+      console.error('API error response:', data);
       return {
         status: 'error',
-        error: data.detail || 'An unknown error occurred',
+        error: data.detail || data.message || 'Server returned an error',
       };
     }
 
@@ -53,16 +65,23 @@ async function fetchApi<T>(
     console.error('API request failed:', error);
     return {
       status: 'error',
-      error: error instanceof Error ? error.message : 'Network error',
+      error: error instanceof Error 
+        ? `Network error: ${error.message}` 
+        : 'Failed to connect to server',
     };
   }
 }
 
 // API services
 export const dbService = {
+  // Health check for API connectivity
+  checkApiHealth: async (): Promise<ApiResponse<{ status: string; service: string }>> => {
+    return fetchApi('/api/health');
+  },
+  
   // Test database connection
   testConnection: async (connection: DbConnection): Promise<ApiResponse<{ success: boolean; message: string }>> => {
-    return fetchApi('/test-connection', {
+    return fetchApi('/api/test-connection', {
       method: 'POST',
       body: JSON.stringify(connection),
     });
@@ -70,7 +89,7 @@ export const dbService = {
 
   // Save database connection
   saveConnection: async (connection: DbConnection): Promise<ApiResponse<{ id: string }>> => {
-    return fetchApi('/save-connection', {
+    return fetchApi('/api/save-connection', {
       method: 'POST',
       body: JSON.stringify(connection),
     });
@@ -78,7 +97,7 @@ export const dbService = {
 
   // Get saved connections
   getSavedConnections: async (): Promise<ApiResponse<DbConnection[]>> => {
-    return fetchApi('/get-connections');
+    return fetchApi('/api/get-connections');
   },
 
   // List database tables
