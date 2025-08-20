@@ -4,12 +4,30 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { Database, Plus, Trash2, TestTube, Eye, EyeOff } from "lucide-react";
+import { Database, Plus, Trash2, TestTube, Eye, EyeOff, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { dbService } from "@/lib/api-service";
+import { useToast } from "@/components/ui/use-toast";
+import { useConnectionContext } from "@/context/connection-context";
 
 export function ConnectDBTab() {
-  const [selectedDb, setSelectedDb] = useState("");
+  const [selectedDb, setSelectedDb] = useState<string>("postgres");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [connectionMessage, setConnectionMessage] = useState("");
+  const { toast } = useToast();
+  const { savedConnections, refreshConnections, setCurrentConnection } = useConnectionContext();
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    host: "localhost",
+    port: "5432",
+    database: "",
+    user: "",
+    password: "",
+    name: "",
+  });
   
   const dbDefaults = {
     mssql: { port: "1433", icon: "🏢" },
@@ -20,13 +38,155 @@ export function ConnectDBTab() {
     redis: { port: "6379", icon: "🔴" },
   };
 
-  const savedConnections = [
-    { name: "Production DB", type: "postgres", host: "prod-db.company.com", status: "connected" },
-    { name: "Analytics DB", type: "mssql", host: "analytics.company.com", status: "connected" },
-    { name: "Cache Layer", type: "redis", host: "cache.company.com", status: "disconnected" },
-    { name: "Document Store", type: "mongodb", host: "docs.company.com", status: "connected" },
-  ];
+  // Update port when database type changes
+  const handleDbTypeChange = (type: string) => {
+    setSelectedDb(type);
+    if (dbDefaults[type as keyof typeof dbDefaults]) {
+      setFormData({
+        ...formData,
+        port: dbDefaults[type as keyof typeof dbDefaults].port
+      });
+    }
+  };
 
+  // Handle input changes
+  const handleInputChange = (field: string, value: string) => {
+    setFormData({
+      ...formData,
+      [field]: value
+    });
+  };
+
+  // Test connection
+  const testConnection = async () => {
+    setConnectionStatus('testing');
+    setIsLoading(true);
+    
+    try {
+      const response = await dbService.testConnection({
+        host: formData.host,
+        port: parseInt(formData.port),
+        database: formData.database,
+        user: formData.user,
+        password: formData.password,
+        database_type: selectedDb
+      });
+      
+      if (response.status === 'success' && response.data) {
+        if (response.data.success) {
+          setConnectionStatus('success');
+          setConnectionMessage(response.data.message);
+          toast({
+            title: "Connection Successful",
+            description: response.data.message,
+          });
+        } else {
+          setConnectionStatus('error');
+          setConnectionMessage(response.data.message);
+          toast({
+            variant: "destructive",
+            title: "Connection Failed",
+            description: response.data.message,
+          });
+        }
+      } else {
+        setConnectionStatus('error');
+        setConnectionMessage(response.error || "Unknown error");
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.error || "Failed to test connection",
+        });
+      }
+    } catch (error) {
+      console.error("Error testing connection:", error);
+      setConnectionStatus('error');
+      setConnectionMessage("An unexpected error occurred");
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while testing the connection",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Save connection
+  const saveConnection = async () => {
+    if (!formData.name) {
+      toast({
+        variant: "destructive",
+        title: "Missing Information",
+        description: "Please provide a name for this connection",
+      });
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      const response = await dbService.saveConnection({
+        host: formData.host,
+        port: parseInt(formData.port),
+        database: formData.database,
+        user: formData.user,
+        password: formData.password,
+        database_type: selectedDb,
+        name: formData.name
+      });
+      
+      if (response.status === 'success' && response.data) {
+        toast({
+          title: "Connection Saved",
+          description: `Connection "${formData.name}" has been saved successfully`,
+        });
+        
+        // Refresh the connections list
+        await refreshConnections();
+        
+        // Reset form
+        setFormData({
+          ...formData,
+          name: ""
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.error || "Failed to save connection",
+        });
+      }
+    } catch (error) {
+      console.error("Error saving connection:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while saving the connection",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Connect to a saved connection
+  const connectToSaved = (connection: any) => {
+    setCurrentConnection({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      user: connection.user,
+      password: connection.password,
+      database_type: connection.database_type,
+      name: connection.name
+    });
+    
+    toast({
+      title: "Connection Selected",
+      description: `Connected to "${connection.name}"`,
+    });
+  };
+  
   const statusColors = {
     connected: "bg-success/10 text-success border-success/20",
     disconnected: "bg-destructive/10 text-destructive border-destructive/20",
@@ -56,8 +216,18 @@ export function ConnectDBTab() {
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-2">
+                <label className="text-sm font-medium">Connection Name</label>
+                <Input 
+                  placeholder="My Database Connection" 
+                  className="bg-surface-elevated"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Database Type</label>
-                <Select value={selectedDb} onValueChange={setSelectedDb}>
+                <Select value={selectedDb} onValueChange={handleDbTypeChange}>
                   <SelectTrigger className="bg-surface-elevated">
                     <SelectValue placeholder="Select database type" />
                   </SelectTrigger>
@@ -76,7 +246,12 @@ export function ConnectDBTab() {
               
               <div className="space-y-2">
                 <label className="text-sm font-medium">Host/IP Address</label>
-                <Input placeholder="localhost" className="bg-surface-elevated" />
+                <Input 
+                  placeholder="localhost" 
+                  className="bg-surface-elevated"
+                  value={formData.host}
+                  onChange={(e) => handleInputChange('host', e.target.value)}
+                />
               </div>
               
               <div className="space-y-2">
@@ -84,17 +259,29 @@ export function ConnectDBTab() {
                 <Input 
                   placeholder={selectedDb ? dbDefaults[selectedDb as keyof typeof dbDefaults]?.port : "5432"}
                   className="bg-surface-elevated"
+                  value={formData.port}
+                  onChange={(e) => handleInputChange('port', e.target.value)}
                 />
               </div>
               
               <div className="space-y-2">
                 <label className="text-sm font-medium">Database Name</label>
-                <Input placeholder="mydb" className="bg-surface-elevated" />
+                <Input 
+                  placeholder="mydb" 
+                  className="bg-surface-elevated"
+                  value={formData.database}
+                  onChange={(e) => handleInputChange('database', e.target.value)}
+                />
               </div>
               
               <div className="space-y-2">
                 <label className="text-sm font-medium">Username</label>
-                <Input placeholder="username" className="bg-surface-elevated" />
+                <Input 
+                  placeholder="username" 
+                  className="bg-surface-elevated"
+                  value={formData.user}
+                  onChange={(e) => handleInputChange('user', e.target.value)}
+                />
               </div>
               
               <div className="space-y-2">
@@ -103,7 +290,9 @@ export function ConnectDBTab() {
                   <Input 
                     type={showPassword ? "text" : "password"}
                     placeholder="password" 
-                    className="bg-surface-elevated pr-10" 
+                    className="bg-surface-elevated pr-10"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
                   />
                   <Button
                     type="button"
@@ -123,11 +312,24 @@ export function ConnectDBTab() {
             </div>
             
             <div className="flex gap-3">
-              <Button variant="outline" className="flex items-center gap-2">
-                <TestTube className="w-4 h-4" />
+              <Button 
+                variant="outline" 
+                className="flex items-center gap-2"
+                onClick={testConnection}
+                disabled={isLoading || !formData.host || !formData.database || !formData.user || !formData.password}
+              >
+                {isLoading && connectionStatus === 'testing' ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <TestTube className="w-4 h-4" />
+                )}
                 Test Connection
               </Button>
-              <Button className="bg-gradient-primary flex items-center gap-2">
+              <Button 
+                className="bg-gradient-primary flex items-center gap-2"
+                onClick={saveConnection}
+                disabled={isLoading || connectionStatus !== 'success' || !formData.name}
+              >
                 <Plus className="w-4 h-4" />
                 Save Connection
               </Button>
@@ -144,19 +346,61 @@ export function ConnectDBTab() {
       >
         <Card className="glass border-border/50">
           <CardHeader>
-            <CardTitle>Connection Results Preview</CardTitle>
+            <CardTitle>Connection Status</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="bg-surface-elevated rounded-lg p-6 border border-border/50">
-              <div className="text-center space-y-3">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                  <Database className="w-8 h-8 text-primary" />
+              {connectionStatus === 'idle' ? (
+                <div className="text-center space-y-3">
+                  <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                    <Database className="w-8 h-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-medium">Ready to Connect</h3>
+                  <p className="text-muted-foreground">
+                    Configure your database connection above and test it
+                  </p>
                 </div>
-                <h3 className="text-lg font-medium">Ready to Connect</h3>
-                <p className="text-muted-foreground">
-                  Configure your database connection above to see schema preview and table information
-                </p>
-              </div>
+              ) : connectionStatus === 'testing' ? (
+                <div className="text-center space-y-3">
+                  <div className="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mx-auto">
+                    <Loader2 className="w-8 h-8 text-warning animate-spin" />
+                  </div>
+                  <h3 className="text-lg font-medium">Testing Connection...</h3>
+                  <p className="text-muted-foreground">
+                    Attempting to connect to your database
+                  </p>
+                </div>
+              ) : connectionStatus === 'success' ? (
+                <div className="text-center space-y-3">
+                  <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-8 h-8 text-success" />
+                  </div>
+                  <h3 className="text-lg font-medium">Connection Successful!</h3>
+                  <p className="text-success">
+                    {connectionMessage}
+                  </p>
+                  <div className="pt-2">
+                    <p className="text-muted-foreground">
+                      You can now save this connection or continue working with it
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center space-y-3">
+                  <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-8 h-8 text-destructive" />
+                  </div>
+                  <h3 className="text-lg font-medium">Connection Failed</h3>
+                  <p className="text-destructive">
+                    {connectionMessage}
+                  </p>
+                  <div className="pt-2">
+                    <p className="text-muted-foreground">
+                      Please check your connection details and try again
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -170,47 +414,57 @@ export function ConnectDBTab() {
       >
         <Card className="glass border-border/50">
           <CardHeader>
-            <CardTitle>Saved Profiles</CardTitle>
+            <CardTitle>Saved Connections</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {savedConnections.map((connection, index) => (
-                <motion.div
-                  key={connection.name}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.7 + index * 0.1 }}
-                  className="p-4 rounded-lg glass border-border/50 hover:shadow-glow transition-all duration-smooth group"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">
-                        {dbDefaults[connection.type as keyof typeof dbDefaults]?.icon}
-                      </span>
-                      <div>
-                        <h4 className="font-medium group-hover:text-primary transition-colors">
-                          {connection.name}
-                        </h4>
-                        <p className="text-sm text-muted-foreground">{connection.host}</p>
+            {savedConnections.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No saved connections yet. Create and save a connection to see it here.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {savedConnections.map((connection, index) => (
+                  <motion.div
+                    key={connection.id || index}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.7 + index * 0.1 }}
+                    className="p-4 rounded-lg glass border-border/50 hover:shadow-glow transition-all duration-smooth group"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">
+                          {dbDefaults[connection.database_type as keyof typeof dbDefaults]?.icon || '📊'}
+                        </span>
+                        <div>
+                          <h4 className="font-medium group-hover:text-primary transition-colors">
+                            {connection.name}
+                          </h4>
+                          <p className="text-sm text-muted-foreground">
+                            {connection.host}:{connection.port}/{connection.database}
+                          </p>
+                        </div>
                       </div>
+                      
+                      <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+                        saved
+                      </Badge>
                     </div>
                     
-                    <Badge variant="outline" className={statusColors[connection.status as keyof typeof statusColors]}>
-                      {connection.status}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="flex-1">
-                      Connect
-                    </Button>
-                    <Button size="sm" variant="ghost">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="flex-1"
+                        onClick={() => connectToSaved(connection)}
+                      >
+                        Connect
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
