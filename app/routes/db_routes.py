@@ -115,6 +115,42 @@ async def get_connections():
 
 @router.post("/list-tables")
 async def list_tables(conn: DbConnection):
+    """Lists database tables via MCP `list_database_tables`."""
+    from app import client as client_module
+
+    mcp_session = getattr(client_module, "_mcp_session", None)
+    if mcp_session is None:
+        raise HTTPException(status_code=503, detail="MCP session not ready")
+
+    try:
+        res = await mcp_session.call_tool(
+            "list_database_tables",
+            arguments={
+                "host": conn.host,
+                "port": conn.port,
+                "user": conn.user,
+                "password": conn.password,
+                "database": conn.database,
+                "database_type": conn.database_type,
+            }
+        )
+        text = res.content[0].text if res.content else "[]"
+        try:
+            data = json.loads(text)
+            if isinstance(data, list):
+                tables = data
+            else:
+                tables = [str(data)]
+        except Exception:
+            # fallback: split by newlines
+            tables = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        return {"tables": tables}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/list-tables")
+async def list_tables(conn: DbConnection):
     """Return the list of tables for the provided connection as JSON."""
     from app import client as client_module
 
