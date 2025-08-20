@@ -1,7 +1,13 @@
 // API Service for communication with the backend
 
 // Base URL for API requests
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// Ensure this points to your FastAPI host (defaults to local dev)
+// Prefer Vite env, fallback to current origin or default localhost
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const viteEnv = (typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined) as any;
+const API_BASE_URL = (viteEnv && viteEnv.VITE_API_BASE_URL) 
+  || (typeof window !== 'undefined' ? window.location.origin.replace(/:\d+$/, ':8000') : '') 
+  || 'http://localhost:8000';
 
 // Types for database connections
 export interface DbConnection {
@@ -22,14 +28,14 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// Generic fetch wrapper with error handling
+// Generic fetch wrapper with error handling and smart unwrapping of backend {status,data}
 async function fetchApi<T>(
   endpoint: string, 
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   try {
     const url = `${API_BASE_URL}${endpoint}`;
-    console.log(`Making API request to: ${url}`, options);
+  console.log(`API -> ${options.method || 'GET'} ${url}`, options.body ? JSON.parse(options.body as string) : undefined);
     
     const response = await fetch(url, {
       ...options,
@@ -58,10 +64,13 @@ async function fetchApi<T>(
       };
     }
 
-    return {
-      status: 'success',
-      data: data as T,
-    };
+    // If backend wraps as { status, data }, unwrap it.
+    if (data && typeof data === 'object' && 'status' in data && 'data' in data) {
+      const inner = (data as any).data;
+      return { status: 'success', data: inner as T };
+    }
+
+    return { status: 'success', data: data as T };
   } catch (error) {
     console.error('API request failed:', error);
     return {
@@ -73,6 +82,15 @@ async function fetchApi<T>(
   }
 }
 
+// Helper to build payload: if we have a saved profile id and no clear-text password, send only connection_id
+function buildPayload(conn: DbConnection, extra?: Record<string, any>) {
+  const looksMasked = typeof conn.password === 'string' && conn.password.includes('*');
+  if (conn.id && (looksMasked || !conn.password)) {
+    return { connection_id: conn.id, ...(extra || {}) };
+  }
+  return { ...conn, ...(extra || {}) };
+}
+
 // API services
 export const dbService = {
   // Health check for API connectivity
@@ -82,9 +100,10 @@ export const dbService = {
   
   // Test database connection
   testConnection: async (connection: DbConnection): Promise<ApiResponse<{ success: boolean; message: string }>> => {
+    const body = buildPayload(connection);
     return fetchApi('/api/test-connection', {
       method: 'POST',
-      body: JSON.stringify(connection),
+      body: JSON.stringify(body),
     });
   },
 
@@ -103,30 +122,21 @@ export const dbService = {
 
   // List database tables
   listTables: async (connection: DbConnection): Promise<ApiResponse<string[]>> => {
-    const response = await fetchApi<string[]>('/api/list-tables', {
+    const body = buildPayload(connection);
+    return fetchApi<string[]>('/api/list-tables', {
       method: 'POST',
-      body: JSON.stringify(connection),
+      body: JSON.stringify(body),
     });
-    
-    // Handle the response format from backend
-    if (response.status === 'success' && response.data) {
-      return {
-        status: 'success',
-        data: response.data
-      };
-    }
-    return response;
   },
 
   // Describe table columns
   describeColumns: async (connection: DbConnection & { table: string; limit?: number }): 
     Promise<ApiResponse<Array<{ column: string; description: string; data_type: string }>>> => {
-    return fetchApi('/api/describe-columns', {
+    const { table, limit = 100, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { table, limit });
+    return fetchApi<Array<{ column: string; description: string; data_type: string }>>('/api/describe-columns', {
       method: 'POST',
-      body: JSON.stringify({
-        ...connection,
-        limit: connection.limit || 100
-      }),
+      body: JSON.stringify(body),
     });
   },
 
@@ -134,9 +144,11 @@ export const dbService = {
   suggestColumns: async (connection: DbConnection & { 
     user_prompt: string;
   }): Promise<ApiResponse<{ suggested_columns: Array<{ name: string; description: string; data_type: string }> }>> => {
-    return fetchApi('/api/suggest-columns', {
+    const { user_prompt, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { user_prompt });
+    return fetchApi<{ suggested_columns: Array<{ name: string; description: string; data_type: string }> }>('/api/suggest-columns', {
       method: 'POST',
-      body: JSON.stringify(connection),
+      body: JSON.stringify(body),
     });
   },
 
@@ -145,9 +157,11 @@ export const dbService = {
     analytics_prompt: string;
     system_prompt?: string;
   }): Promise<ApiResponse<{ rows: Record<string, any>[] }>> => {
-    return fetchApi('/api/analytics-query', {
+    const { analytics_prompt, system_prompt, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { analytics_prompt, system_prompt });
+    return fetchApi<{ rows: Record<string, any>[] }>('/api/analytics-query', {
       method: 'POST',
-      body: JSON.stringify(connection),
+      body: JSON.stringify(body),
     });
   },
 };
