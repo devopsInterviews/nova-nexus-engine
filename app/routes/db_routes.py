@@ -477,3 +477,5 @@ async def analytics_query(request: Request):
 # In-memory storage for connections (would be replaced with a persistent store)
 saved_connections = []
 connection_id_counter = 1
+
+
