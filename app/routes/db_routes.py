@@ -3,9 +3,11 @@ import json
 import traceback
 import os
 from pathlib import Path
+from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
+from app.prompts import BI_ANALYTICS_PROMPT
 
 # Create router with tags for API documentation
 router = APIRouter(prefix="", tags=["database"])  # prefix inherited from app.include_router("/api")
@@ -390,96 +392,184 @@ async def describe_columns(request: Request):
 @router.post("/suggest-columns")
 async def suggest_columns(request: Request):
     """
-    Suggest columns based on natural language prompt
+    Suggest columns based on natural language prompt with confluence integration
+    Replicates the working suggest_keys_api function from client.py
     """
     from app.client import _mcp_session  # Import here to avoid circular imports
     
+    # --- Helper functions for safe logging (copied from working client.py) ---
+    def _mask_secret(s: str, show: int = 2) -> str:
+        if s is None:
+            return "None"
+        s = str(s)
+        return (s[:show] + "..." + s[-show:]) if len(s) > (show * 2) else "***"
+
+    def _sample_list(lst, n=25):
+        return lst[:n]
+
+    def _truncate(s: str, n: int = 600) -> str:
+        s = s or ""
+        return s if len(s) <= n else (s[:n] + f"... <+{len(s)-n} chars>")
+    
     try:
-        # Parse request data
+        # Parse and validate request data
         data = await request.json()
+        logger.info("suggest_columns: received request with payload keys: %s", list(data.keys()))
         
-        # Resolve from profile and require prompt
+        # Resolve connection profile first
+        saved_connections = _load_saved_connections()
         data = _resolve_connection_payload(data, saved_connections)
-        if not data.get("user_prompt"):
-            return JSONResponse(status_code=400, content={"status":"error","error":"Missing required field: user_prompt"})
         
-        logger.info(f"Suggesting columns for {data['database_type']} database based on user prompt")
-        
-        # Call MCP tool to suggest columns
+        logger.info(
+            "suggest_columns: start space=%r title=%r host=%s port=%s db=%s user=%s",
+            data.get("confluenceSpace"), data.get("confluenceTitle"),
+            data.get("host"), data.get("port"), data.get("database"), data.get("user")
+        )
+
+        # Validate required fields (including Confluence identifiers)
+        required = ["host","port","user","password","database","user_prompt","confluenceSpace","confluenceTitle"]
+        for field in required:
+            if field not in data or data[field] in (None, ""):
+                logger.error("suggest_columns: missing field=%r", field)
+                return JSONResponse(
+                    status_code=400,
+                    content={"status": "error", "error": f"Missing required field: {field}"}
+                )
+
+        log_copy = dict(data)
+        log_copy["password"] = _mask_secret(log_copy.get("password"))
+        log_copy["user_prompt"] = _truncate(log_copy.get("user_prompt"), 200)
+        logger.debug("suggest_columns: validated payload (sanitized): %s", log_copy)
+
+        # --- Step 1: Fetch key->description dict from MCP first ---
+        desc_args = {
+            "space": data["confluenceSpace"],
+            "title": data["confluenceTitle"],
+            "host": data["host"],
+            "port": data["port"],
+            "user": data["user"],
+            "password": data["password"],  # not logging this raw
+            "database": data["database"],
+        }
+        safe_desc_args = dict(desc_args)
+        safe_desc_args["password"] = _mask_secret(desc_args["password"])
+        logger.info("suggest_columns: calling collect_db_confluence_key_descriptions … args=%s", safe_desc_args)
+
+        desc_res = await _mcp_session.call_tool(
+            "collect_db_confluence_key_descriptions",
+            arguments=desc_args,
+            read_timeout_seconds=timedelta(seconds=600)
+        )
+
+        parts = getattr(desc_res, "content", []) or []
+        logger.debug("suggest_columns: collect_db_confluence_key_descriptions returned %d content part(s)", len(parts))
+
+        desc_text_parts = [m.text for m in parts if getattr(m, "text", None)]
+        desc_text = desc_text_parts[0] if desc_text_parts else "{}"
+        logger.debug("suggest_columns: descriptions JSON length=%d chars", len(desc_text))
+
         try:
-            # Get confluence parameters if provided
-            confluence_space = data.get("confluenceSpace")
-            confluence_title = data.get("confluenceTitle")
-            
-            # Build arguments for the MCP tool
-            tool_args = {
-                "host": data["host"],
-                "port": data["port"],
-                "user": data["user"],
-                "password": data["password"],
-                "database": data["database"],
-                "database_type": data.get("database_type","postgres"),
-                "user_prompt": data["user_prompt"],
-            }
-            
-            # Add confluence parameters if provided
-            if confluence_space and confluence_title:
-                tool_args["space"] = confluence_space
-                tool_args["title"] = confluence_title
-                logger.info(f"Using confluence space: {confluence_space}, title: {confluence_title}")
-            
-            result = await _mcp_session.call_tool(
-                "suggest_keys_for_analytics",
-                arguments=tool_args
+            key_descriptions = json.loads(desc_text)
+            logger.info("suggest_columns: parsed descriptions entries=%d", len(key_descriptions))
+            logger.debug(
+                "suggest_columns: sample descriptions keys=%s",
+                _sample_list(list(key_descriptions.keys()))
             )
+        except json.JSONDecodeError as je:
+            logger.warning("suggest_columns: failed to parse descriptions JSON (%s), falling back to empty {}", je)
+            key_descriptions = {}
+
+        # --- Step 2: Build an AUGMENTED *USER* PROMPT (not system prompt) with descriptions ---
+        augmented_user_prompt = (
+            (data.get("user_prompt") or "").rstrip()
+            + "\n\n---\n"
+            + "KNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
+            + json.dumps(key_descriptions, ensure_ascii=False)
+            + "\n\nGuidance: Prefer columns whose names or descriptions semantically match the request. "
+              "Output one column per line in structure: table.column - description - value type."
+        )
+        logger.info(
+            "suggest_columns: augmented_user_prompt built (length=%d chars, desc_count=%d)",
+            len(augmented_user_prompt), len(key_descriptions)
+        )
+        logger.debug("suggest_columns: augmented_user_prompt (truncated): %s", _truncate(augmented_user_prompt))
+
+        # --- Step 3: Call the MCP tool for suggestions with SYSTEM prompt and augmented USER prompt ---
+        tool_args = {
+            "space": data["confluenceSpace"],
+            "title": data["confluenceTitle"],
+            "host": data["host"],
+            "port": data["port"],
+            "user": data["user"],
+            "password": data["password"],  # not logging this raw
+            "database": data["database"],
+            "system_prompt": BI_ANALYTICS_PROMPT,     # CRITICAL: This was missing!
+            "user_prompt": augmented_user_prompt,     # descriptions moved here
+        }
+        safe_tool_args = dict(tool_args)
+        safe_tool_args["password"] = _mask_secret(safe_tool_args["password"])
+        safe_tool_args["user_prompt"] = f"<redacted user prompt, {len(augmented_user_prompt)} chars>"
+        safe_tool_args["system_prompt"] = f"<BI_ANALYTICS_PROMPT, {len(BI_ANALYTICS_PROMPT)} chars>"
+        logger.info("suggest_columns: calling suggest_keys_for_analytics … args=%s", safe_tool_args)
+
+        result = await _mcp_session.call_tool(
+            "suggest_keys_for_analytics",
+            arguments=tool_args,
+            read_timeout_seconds=timedelta(seconds=600)
+        )
+
+        parts2 = getattr(result, "content", []) or []
+        logger.debug("suggest_columns: suggest_keys_for_analytics returned %d content part(s)", len(parts2))
+
+        full_text = "\n".join(m.text for m in parts2 if getattr(m, "text", None))
+        logger.debug("suggest_columns: raw suggestion text length=%d chars", len(full_text))
+
+        keys = [k.strip() for k in full_text.replace(",", "\n").splitlines() if k.strip()]
+        logger.info("suggest_columns: extracted %d suggested key(s)", len(keys))
+        logger.debug("suggest_columns: suggested keys sample=%s", _sample_list(keys))
+
+        # --- Step 4: Format response to match frontend expectations ---
+        # Parse the suggested keys into structured format
+        columns: List[Dict[str, Any]] = []
+        for key in keys:
+            # Parse format: "table.column - description - value type"
+            parts = [p.strip() for p in key.split("-", 2)]
+            column_name = parts[0] if parts else key
+            description = parts[1] if len(parts) > 1 else ""
+            data_type = parts[2] if len(parts) > 2 else ""
             
-            # Process the response
-            parts = [msg.text for msg in result.content]
-            columns_text = "".join(parts)
-            
-            # Parse the columns
-            # Accept either JSON payload or newline text; prefer JSON of shape [{name,description,data_type}]
-            columns: List[Dict[str, Any]] = []
-            parsed = None
-            try:
-                parsed = json.loads(columns_text)
-            except Exception:
-                parsed = None
-            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
-                for item in parsed:
-                    columns.append({
-                        "name": item.get("name") or item.get("column") or "",
-                        "description": item.get("description", ""),
-                        "data_type": item.get("data_type") or item.get("type") or ""
-                    })
-            else:
-                for line in columns_text.splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    parts = [p.strip() for p in line.split("-", 2)]
-                    column = parts[0] if parts else ""
-                    description = parts[1] if len(parts) > 1 else ""
-                    data_type = parts[2] if len(parts) > 2 else ""
-                    columns.append({"name": column, "description": description, "data_type": data_type})
-            
-            return JSONResponse({
-                "status": "success",
-                "data": {
-                    "suggested_columns": columns,
-                    "suggested_columns_map": {c["name"]: {"description": c["description"], "data_type": c["data_type"]} for c in columns}
-                }
+            columns.append({
+                "name": column_name,
+                "description": description,
+                "data_type": data_type
             })
-                
-        except Exception as tool_error:
-            logger.error(f"Column suggestion tool error: {str(tool_error)}")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "error": f"Column suggestion failed: {str(tool_error)}"
+
+        # Create the response format expected by the frontend
+        response_data = {
+            "status": "success",
+            "data": {
+                "suggested_columns": columns,
+                "suggested_columns_map": {
+                    c["name"]: {
+                        "description": c["description"],
+                        "data_type": c["data_type"]
+                    } for c in columns
                 }
-            )
+            }
+        }
+
+        logger.info("suggest_columns: successfully processed %d columns, returning response", len(columns))
+        return JSONResponse(response_data)
+                
+    except Exception as e:
+        logger.error("suggest_columns: error occurred: %s", str(e), exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": f"Column suggestion failed: {str(e)}"
+            }
+        )
             
     except Exception as e:
         logger.error(f"Column suggestion request failed: {str(e)}")
