@@ -3,19 +3,18 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { Brain, ArrowRight, Lightbulb, Send } from "lucide-react";
+import { Brain, ArrowRight, Lightbulb, Send, Loader2, AlertCircle } from "lucide-react";
+import { useState } from "react";
+import { useConnectionContext } from "@/context/connection-context";
+import { dbService } from "@/lib/api-service";
+import { useToast } from "@/components/ui/use-toast";
 
 export function ColumnSuggestionsTab() {
-  const suggestedColumns = [
-    { name: "user_id", type: "INTEGER", description: "Primary key for user identification" },
-    { name: "email", type: "VARCHAR(255)", description: "User email address, unique constraint" },
-    { name: "created_at", type: "TIMESTAMP", description: "Account creation timestamp" },
-    { name: "last_login", type: "TIMESTAMP", description: "Last successful login time" },
-    { name: "is_active", type: "BOOLEAN", description: "Account status flag" },
-    { name: "profile_picture_url", type: "TEXT", description: "URL to user's profile image" },
-    { name: "subscription_tier", type: "ENUM", description: "User subscription level (free, premium, enterprise)" },
-    { name: "total_logins", type: "INTEGER", description: "Count of successful logins" },
-  ];
+  const [prompt, setPrompt] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [suggestedColumns, setSuggestedColumns] = useState<Array<{name: string, type: string, description: string}>>([]);
+  const { currentConnection } = useConnectionContext();
+  const { toast } = useToast();
 
   const typeColors = {
     "INTEGER": "bg-primary/10 text-primary border-primary/20",
@@ -24,6 +23,86 @@ export function ColumnSuggestionsTab() {
     "BOOLEAN": "bg-success/10 text-success border-success/20",
     "TEXT": "bg-warning/10 text-warning border-warning/20",
     "ENUM": "bg-destructive/10 text-destructive border-destructive/20",
+  };
+
+  // Generate column suggestions
+  const generateSuggestions = async () => {
+    if (!currentConnection) {
+      toast({
+        variant: "destructive",
+        title: "No Connection",
+        description: "Please connect to a database first in the 'Connect to DB' tab"
+      });
+      return;
+    }
+
+    if (!prompt.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Empty Prompt",
+        description: "Please enter a description of your table requirements"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await dbService.suggestColumns({
+        ...currentConnection,
+        user_prompt: prompt,
+        confluenceSpace: "AAA", // Default space
+        confluenceTitle: "Demo - database keys description" // Default title
+      });
+
+      if (response.status === 'success' && response.data) {
+        // Parse the suggested keys into column objects
+        const columns = response.data.suggested_keys.map(key => {
+          // Extract information from the key format (usually in the format table.column - description - type)
+          const parts = key.split(' - ');
+          const nameWithTable = parts[0] || '';
+          const description = parts[1] || '';
+          const type = parts[2] || 'TEXT';
+
+          // Extract just the column name (after the dot)
+          const nameParts = nameWithTable.split('.');
+          const name = nameParts.length > 1 ? nameParts[1] : nameWithTable;
+
+          return {
+            name,
+            type,
+            description
+          };
+        });
+
+        setSuggestedColumns(columns);
+
+        toast({
+          title: "Success",
+          description: `Generated ${columns.length} column suggestions`
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.error || "Failed to generate column suggestions"
+        });
+      }
+    } catch (error) {
+      console.error("Error generating suggestions:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const clearPrompt = () => {
+    setPrompt("");
+    setSuggestedColumns([]);
   };
 
   return (
@@ -52,15 +131,30 @@ export function ColumnSuggestionsTab() {
               <Textarea 
                 placeholder="I need a user table for an e-commerce application that stores customer information, login history, and subscription details..."
                 className="bg-surface-elevated min-h-[120px]"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                disabled={isLoading}
               />
             </div>
             
             <div className="flex gap-3">
-              <Button className="bg-gradient-primary flex items-center gap-2">
-                <Lightbulb className="w-4 h-4" />
-                Generate Suggestions
+              <Button 
+                className="bg-gradient-primary flex items-center gap-2"
+                onClick={generateSuggestions}
+                disabled={isLoading || !prompt.trim() || !currentConnection}
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Lightbulb className="w-4 h-4" />
+                )}
+                {isLoading ? "Generating..." : "Generate Suggestions"}
               </Button>
-              <Button variant="outline">
+              <Button 
+                variant="outline"
+                onClick={clearPrompt}
+                disabled={isLoading || (!prompt.trim() && suggestedColumns.length === 0)}
+              >
                 Clear
               </Button>
             </div>
