@@ -191,6 +191,44 @@ async def save_connection(request: Request):
         logger.error(f"Error saving connection: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.delete("/delete-connection/{connection_id}")
+async def delete_connection(connection_id: str):
+    """
+    Delete a saved connection by ID
+    """
+    try:
+        global saved_connections
+        # Find and remove the connection
+        original_count = len(saved_connections)
+        saved_connections = [conn for conn in saved_connections if str(conn.get("id")) != connection_id]
+        
+        if len(saved_connections) < original_count:
+            # Connection was found and deleted
+            _persist_saved_connections(saved_connections)
+            logger.info("Deleted connection id=%s", connection_id)
+            return JSONResponse({
+                "status": "success",
+                "message": f"Connection {connection_id} deleted successfully"
+            })
+        else:
+            # Connection not found
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"Connection {connection_id} not found"
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error deleting connection {connection_id}: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to delete connection: {str(e)}"
+            }
+        )
+
 @router.get("/get-connections")
 async def get_connections():
     """
@@ -369,17 +407,30 @@ async def suggest_columns(request: Request):
         
         # Call MCP tool to suggest columns
         try:
+            # Get confluence parameters if provided
+            confluence_space = data.get("confluenceSpace")
+            confluence_title = data.get("confluenceTitle")
+            
+            # Build arguments for the MCP tool
+            tool_args = {
+                "host": data["host"],
+                "port": data["port"],
+                "user": data["user"],
+                "password": data["password"],
+                "database": data["database"],
+                "database_type": data.get("database_type","postgres"),
+                "user_prompt": data["user_prompt"],
+            }
+            
+            # Add confluence parameters if provided
+            if confluence_space and confluence_title:
+                tool_args["space"] = confluence_space
+                tool_args["title"] = confluence_title
+                logger.info(f"Using confluence space: {confluence_space}, title: {confluence_title}")
+            
             result = await _mcp_session.call_tool(
                 "suggest_keys_for_analytics",
-                arguments={
-                    "host": data["host"],
-                    "port": data["port"],
-                    "user": data["user"],
-                    "password": data["password"],
-                    "database": data["database"],
-                    "database_type": data.get("database_type","postgres"),
-                    "user_prompt": data["user_prompt"],
-                }
+                arguments=tool_args
             )
             
             # Process the response

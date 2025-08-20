@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
@@ -11,6 +12,8 @@ import { useToast } from "@/components/ui/use-toast";
 
 export function ColumnSuggestionsTab() {
   const [prompt, setPrompt] = useState("");
+  const [confluenceSpace, setConfluenceSpace] = useState("AAA");
+  const [confluenceTitle, setConfluenceTitle] = useState("Demo - database keys description");
   const [isLoading, setIsLoading] = useState(false);
   const [suggestedColumns, setSuggestedColumns] = useState<Array<{name: string, type: string, description: string}>>([]);
   const { currentConnection } = useConnectionContext();
@@ -45,12 +48,23 @@ export function ColumnSuggestionsTab() {
       return;
     }
 
+    if (!confluenceSpace.trim() || !confluenceTitle.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Confluence Info",
+        description: "Please provide both Confluence Space and Title"
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const response = await dbService.suggestColumns({
         ...currentConnection,
-        user_prompt: prompt
+        user_prompt: prompt,
+        confluenceSpace: confluenceSpace,
+        confluenceTitle: confluenceTitle
       });
 
       if (response.status === 'success' && response.data && (response.data as any).suggested_columns) {
@@ -90,6 +104,8 @@ export function ColumnSuggestionsTab() {
 
   const clearPrompt = () => {
     setPrompt("");
+    setConfluenceSpace("AAA");
+    setConfluenceTitle("Demo - database keys description");
     setSuggestedColumns([]);
   };
 
@@ -114,6 +130,30 @@ export function ColumnSuggestionsTab() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Confluence Space</label>
+                <Input 
+                  placeholder="AAA"
+                  className="bg-surface-elevated"
+                  value={confluenceSpace}
+                  onChange={(e) => setConfluenceSpace(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Confluence Title</label>
+                <Input 
+                  placeholder="Demo - database keys description"
+                  className="bg-surface-elevated"
+                  value={confluenceTitle}
+                  onChange={(e) => setConfluenceTitle(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            
             <div className="space-y-2">
               <label className="text-sm font-medium">Describe your table requirements</label>
               <Textarea 
@@ -129,7 +169,7 @@ export function ColumnSuggestionsTab() {
               <Button 
                 className="bg-gradient-primary flex items-center gap-2"
                 onClick={generateSuggestions}
-                disabled={isLoading || !prompt.trim() || !currentConnection}
+                disabled={isLoading || !prompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim() || !currentConnection}
               >
                 {isLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -141,7 +181,7 @@ export function ColumnSuggestionsTab() {
               <Button 
                 variant="outline"
                 onClick={clearPrompt}
-                disabled={isLoading || (!prompt.trim() && suggestedColumns.length === 0)}
+                disabled={isLoading || (!prompt.trim() && !confluenceSpace.trim() && !confluenceTitle.trim() && suggestedColumns.length === 0)}
               >
                 Clear
               </Button>
@@ -175,9 +215,9 @@ export function ColumnSuggestionsTab() {
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-1">
                         <code className="font-mono font-medium text-primary">{column.name}</code>
-                        <Badge variant="outline" className={typeColors[column.type as keyof typeof typeColors]}>
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${typeColors[column.type as keyof typeof typeColors] || "bg-muted/20 text-muted-foreground border-border"}`}>
                           {column.type}
-                        </Badge>
+                        </span>
                       </div>
                       <p className="text-sm text-muted-foreground">{column.description}</p>
                     </div>

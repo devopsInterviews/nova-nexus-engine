@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { motion } from "framer-motion";
-import { Database, Plus, Trash2, TestTube, Eye, EyeOff, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Database, Plus, Trash2, TestTube, Eye, EyeOff, CheckCircle, AlertCircle, Loader2, MoreVertical } from "lucide-react";
 import { useState } from "react";
 import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
@@ -17,7 +18,7 @@ export function ConnectDBTab() {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [connectionMessage, setConnectionMessage] = useState("");
   const { toast } = useToast();
-  const { savedConnections, refreshConnections, setCurrentConnection } = useConnectionContext();
+  const { savedConnections, refreshConnections, setCurrentConnection, currentConnection } = useConnectionContext();
   
   // Form state
   const [formData, setFormData] = useState({
@@ -173,7 +174,7 @@ export function ConnectDBTab() {
   // Connect to a saved connection
   const connectToSaved = (connection: any) => {
     setCurrentConnection({
-  id: connection.id,
+      id: connection.id,
       host: connection.host,
       port: connection.port,
       database: connection.database,
@@ -188,8 +189,94 @@ export function ConnectDBTab() {
       description: `Connected to "${connection.name}"`,
     });
   };
-  
-  const statusColors = {
+
+  // Test a saved connection
+  const testSavedConnection = async (connection: any) => {
+    setIsLoading(true);
+    
+    try {
+      const response = await dbService.testConnection({
+        id: connection.id,
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        user: connection.user,
+        password: connection.password,
+        database_type: connection.database_type,
+        name: connection.name
+      });
+      
+      if (response.status === 'success' && response.data) {
+        if (response.data.success) {
+          toast({
+            title: "Connection Test Successful",
+            description: response.data.message,
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Connection Test Failed",
+            description: response.data.message,
+          });
+        }
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.error || "Failed to test connection",
+        });
+      }
+    } catch (error) {
+      console.error("Error testing saved connection:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while testing the connection",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Delete a saved connection
+  const deleteSavedConnection = async (connectionId: string, connectionName: string) => {
+    try {
+      const response = await dbService.deleteConnection(connectionId);
+      
+      if (response.status === 'success') {
+        toast({
+          title: "Connection Deleted",
+          description: `Connection "${connectionName}" has been deleted`,
+        });
+        
+        // If we're currently using this connection, clear it
+        if (currentConnection && currentConnection.id === connectionId) {
+          setCurrentConnection(null);
+        }
+        
+        // Refresh the connections list
+        await refreshConnections();
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.error || "Failed to delete connection",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting connection:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while deleting the connection",
+      });
+    }
+  };
+
+  // Check if a connection is currently active
+  const isConnectionActive = (connection: any) => {
+    return currentConnection && currentConnection.id === connection.id;
+  };  const statusColors = {
     connected: "bg-success/10 text-success border-success/20",
     disconnected: "bg-destructive/10 text-destructive border-destructive/20",
     connecting: "bg-warning/10 text-warning border-warning/20 animate-pulse",
@@ -439,28 +526,59 @@ export function ConnectDBTab() {
                           {dbDefaults[connection.database_type as keyof typeof dbDefaults]?.icon || '📊'}
                         </span>
                         <div>
-                          <h4 className="font-medium group-hover:text-primary transition-colors">
-                            {connection.name}
-                          </h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium group-hover:text-primary transition-colors">
+                              {connection.name}
+                            </h4>
+                            {isConnectionActive(connection) && (
+                              <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">
+                                connected
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm text-muted-foreground">
                             {connection.host}:{connection.port}/{connection.database}
                           </p>
                         </div>
                       </div>
                       
-                      <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors bg-success/10 text-success border-success/20">
-                        saved
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors bg-success/10 text-success border-success/20">
+                          saved
+                        </span>
+                        
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => testSavedConnection(connection)}>
+                              <TestTube className="h-4 w-4 mr-2" />
+                              Test Connection
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => deleteSavedConnection(connection.id, connection.name)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                     
                     <div className="flex gap-2">
                       <Button 
                         size="sm" 
-                        variant="outline" 
+                        variant={isConnectionActive(connection) ? "default" : "outline"}
                         className="flex-1"
                         onClick={() => connectToSaved(connection)}
+                        disabled={isConnectionActive(connection)}
                       >
-                        Connect
+                        {isConnectionActive(connection) ? "Connected" : "Connect"}
                       </Button>
                     </div>
                   </motion.div>
