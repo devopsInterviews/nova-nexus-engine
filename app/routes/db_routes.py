@@ -43,15 +43,14 @@ def _resolve_connection_payload(data: Dict[str, Any], saved: List[Dict[str, Any]
 
 
 # Simple JSON file persistence for saved connections
-BASE_DIR = Path(__file__).resolve().parents[1]
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-CONNECTIONS_FILE = DATA_DIR / "connections.json"
+DATA_DIR = "/home/appuser/data"
+os.makedirs(DATA_DIR, exist_ok=True)
+CONNECTIONS_FILE = os.path.join(DATA_DIR, "connections.json")
 
 def _load_saved_connections() -> List[Dict[str, Any]]:
     try:
-        if CONNECTIONS_FILE.exists():
-            with CONNECTIONS_FILE.open("r", encoding="utf-8") as f:
+        if os.path.exists(CONNECTIONS_FILE):
+            with open(CONNECTIONS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list):
                     return data
@@ -61,7 +60,7 @@ def _load_saved_connections() -> List[Dict[str, Any]]:
 
 def _persist_saved_connections(conns: List[Dict[str, Any]]):
     try:
-        with CONNECTIONS_FILE.open("w", encoding="utf-8") as f:
+        with open(CONNECTIONS_FILE, "w", encoding="utf-8") as f:
             json.dump(conns, f, indent=2)
     except Exception:
         logger.error("Failed to write connections.json", exc_info=True)
