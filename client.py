@@ -4,10 +4,11 @@ import asyncio
 import logging
 import re
 
-from fastapi import FastAPI, HTTPException, Request,APIRouter
+from fastapi import FastAPI, HTTPException, Request, APIRouter
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Tuple, Any
 from dotenv import load_dotenv
@@ -42,7 +43,20 @@ app = FastAPI(title="MCP Client")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
+# Add CORS middleware to allow requests from frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 logger = logging.getLogger("uvicorn.error")
+
+# Import and include database routes
+from app.routes.db_routes import router as db_router
+app.include_router(db_router, prefix="/api")
 
 # AsyncExitStack to manage context managers in the same task
 _exit_stack: AsyncExitStack
