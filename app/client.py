@@ -56,7 +56,20 @@ logger = logging.getLogger("uvicorn.error")
 
 # Import and include database routes
 from app.routes.db_routes import router as db_router
-app.include_router(db_router, prefix="/db")
+# Expose database/API routes under /api to match UI calls
+app.include_router(db_router, prefix="/api")
+
+# Lightweight request logging middleware (doesn't consume body)
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    try:
+        logger.info("%s %s", request.method, request.url.path)
+        response = await call_next(request)
+        logger.info("%s %s -> %s", request.method, request.url.path, response.status_code)
+        return response
+    except Exception:
+        logger.error("Unhandled error for %s %s", request.method, request.url.path, exc_info=True)
+        raise
 
 # AsyncExitStack to manage context managers in the same task
 _exit_stack: AsyncExitStack

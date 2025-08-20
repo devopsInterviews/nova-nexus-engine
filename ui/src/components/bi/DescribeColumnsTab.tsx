@@ -43,8 +43,8 @@ export function DescribeColumnsTab() {
       setLoadingTables(true);
       try {
         const response = await dbService.listTables(currentConnection);
-        if (response.status === 'success' && response.data) {
-          setTables(response.data);
+        if (response.status === 'success' && Array.isArray(response.data)) {
+          setTables(response.data as string[]);
           if (response.data.length > 0) {
             setSelectedTable(response.data[0]);
           }
@@ -86,10 +86,10 @@ export function DescribeColumnsTab() {
       });
       
       if (response.status === 'success' && response.data) {
-        setColumns(response.data);
+        setColumns(response.data as any);
         toast({
           title: "Success",
-          description: `Loaded ${response.data.length} columns for table ${selectedTable}`
+          description: `Loaded ${(response.data as any[]).length} columns for table ${selectedTable}`
         });
       } else {
         toast({

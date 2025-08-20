@@ -53,9 +53,9 @@ export function ColumnSuggestionsTab() {
         user_prompt: prompt
       });
 
-      if (response.status === 'success' && response.data && response.data.suggested_columns) {
+      if (response.status === 'success' && response.data && (response.data as any).suggested_columns) {
         // Use the properly formatted columns from the API
-        const columns = response.data.suggested_columns.map(column => {
+        const columns = (response.data as any).suggested_columns.map((column: any) => {
           return {
             name: column.name || "",
             type: column.data_type || "TEXT",
@@ -77,7 +77,7 @@ export function ColumnSuggestionsTab() {
         });
       }
     } catch (error) {
-      console.error("Error generating suggestions:", error);
+  console.error("Error generating suggestions:", error);
       toast({
         variant: "destructive",
         title: "Error",

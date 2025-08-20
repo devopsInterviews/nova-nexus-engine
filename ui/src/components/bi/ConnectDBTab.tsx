@@ -64,6 +64,7 @@ export function ConnectDBTab() {
     
     try {
       const response = await dbService.testConnection({
+        id: undefined,
         host: formData.host,
         port: parseInt(formData.port),
         database: formData.database,
@@ -142,8 +143,8 @@ export function ConnectDBTab() {
           description: `Connection "${formData.name}" has been saved successfully`,
         });
         
-        // Refresh the connections list
-        await refreshConnections();
+  // Refresh the connections list
+  await refreshConnections();
         
         // Reset form
         setFormData({
@@ -172,6 +173,7 @@ export function ConnectDBTab() {
   // Connect to a saved connection
   const connectToSaved = (connection: any) => {
     setCurrentConnection({
+  id: connection.id,
       host: connection.host,
       port: connection.port,
       database: connection.database,
@@ -446,9 +448,9 @@ export function ConnectDBTab() {
                         </div>
                       </div>
                       
-                      <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+                      <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors bg-success/10 text-success border-success/20">
                         saved
-                      </Badge>
+                      </span>
                     </div>
                     
                     <div className="flex gap-2">
