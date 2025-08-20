@@ -8,7 +8,7 @@ import { Database, Plus, Trash2, TestTube, Eye, EyeOff, CheckCircle, AlertCircle
 import { useState, useEffect } from "react";
 import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
-import { useConnectionContext } from "@/context/connection-context";
+import { useConnectionContext } from "@/connection-context";
 import ApiHealthCheck from "@/components/ui/api-health-check";
 
 export function ConnectDBTab() {

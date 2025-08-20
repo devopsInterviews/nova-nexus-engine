@@ -12,6 +12,7 @@ export interface DbConnection {
   database: string;
   database_type: string;
   name?: string;
+  id?: string;
 }
 
 // Types for responses
@@ -102,14 +103,14 @@ export const dbService = {
 
   // List database tables
   listTables: async (connection: DbConnection): Promise<ApiResponse<string[]>> => {
-    return fetchApi('/list-tables-test', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      // Using URLSearchParams to properly encode query parameters
-      body: undefined, // GET requests don't have a body
+    const res = await fetchApi<{ tables: string[] }>(`/api/list-tables`, {
+      method: 'POST',
+      body: JSON.stringify(connection),
     });
+    if (res.status === 'success' && res.data) {
+      return { status: 'success', data: res.data.tables as unknown as string[] };
+    }
+    return res as unknown as ApiResponse<string[]>;
   },
 
   // Describe table columns

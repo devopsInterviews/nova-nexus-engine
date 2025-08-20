@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 import { Brain, ArrowRight, Lightbulb, Send, Loader2, AlertCircle } from "lucide-react";
 import { useState } from "react";
-import { useConnectionContext } from "@/context/connection-context";
+import { useConnectionContext } from "@/connection-context";
 import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -56,24 +56,28 @@ export function ColumnSuggestionsTab() {
       });
 
       if (response.status === 'success' && response.data) {
-        // Parse the suggested keys into column objects
-        const columns = response.data.suggested_keys.map(key => {
-          // Extract information from the key format (usually in the format table.column - description - type)
-          const parts = key.split(' - ');
-          const nameWithTable = parts[0] || '';
-          const description = parts[1] || '';
-          const type = parts[2] || 'TEXT';
+        // Prefer structured suggestions_map from backend; fallback to suggested_keys list
+        const suggestionsMap: Record<string, [string, string]> | undefined = (response.data as any).suggestions_map;
+        let columns: Array<{name: string, type: string, description: string}> = [];
 
-          // Extract just the column name (after the dot)
-          const nameParts = nameWithTable.split('.');
-          const name = nameParts.length > 1 ? nameParts[1] : nameWithTable;
-
-          return {
-            name,
-            type,
-            description
-          };
-        });
+        if (suggestionsMap && typeof suggestionsMap === 'object') {
+          columns = Object.entries(suggestionsMap).map(([key, value]) => {
+            const [description, type] = Array.isArray(value) ? value : ["", ""];
+            const parts = key.split('.')
+            const name = parts.length > 1 ? parts[1] : key;
+            return { name, type: type || 'TEXT', description: description || '' };
+          });
+        } else if ((response.data as any).suggested_keys) {
+          columns = (response.data as any).suggested_keys.map((key: string) => {
+            const parts = key.split(' - ');
+            const nameWithTable = parts[0] || '';
+            const description = parts[1] || '';
+            const type = parts[2] || 'TEXT';
+            const nameParts = nameWithTable.split('.');
+            const name = nameParts.length > 1 ? nameParts[1] : nameWithTable;
+            return { name, type, description };
+          });
+        }
 
         setSuggestedColumns(columns);
 
