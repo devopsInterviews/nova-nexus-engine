@@ -11,7 +11,7 @@ import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
 
 interface QueryResult {
-  sql?: string;
+  sql_query?: string;
   rows: Record<string, any>[];
   executionTime?: number;
   rowCount?: number;
@@ -23,13 +23,14 @@ export function SQLBuilderTab() {
   
   // Form state
   const [userPrompt, setUserPrompt] = useState("");
-  const [confluenceSpace, setConfluenceSpace] = useState("");
-  const [confluenceTitle, setConfluenceTitle] = useState("");
+  const [confluenceSpace, setConfluenceSpace] = useState("AAA");
+  const [confluenceTitle, setConfluenceTitle] = useState("Demo - database keys description");
   
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showVisualize, setShowVisualize] = useState(false);
 
   // Handle Generate & Execute
   const handleGenerateAndExecute = async () => {
@@ -83,8 +84,10 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
 
       if (response.status === 'success' && response.data) {
         const rows = response.data.rows || [];
+        const sql_query = response.data.sql_query;
         setResult({
           rows,
+          sql_query,
           executionTime,
           rowCount: rows.length
         });
@@ -109,7 +112,18 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
     }
   };
 
-  // Handle Copy to Clipboard
+  // Handle Copy SQL Query
+  const handleCopySQL = () => {
+    if (!result?.sql_query) return;
+    
+    navigator.clipboard.writeText(result.sql_query);
+    toast({
+      title: "SQL Copied",
+      description: "SQL query copied to clipboard"
+    });
+  };
+
+  // Handle Copy Results to Clipboard
   const handleCopyResults = () => {
     if (!result?.rows?.length) return;
     
@@ -129,7 +143,7 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
     
     navigator.clipboard.writeText(csvContent);
     toast({
-      title: "Copied to Clipboard",
+      title: "Results Copied",
       description: "Query results copied as CSV format"
     });
   };
@@ -197,8 +211,9 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
           {/* Confluence Configuration */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-red-400">
-                Confluence Space <span className="text-red-500">*</span>
+              <label className="text-sm font-medium">
+                Confluence Space
+                {!confluenceSpace.trim() && <span className="text-red-500 ml-1">*</span>}
               </label>
               <Input 
                 placeholder="e.g., DATA, ANALYTICS"
@@ -209,8 +224,9 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-red-400">
-                Confluence Title <span className="text-red-500">*</span>
+              <label className="text-sm font-medium">
+                Confluence Title
+                {!confluenceTitle.trim() && <span className="text-red-500 ml-1">*</span>}
               </label>
               <Input 
                 placeholder="e.g., Database Schema Documentation"
@@ -224,8 +240,9 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
 
           {/* Natural Language Prompt */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-red-400">
-              Natural Language Query <span className="text-red-500">*</span>
+            <label className="text-sm font-medium">
+              Natural Language Query
+              {!userPrompt.trim() && <span className="text-red-500 ml-1">*</span>}
             </label>
             <Textarea 
               placeholder="e.g., Show me the top 10 customers by total order value in the last 6 months, including their contact information and number of orders..."
@@ -265,6 +282,30 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
       {/* Results Display */}
       {result && (
         <>
+          {/* Generated SQL Query Display */}
+          {result.sql_query && (
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  Generated SQL Query
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={handleCopySQL}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy SQL
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-surface-elevated rounded-lg p-4 border border-border/50">
+                  <pre className="text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+                    {result.sql_query}
+                  </pre>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Query Stats */}
           <Card className="glass border-border/50">
             <CardHeader>
@@ -272,13 +313,19 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
                 Query Results
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={handleCopyResults}>
-                    <Copy className="w-4 h-4" />
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy Results
                   </Button>
                   <Button size="sm" variant="outline" onClick={handleDownloadCSV}>
                     <Download className="w-4 h-4 mr-2" />
                     Export CSV
                   </Button>
-                  <Button size="sm" variant="outline" disabled>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => setShowVisualize(!showVisualize)}
+                    disabled={!result?.rows?.length}
+                  >
                     <BarChart3 className="w-4 h-4 mr-2" />
                     Visualize
                   </Button>
@@ -395,6 +442,60 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
               </div>
             </CardContent>
           </Card>
+
+          {/* Visualization Panel */}
+          {showVisualize && result.rows.length > 0 && (
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle>Data Visualization</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Chart Type Selection */}
+                  <div className="flex gap-2 mb-4">
+                    <Button size="sm" variant="outline" className="bg-primary/10">Bar Chart</Button>
+                    <Button size="sm" variant="outline">Line Chart</Button>
+                    <Button size="sm" variant="outline">Pie Chart</Button>
+                    <Button size="sm" variant="outline">Table Heatmap</Button>
+                  </div>
+                  
+                  {/* Simple Bar Chart Visualization */}
+                  <div className="bg-surface-elevated rounded-lg p-4 border border-border/50">
+                    <div className="grid grid-cols-1 gap-2">
+                      {result.rows.slice(0, 10).map((row, index) => {
+                        const firstNumericKey = Object.keys(row).find(key => typeof row[key] === 'number');
+                        const firstStringKey = Object.keys(row).find(key => typeof row[key] === 'string');
+                        const maxValue = Math.max(...result.rows.map(r => typeof r[firstNumericKey || ''] === 'number' ? r[firstNumericKey || ''] : 0));
+                        const value = firstNumericKey ? row[firstNumericKey] : 0;
+                        const label = firstStringKey ? String(row[firstStringKey]).slice(0, 20) : `Row ${index + 1}`;
+                        const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+                        
+                        return (
+                          <div key={index} className="flex items-center gap-2 py-1">
+                            <div className="w-24 text-xs text-right truncate">{label}</div>
+                            <div className="flex-1 bg-muted rounded-full h-4 relative">
+                              <div 
+                                className="bg-primary rounded-full h-full transition-all duration-500"
+                                style={{ width: `${percentage}%` }}
+                              />
+                              <span className="absolute inset-0 flex items-center justify-center text-xs font-mono">
+                                {typeof value === 'number' ? value.toLocaleString() : value}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {result.rows.length > 10 && (
+                      <p className="text-xs text-muted-foreground mt-2 text-center">
+                        Showing top 10 rows for visualization
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>
