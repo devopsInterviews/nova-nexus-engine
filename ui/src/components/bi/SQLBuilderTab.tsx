@@ -68,6 +68,13 @@ export function SQLBuilderTab() {
     try {
       const startTime = Date.now();
       
+      console.log("🔄 Starting analytics query with payload:", {
+        ...currentConnection,
+        analytics_prompt: userPrompt,
+        confluenceSpace,
+        confluenceTitle
+      });
+      
       // Call the analytics query API with confluence integration
       const response = await dbService.runAnalyticsQuery({
         ...currentConnection,
@@ -80,11 +87,20 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
         confluenceTitle
       });
 
+      console.log("📥 Analytics query response:", response);
       const executionTime = Date.now() - startTime;
 
       if (response.status === 'success' && response.data) {
         const rows = response.data.rows || [];
         const sql_query = response.data.sql_query;
+        
+        console.log("✅ Query successful:", {
+          rowCount: rows.length,
+          sqlQuery: sql_query,
+          firstRow: rows[0],
+          executionTime
+        });
+        
         setResult({
           rows,
           sql_query,
@@ -97,6 +113,7 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
           description: `Retrieved ${rows.length} rows in ${executionTime}ms`
         });
       } else {
+        console.error("❌ Query failed:", response);
         throw new Error(response.error || 'Query execution failed');
       }
     } catch (err) {

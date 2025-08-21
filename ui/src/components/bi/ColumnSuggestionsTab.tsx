@@ -112,12 +112,19 @@ export function ColumnSuggestionsTab() {
         confluenceTitle: confluenceTitle
       });
 
+      console.log("🔍 Column suggestions API response:", response);
+
       if (response.status === 'success' && response.data && (response.data as any).suggested_columns) {
+        console.log("📋 Raw suggested columns:", (response.data as any).suggested_columns);
+        
         // Parse the columns using the new parser function
         const columns = (response.data as any).suggested_columns.map((column: any) => {
-          return parseColumnSuggestion(column);
+          const parsed = parseColumnSuggestion(column);
+          console.log("🔧 Parsed column:", column, "->", parsed);
+          return parsed;
         });
 
+        console.log("✅ Final parsed columns:", columns);
         setSuggestedColumns(columns);
 
         toast({
@@ -194,6 +201,39 @@ export function ColumnSuggestionsTab() {
       transition={{ duration: 0.5 }}
       className="space-y-6"
     >
+      {/* Connection Status Card */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <Card className="glass border-border/50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full bg-success animate-pulse"></div>
+                <div>
+                  <h4 className="font-semibold">Connected to Database</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {currentConnection ? (
+                      <>
+                        {currentConnection.host}:{currentConnection.port}/{currentConnection.database} 
+                        {currentConnection.name && ` (${currentConnection.name})`}
+                      </>
+                    ) : (
+                      "No connection"
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+                Ready
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* AI Prompt Interface */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
