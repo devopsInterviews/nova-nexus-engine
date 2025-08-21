@@ -698,85 +698,55 @@ async def analytics_query(request: Request):
         
         for i, msg in enumerate(result.content):
             msg_text = getattr(msg, 'text', '')
-            logger.info("analytics_query: part %d content preview: %s", i, msg_text[:300])
+            logger.info("analytics_query: processing message part %d", i)
             
-            # First, check if this looks like SQL
-            if msg_text.strip() and (
-                msg_text.upper().startswith('SELECT') or 
-                msg_text.upper().startswith('WITH') or
-                'SELECT' in msg_text.upper()
-            ):
-                # Extract SQL query - look for SQL block between markers or standalone SQL
-                sql_lines = []
-                in_sql_block = False
+            # SQL Query Extraction: Look for SQL statements in the AI response
+            if msg_text.strip() and ('SELECT' in msg_text.upper() or 'WITH' in msg_text.upper()):
+                logger.info("analytics_query: found potential SQL in message")
                 
-                for line in msg_text.split('\n'):
-                    line_stripped = line.strip()
-                    if line_stripped.upper().startswith('SELECT') or line_stripped.upper().startswith('WITH'):
-                        in_sql_block = True
-                        sql_lines.append(line_stripped)
-                    elif in_sql_block and (line_stripped.endswith(';') or line_stripped == ''):
-                        if line_stripped.endswith(';'):
-                            sql_lines.append(line_stripped)
+                # Extract SQL query from the message
+                clean_msg = msg_text.strip()
+                
+                # Remove common AI response prefixes to get clean SQL
+                prefixes_to_remove = ['Here is the SQL query:', 'SQL:', 'Query:', 'The SQL query is:', 'Here\'s the query:']
+                for prefix in prefixes_to_remove:
+                    if clean_msg.startswith(prefix):
+                        clean_msg = clean_msg[len(prefix):].strip()
                         break
-                    elif in_sql_block:
-                        sql_lines.append(line_stripped)
                 
-                # If we didn't find a proper SQL block, try extracting full message as SQL
-                if not sql_lines and ('SELECT' in msg_text.upper() or 'WITH' in msg_text.upper()):
-                    # Clean the message and extract just the SQL
-                    clean_msg = msg_text.strip()
-                    # Remove common prefixes
-                    for prefix in ['Here is the SQL query:', 'SQL:', 'Query:', 'The SQL query is:']:
-                        if clean_msg.startswith(prefix):
-                            clean_msg = clean_msg[len(prefix):].strip()
-                    sql_lines = [clean_msg]
-                
-                if sql_lines:
-                    sql_query = '\n'.join(sql_lines).strip()
+                # If this looks like SQL, save it
+                if clean_msg and ('SELECT' in clean_msg.upper() or 'WITH' in clean_msg.upper()):
+                    sql_query = clean_msg
+                    # Remove trailing semicolon (not needed for execution)
                     if sql_query.endswith(';'):
-                        sql_query = sql_query[:-1]  # Remove trailing semicolon
+                        sql_query = sql_query[:-1]
                     
-                    # Clean common SQL typos/issues
-                    sql_query = sql_query.replace('1 quater', '1 quarter')
-                    sql_query = sql_query.replace('2 quater', '2 quarter') 
-                    sql_query = sql_query.replace('3 quater', '3 quarter')
-                    sql_query = sql_query.replace('4 quater', '4 quarter')
-                    sql_query = sql_query.replace('quaters', 'quarters')
-                    
-                    logger.info("analytics_query: extracted and cleaned SQL query: %s", sql_query)
+                    logger.info("analytics_query: extracted SQL query successfully")
             
-            # Try to parse as JSON for rows data
+            # Data Parsing: Extract structured data (JSON) from AI response
             try:
                 rows_obj = json.loads(msg_text)
                 if isinstance(rows_obj, list):
                     rows.extend(rows_obj)
-                    logger.info("analytics_query: parsed JSON list with %d rows", len(rows_obj))
+                    logger.info("analytics_query: found %d data rows", len(rows_obj))
                 else:
                     rows.append(rows_obj)
-                    logger.info("analytics_query: parsed JSON object as single row")
-            except json.JSONDecodeError as jde:
-                logger.debug("analytics_query: part %d not JSON (expected if it's SQL): %s", i, str(jde))
+                    logger.info("analytics_query: found 1 data row")
+            except json.JSONDecodeError:
+                # Expected - not all parts of the response will be JSON
+                pass
 
-        logger.info("analytics_query: final rows=%d, sql_query=%s", len(rows), "present" if sql_query else "missing")
-        if rows:
-            logger.debug("analytics_query: first row sample=%s", rows[0])
+        logger.info("analytics_query: processing complete - %d rows, SQL: %s", 
+                   len(rows), "found" if sql_query else "not found")
 
-        # --- Step 4: Format response ---
-        response_data = {
+        # Return the results
+        return JSONResponse({
             "status": "success",
             "data": {
                 "rows": rows,
-                "sql_query": sql_query
+                "sql": sql_query
             }
-        }
-
-        logger.info("analytics_query: successfully processed %d rows, SQL query: %s", len(rows), "YES" if sql_query else "NO")
-        logger.debug("analytics_query: response data keys: %s", list(response_data["data"].keys()))
-        if sql_query:
-            logger.debug("analytics_query: SQL query preview: %s", sql_query[:200])
-        
-        return JSONResponse(response_data)
+        })
                 
     except Exception as e:
         logger.error("analytics_query: error occurred: %s", str(e), exc_info=True)

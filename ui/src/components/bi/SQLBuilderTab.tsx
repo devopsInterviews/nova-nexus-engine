@@ -69,12 +69,7 @@ export function SQLBuilderTab() {
     try {
       const startTime = Date.now();
       
-      console.log("🔄 Starting analytics query with payload:", {
-        ...currentConnection,
-        analytics_prompt: userPrompt,
-        confluenceSpace,
-        confluenceTitle
-      });
+      console.log("🔄 Starting analytics query...");
       
       // Call the analytics query API with confluence integration
       const response = await dbService.runAnalyticsQuery({
@@ -88,25 +83,17 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
         confluenceTitle
       });
 
-      console.log("📥 Analytics query response:", response);
-      console.log("📥 Raw response.data:", response.data);
-      console.log("📥 All keys in response.data:", response.data ? Object.keys(response.data) : 'no data');
+      console.log("📥 Analytics query response received");
       const executionTime = Date.now() - startTime;
 
       if (response.status === 'success' && response.data) {
         const rows = response.data.rows || [];
-        const sql_query = response.data.sql_query || (response.data as any).query || (response.data as any).sql;
+        const sql_query = response.data.sql;
         
         console.log("✅ Query successful:", {
           rowCount: rows.length,
-          sqlQuery: sql_query,
-          sqlQueryType: typeof sql_query,
-          sqlQueryLength: sql_query ? sql_query.length : 0,
-          firstRow: rows[0],
-          executionTime,
-          responseDataKeys: Object.keys(response.data),
-          rawSqlFromResponse: response.data.sql_query,
-          allDataContent: response.data
+          hasSql: !!sql_query,
+          executionTime
         });
         
         setResult({

@@ -167,10 +167,10 @@ export const dbService = {
     system_prompt?: string;
     confluenceSpace?: string;
     confluenceTitle?: string;
-  }): Promise<ApiResponse<{ rows: Record<string, any>[]; sql_query?: string }>> => {
+  }): Promise<ApiResponse<{ rows: Record<string, any>[]; sql?: string }>> => {
     const { analytics_prompt, system_prompt, confluenceSpace, confluenceTitle, ...conn } = connection as any;
     const body = buildPayload(conn as DbConnection, { analytics_prompt, system_prompt, confluenceSpace, confluenceTitle });
-    return fetchApi<{ rows: Record<string, any>[]; sql_query?: string }>('/api/analytics-query', {
+    return fetchApi<{ rows: Record<string, any>[]; sql?: string }>('/api/analytics-query', {
       method: 'POST',
       body: JSON.stringify(body),
     });
