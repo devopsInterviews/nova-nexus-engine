@@ -90,12 +90,6 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
         const rows = response.data.rows || [];
         const sql_query = response.data.sql;
         
-        console.log("✅ Query successful:", {
-          rowCount: rows.length,
-          hasSql: !!sql_query,
-          executionTime
-        });
-        
         setResult({
           rows,
           sql_query,
