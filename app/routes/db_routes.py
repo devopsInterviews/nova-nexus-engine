@@ -700,41 +700,22 @@ async def analytics_query(request: Request):
             msg_text = getattr(msg, 'text', '')
             logger.info("analytics_query: processing message part %d", i)
             
-            # SQL Query Extraction: Look for SQL statements in the AI response
-            if msg_text.strip() and ('SELECT' in msg_text.upper() or 'WITH' in msg_text.upper()):
-                logger.info("analytics_query: found potential SQL in message")
-                
-                # Extract SQL query from the message
-                clean_msg = msg_text.strip()
-                
-                # Remove common AI response prefixes to get clean SQL
-                prefixes_to_remove = ['Here is the SQL query:', 'SQL:', 'Query:', 'The SQL query is:', 'Here\'s the query:']
-                for prefix in prefixes_to_remove:
-                    if clean_msg.startswith(prefix):
-                        clean_msg = clean_msg[len(prefix):].strip()
-                        break
-                
-                # If this looks like SQL, save it
-                if clean_msg and ('SELECT' in clean_msg.upper() or 'WITH' in clean_msg.upper()):
-                    sql_query = clean_msg
-                    # Remove trailing semicolon (not needed for execution)
-                    if sql_query.endswith(';'):
-                        sql_query = sql_query[:-1]
-                    
-                    logger.info("analytics_query: extracted SQL query successfully")
-            
-            # Data Parsing: Extract structured data (JSON) from AI response
+            # The MCP server returns {"rows": rows, "sql": sql} as JSON
             try:
-                rows_obj = json.loads(msg_text)
-                if isinstance(rows_obj, list):
-                    rows.extend(rows_obj)
-                    logger.info("analytics_query: found %d data rows", len(rows_obj))
+                response_data = json.loads(msg_text)
+                if isinstance(response_data, dict) and 'rows' in response_data:
+                    # This is the structured response from MCP server
+                    rows = response_data.get('rows', [])
+                    sql_query = response_data.get('sql', None)
+                    logger.info("analytics_query: found structured response with %d rows and SQL: %s", 
+                              len(rows) if isinstance(rows, list) else 0, 
+                              "present" if sql_query else "missing")
+                    break  # We found the main response, no need to process other parts
                 else:
-                    rows.append(rows_obj)
-                    logger.info("analytics_query: found 1 data row")
+                    logger.debug("analytics_query: JSON found but not structured response format")
             except json.JSONDecodeError:
-                # Expected - not all parts of the response will be JSON
-                pass
+                # Not JSON, might be additional text from the AI
+                logger.debug("analytics_query: message part %d is not JSON", i)
 
         logger.info("analytics_query: processing complete - %d rows, SQL: %s", 
                    len(rows), "found" if sql_query else "not found")
