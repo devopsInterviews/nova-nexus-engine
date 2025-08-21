@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { motion } from "framer-motion";
 import { RefreshCw, Play, CheckCircle, Clock, AlertCircle, BookOpen } from "lucide-react";
+import { ConnectionStatusCard } from "./ConnectionStatusCard";
 
 export function SyncTablesTab() {
   const tables = [
@@ -66,6 +67,9 @@ export function SyncTablesTab() {
       transition={{ duration: 0.5 }}
       className="space-y-6"
     >
+      {/* Connection Status */}
+      <ConnectionStatusCard />
+
       {/* Confluence Configuration */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

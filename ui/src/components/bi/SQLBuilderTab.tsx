@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useConnectionContext } from "@/context/connection-context";
 import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
+import { ConnectionStatusCard } from "./ConnectionStatusCard";
 
 interface QueryResult {
   sql_query?: string;
@@ -199,6 +200,9 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
 
   return (
     <div className="space-y-6">
+      {/* Connection Status */}
+      <ConnectionStatusCard />
+
       {/* Query Builder */}
       <Card className="glass border-border/50">
         <CardHeader>
@@ -208,23 +212,6 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Connection Status */}
-          {currentConnection ? (
-            <Alert>
-              <CheckCircle2 className="h-4 w-4" />
-              <AlertDescription>
-                Connected to <strong>{currentConnection.name || currentConnection.host}</strong> ({currentConnection.database})
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No database connection selected. Please go to Connect DB tab first.
-              </AlertDescription>
-            </Alert>
-          )}
-
           {/* Confluence Configuration */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
