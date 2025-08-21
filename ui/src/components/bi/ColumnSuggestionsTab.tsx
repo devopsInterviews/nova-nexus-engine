@@ -23,24 +23,38 @@ export function ColumnSuggestionsTab() {
   const { toast } = useToast();
 
   const typeColors = {
+    // Integers
     "INTEGER": "bg-blue-500/15 text-blue-600 border-blue-400/30",
     "BIGINT": "bg-blue-600/15 text-blue-700 border-blue-500/30", 
     "SMALLINT": "bg-blue-400/15 text-blue-500 border-blue-300/30",
+    "INT": "bg-blue-500/15 text-blue-600 border-blue-400/30",
+    
+    // Strings
     "VARCHAR(255)": "bg-green-500/15 text-green-600 border-green-400/30",
     "VARCHAR": "bg-green-500/15 text-green-600 border-green-400/30",
     "TEXT": "bg-green-600/15 text-green-700 border-green-500/30",
     "CHAR": "bg-green-400/15 text-green-500 border-green-300/30",
+    "STRING": "bg-green-500/15 text-green-600 border-green-400/30",
+    
+    // Dates
     "TIMESTAMP": "bg-purple-500/15 text-purple-600 border-purple-400/30",
     "DATETIME": "bg-purple-600/15 text-purple-700 border-purple-500/30",
     "DATE": "bg-purple-400/15 text-purple-500 border-purple-300/30",
     "TIME": "bg-purple-300/15 text-purple-400 border-purple-200/30",
+    
+    // Boolean
     "BOOLEAN": "bg-orange-500/15 text-orange-600 border-orange-400/30",
     "BOOL": "bg-orange-500/15 text-orange-600 border-orange-400/30",
+    
+    // Numbers
     "DECIMAL": "bg-yellow-500/15 text-yellow-600 border-yellow-400/30",
     "NUMERIC": "bg-yellow-600/15 text-yellow-700 border-yellow-500/30",
     "FLOAT": "bg-yellow-400/15 text-yellow-500 border-yellow-300/30",
     "DOUBLE": "bg-yellow-700/15 text-yellow-800 border-yellow-600/30",
     "REAL": "bg-yellow-300/15 text-yellow-400 border-yellow-200/30",
+    "NUMBER": "bg-yellow-500/15 text-yellow-600 border-yellow-400/30",
+    
+    // Special
     "ENUM": "bg-red-500/15 text-red-600 border-red-400/30",
     "SET": "bg-red-400/15 text-red-500 border-red-300/30",
     "JSON": "bg-indigo-500/15 text-indigo-600 border-indigo-400/30",
@@ -50,25 +64,56 @@ export function ColumnSuggestionsTab() {
     "BLOB": "bg-gray-600/15 text-gray-700 border-gray-500/30",
   };
 
+  // Get color for type (case insensitive with fallback)
+  const getTypeColor = (type: string): string => {
+    const upperType = type.toUpperCase();
+    
+    // Direct match
+    if (typeColors[upperType as keyof typeof typeColors]) {
+      return typeColors[upperType as keyof typeof typeColors];
+    }
+    
+    // Try base type (remove size specifiers like VARCHAR(255) -> VARCHAR)
+    const baseType = upperType.replace(/\(\d+\)/, '');
+    if (typeColors[baseType as keyof typeof typeColors]) {
+      return typeColors[baseType as keyof typeof typeColors];
+    }
+    
+    // Fallback
+    return "bg-gray-400/15 text-gray-600 border-gray-400/30";
+  };
+
   // Parse column suggestion in format "tablename.keyname - description - type"
   const parseColumnSuggestion = (suggestion: any) => {
     if (typeof suggestion === 'object' && suggestion.name) {
       // Already parsed object
       return {
         name: suggestion.name || "",
-        type: suggestion.data_type || suggestion.type || "TEXT",
+        type: (suggestion.data_type || suggestion.type || "TEXT").toUpperCase(),
         description: suggestion.description || ""
       };
     }
     
     if (typeof suggestion === 'string') {
-      // Parse string format "tablename.keyname - description - type"
+      // Parse string format "tablename.keyname - description - type (optional extra info)"
       const parts = suggestion.split(' - ');
       if (parts.length >= 3) {
+        // Extract just the type part and remove any extra info in parentheses or after spaces
+        let typeString = parts[2].trim();
+        
+        // Remove anything in parentheses: "VARCHAR(255) (example)" -> "VARCHAR(255)"
+        typeString = typeString.replace(/\s*\([^)]*\)\s*$/, '');
+        
+        // Extract the actual type before any additional words
+        // "INTEGER auto-increment" -> "INTEGER"
+        // "VARCHAR(255) unique" -> "VARCHAR(255)" 
+        const typeMatch = typeString.match(/^([A-Z]+(?:\(\d+\))?)/i);
+        const cleanType = typeMatch ? typeMatch[1] : typeString.split(/\s+/)[0];
+        
         return {
           name: parts[0].trim(),
           description: parts[1].trim(),
-          type: parts[2].trim().toUpperCase()
+          type: cleanType.toUpperCase()
         };
       } else if (parts.length === 2) {
         return {
@@ -139,7 +184,13 @@ export function ColumnSuggestionsTab() {
         // Parse the columns using the new parser function
         const columns = (response.data as any).suggested_columns.map((column: any) => {
           const parsed = parseColumnSuggestion(column);
-          console.log("🔧 Parsed column:", column, "->", parsed);
+          console.log("🔧 Parsed column:", {
+            original: column,
+            parsed: parsed,
+            originalType: typeof column,
+            parsedType: parsed.type,
+            typeColor: getTypeColor(parsed.type)
+          });
           return parsed;
         });
 
@@ -346,7 +397,7 @@ export function ColumnSuggestionsTab() {
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-1">
                           <code className="font-mono font-medium text-primary">{column.name}</code>
-                          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${typeColors[column.type as keyof typeof typeColors] || "bg-muted/20 text-muted-foreground border-border"}`}>
+                          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getTypeColor(column.type)}`}>
                             {column.type}
                           </span>
                         </div>

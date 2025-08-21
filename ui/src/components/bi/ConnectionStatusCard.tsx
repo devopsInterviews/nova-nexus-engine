@@ -75,17 +75,17 @@ export function ConnectionStatusCard({ className = "" }: ConnectionStatusCardPro
             </Badge>
             
             {/* Connection Switch Menu */}
-            {savedConnections.length > 1 && (
+            {savedConnections && savedConnections.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Switch Connection">
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
                   <div className="px-2 py-1.5 text-sm font-semibold">Switch Connection</div>
                   {savedConnections
-                    .filter(conn => conn.id !== currentConnection.id)
+                    .filter(conn => conn.id !== currentConnection?.id)
                     .map((connection) => (
                       <DropdownMenuItem
                         key={connection.id}
