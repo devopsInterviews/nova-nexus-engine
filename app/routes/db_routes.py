@@ -584,75 +584,150 @@ async def suggest_columns(request: Request):
 @router.post("/analytics-query")
 async def analytics_query(request: Request):
     """
-    Run an analytics query based on natural language
+    Run an analytics query based on natural language with confluence integration
+    Replicates the working analytics_query_api function from client.py
     """
-    from app.client import _mcp_session, BI_SQL_GENERATION_PROMPT  # Import here to avoid circular imports
+    from app.client import _mcp_session  # Import here to avoid circular imports
+    
+    # --- Helper functions for safe logging (copied from working client.py) ---
+    def _mask_secret(s: str, show: int = 2) -> str:
+        if s is None:
+            return "None"
+        s = str(s)
+        return (s[:show] + "..." + s[-show:]) if len(s) > (show * 2) else "***"
+
+    def _truncate(s: str, n: int = 600) -> str:
+        s = s or ""
+        return s if len(s) <= n else (s[:n] + f"... <+{len(s)-n} chars>")
     
     try:
-        # Parse request data
+        # Parse and validate request data
         data = await request.json()
+        logger.info("analytics_query: received request with payload keys: %s", list(data.keys()))
         
-        # Resolve from profile and require analytics prompt
+        # Resolve connection profile first
+        saved_connections = _load_saved_connections()
         data = _resolve_connection_payload(data, saved_connections)
-        if not data.get("analytics_prompt"):
-            return JSONResponse(status_code=400, content={"status":"error","error":"Missing required field: analytics_prompt"})
         
-        logger.info(f"Running analytics query for {data['database_type']} database based on prompt")
-        
-        # Get system prompt or use default
-        system_prompt = data.get("system_prompt", BI_SQL_GENERATION_PROMPT)
-        
-        # Call MCP tool to run analytics query
-        try:
-            result = await _mcp_session.call_tool(
-                "run_analytics_query_on_database",
-                arguments={
-                    "host": data["host"],
-                    "port": data["port"],
-                    "user": data["user"],
-                    "password": data["password"],
-                    "database": data["database"],
-            "database_type": data.get("database_type","postgres"),
-                    "analytics_prompt": data["analytics_prompt"],
-                    "system_prompt": system_prompt
-                }
-            )
-            # Process the response
-            rows: List[Dict[str, Any]] = []
-            for msg in result.content:
-                try:
-                    rows_obj = json.loads(msg.text)
-                    if isinstance(rows_obj, list):
-                        rows.extend(rows_obj)
-                    else:
-                        rows.append(rows_obj)
-                except Exception as parse_error:
-                    logger.warning(f"Failed to parse analytics result chunk: {parse_error}")
+        logger.info(
+            "analytics_query: start host=%s port=%s db=%s user=%s space=%r title=%r",
+            data.get("host"), data.get("port"), data.get("database"), data.get("user"),
+            data.get("confluenceSpace"), data.get("confluenceTitle")
+        )
 
-            return JSONResponse({
-                "status": "success",
-                "data": {
-                    "rows": rows
-                }
-            })
+        # Validate required fields
+        required = ["host", "port", "user", "password", "database", "analytics_prompt", "system_prompt"]
+        for field in required:
+            if field not in data or data[field] in (None, ""):
+                logger.error("analytics_query: missing field=%r", field)
+                return JSONResponse(
+                    status_code=400,
+                    content={"status": "error", "error": f"Missing required field: {field}"}
+                )
 
-        except Exception as tool_error:
-            logger.error(f"Analytics query tool error: {str(tool_error)}")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "error": f"Analytics query failed: {str(tool_error)}"
-                }
+        log_copy = dict(data)
+        log_copy["password"] = _mask_secret(log_copy.get("password"))
+        log_copy["analytics_prompt"] = _truncate(log_copy.get("analytics_prompt"), 200)
+        log_copy["system_prompt"] = _truncate(log_copy.get("system_prompt"), 100)
+        logger.debug("analytics_query: validated payload (sanitized): %s", log_copy)
+
+        # --- Step 1: (Optional) Get Confluence descriptions and augment prompt ---
+        analytics_prompt = data["analytics_prompt"]
+        space = data.get("confluenceSpace")
+        title = data.get("confluenceTitle")
+        
+        if space and title:
+            logger.info("analytics_query: fetching Confluence descriptions space=%r title=%r", space, title)
+            desc_args = {
+                "space": space,
+                "title": title,
+                "host": data["host"],
+                "port": data["port"],
+                "user": data["user"],
+                "password": data["password"],
+                "database": data["database"],
+            }
+            
+            desc_res = await _mcp_session.call_tool(
+                "collect_db_confluence_key_descriptions",
+                arguments=desc_args,
+                read_timeout_seconds=timedelta(seconds=600)
             )
             
+            desc_text = next((m.text for m in (getattr(desc_res, "content", []) or []) if getattr(m, "text", None)), "{}")
+            logger.debug("analytics_query: descriptions JSON length=%d chars", len(desc_text))
+            
+            try:
+                key_desc = json.loads(desc_text)
+                logger.info("analytics_query: descriptions entries=%d", len(key_desc))
+                analytics_prompt = (
+                    analytics_prompt.rstrip()
+                    + "\n\n---\nKNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
+                    + json.dumps(key_desc, ensure_ascii=False)
+                )
+                logger.debug("analytics_query: augmented analytics_prompt length=%d", len(analytics_prompt))
+            except json.JSONDecodeError:
+                logger.warning("analytics_query: descriptions not valid JSON; ignoring")
+
+        # --- Step 2: Call MCP tool to run analytics query ---
+        tool_args = {
+            "host": data["host"],
+            "port": data["port"],
+            "user": data["user"],
+            "password": data["password"],
+            "database": data["database"],
+            "analytics_prompt": analytics_prompt,  # may be augmented
+            "system_prompt": data["system_prompt"]
+        }
+        
+        safe_tool_args = dict(tool_args)
+        safe_tool_args["password"] = _mask_secret(safe_tool_args["password"])
+        safe_tool_args["analytics_prompt"] = f"<redacted analytics prompt, {len(analytics_prompt)} chars>"
+        safe_tool_args["system_prompt"] = f"<redacted system prompt, {len(data['system_prompt'])} chars>"
+        logger.info("analytics_query: calling run_analytics_query_on_database … args=%s", safe_tool_args)
+
+        result = await _mcp_session.call_tool(
+            "run_analytics_query_on_database",
+            arguments=tool_args,
+            read_timeout_seconds=timedelta(seconds=600)
+        )
+        
+        logger.info("analytics_query: tool returned %d part(s)", len(getattr(result, "content", []) or []))
+
+        # --- Step 3: Process the response ---
+        rows = []
+        for i, msg in enumerate(result.content):
+            try:
+                rows_obj = json.loads(msg.text)
+                if isinstance(rows_obj, list):
+                    rows.extend(rows_obj)
+                else:
+                    rows.append(rows_obj)
+            except Exception as pe:
+                logger.warning("analytics_query: failed to parse part %d as JSON: %s", i, pe)
+
+        logger.info("analytics_query: final rows=%d", len(rows))
+        if rows:
+            logger.debug("analytics_query: first row sample=%s", rows[0])
+
+        # --- Step 4: Format response ---
+        response_data = {
+            "status": "success",
+            "data": {
+                "rows": rows
+            }
+        }
+
+        logger.info("analytics_query: successfully processed %d rows, returning response", len(rows))
+        return JSONResponse(response_data)
+                
     except Exception as e:
-        logger.error(f"Analytics query request failed: {str(e)}")
+        logger.error("analytics_query: error occurred: %s", str(e), exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
                 "status": "error",
-                "error": f"Request processing failed: {str(e)}"
+                "error": f"Analytics query failed: {str(e)}"
             }
         )
 

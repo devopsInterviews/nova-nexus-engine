@@ -165,9 +165,11 @@ export const dbService = {
   runAnalyticsQuery: async (connection: DbConnection & { 
     analytics_prompt: string;
     system_prompt?: string;
+    confluenceSpace?: string;
+    confluenceTitle?: string;
   }): Promise<ApiResponse<{ rows: Record<string, any>[] }>> => {
-    const { analytics_prompt, system_prompt, ...conn } = connection as any;
-    const body = buildPayload(conn as DbConnection, { analytics_prompt, system_prompt });
+    const { analytics_prompt, system_prompt, confluenceSpace, confluenceTitle, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { analytics_prompt, system_prompt, confluenceSpace, confluenceTitle });
     return fetchApi<{ rows: Record<string, any>[] }>('/api/analytics-query', {
       method: 'POST',
       body: JSON.stringify(body),
