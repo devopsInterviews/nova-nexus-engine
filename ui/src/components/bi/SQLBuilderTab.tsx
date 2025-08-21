@@ -89,11 +89,13 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
       });
 
       console.log("📥 Analytics query response:", response);
+      console.log("📥 Raw response.data:", response.data);
+      console.log("📥 All keys in response.data:", response.data ? Object.keys(response.data) : 'no data');
       const executionTime = Date.now() - startTime;
 
       if (response.status === 'success' && response.data) {
         const rows = response.data.rows || [];
-        const sql_query = response.data.sql_query;
+        const sql_query = response.data.sql_query || (response.data as any).query || (response.data as any).sql;
         
         console.log("✅ Query successful:", {
           rowCount: rows.length,
@@ -102,7 +104,9 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
           sqlQueryLength: sql_query ? sql_query.length : 0,
           firstRow: rows[0],
           executionTime,
-          responseDataKeys: Object.keys(response.data)
+          responseDataKeys: Object.keys(response.data),
+          rawSqlFromResponse: response.data.sql_query,
+          allDataContent: response.data
         });
         
         setResult({
@@ -290,7 +294,7 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
       {result && (
         <>
           {/* Generated SQL Query Display */}
-          {result.sql_query && (
+          {result.sql_query ? (
             <Card className="glass border-border/50">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -308,6 +312,30 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
                   <pre className="text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
                     {result.sql_query}
                   </pre>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="glass border-border/50 border-orange-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-orange-600">
+                  <AlertCircle className="w-5 h-5" />
+                  SQL Query Not Available
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-orange-50/50 rounded-lg p-4 border border-orange-200/50">
+                  <p className="text-sm text-orange-700">
+                    The SQL query could not be extracted from the AI response. 
+                    This might happen if the AI returned results in a different format.
+                    Check the browser console for detailed response information.
+                  </p>
+                  <details className="mt-2">
+                    <summary className="text-xs text-orange-600 cursor-pointer">Debug Information</summary>
+                    <pre className="text-xs mt-2 text-orange-800 bg-orange-100/50 p-2 rounded">
+                      {JSON.stringify(result, null, 2)}
+                    </pre>
+                  </details>
                 </div>
               </CardContent>
             </Card>
