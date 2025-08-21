@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { useConnectionContext } from "@/context/connection-context";
 import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
+import { ConnectionStatusCard } from "./ConnectionStatusCard";
 
 export function DescribeColumnsTab() {
   const { currentConnection } = useConnectionContext();
@@ -117,6 +118,9 @@ export function DescribeColumnsTab() {
       transition={{ duration: 0.5 }}
       className="space-y-6"
     >
+      {/* Connection Status */}
+      <ConnectionStatusCard />
+
       {/* Table Selection */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -131,16 +135,7 @@ export function DescribeColumnsTab() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Current Connection</label>
-                <Input 
-                  value={currentConnection ? `${currentConnection.name} (${currentConnection.database})` : "No connection"}
-                  disabled 
-                  className="bg-surface-elevated"
-                />
-              </div>
-              
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Table</label>
                 <Select

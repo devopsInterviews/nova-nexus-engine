@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useConnectionContext } from "@/context/connection-context";
 import { dbService } from "@/lib/api-service";
 import { useToast } from "@/components/ui/use-toast";
+import { ConnectionStatusCard } from "./ConnectionStatusCard";
 
 export function ColumnSuggestionsTab() {
   const [prompt, setPrompt] = useState("");
@@ -22,13 +23,31 @@ export function ColumnSuggestionsTab() {
   const { toast } = useToast();
 
   const typeColors = {
-    "INTEGER": "bg-primary/10 text-primary border-primary/20",
-    "VARCHAR(255)": "bg-secondary/10 text-secondary border-secondary/20", 
-    "VARCHAR": "bg-secondary/10 text-secondary border-secondary/20",
-    "TIMESTAMP": "bg-accent/10 text-accent border-accent/20",
-    "BOOLEAN": "bg-success/10 text-success border-success/20",
-    "TEXT": "bg-warning/10 text-warning border-warning/20",
-    "ENUM": "bg-destructive/10 text-destructive border-destructive/20",
+    "INTEGER": "bg-blue-500/15 text-blue-600 border-blue-400/30",
+    "BIGINT": "bg-blue-600/15 text-blue-700 border-blue-500/30", 
+    "SMALLINT": "bg-blue-400/15 text-blue-500 border-blue-300/30",
+    "VARCHAR(255)": "bg-green-500/15 text-green-600 border-green-400/30",
+    "VARCHAR": "bg-green-500/15 text-green-600 border-green-400/30",
+    "TEXT": "bg-green-600/15 text-green-700 border-green-500/30",
+    "CHAR": "bg-green-400/15 text-green-500 border-green-300/30",
+    "TIMESTAMP": "bg-purple-500/15 text-purple-600 border-purple-400/30",
+    "DATETIME": "bg-purple-600/15 text-purple-700 border-purple-500/30",
+    "DATE": "bg-purple-400/15 text-purple-500 border-purple-300/30",
+    "TIME": "bg-purple-300/15 text-purple-400 border-purple-200/30",
+    "BOOLEAN": "bg-orange-500/15 text-orange-600 border-orange-400/30",
+    "BOOL": "bg-orange-500/15 text-orange-600 border-orange-400/30",
+    "DECIMAL": "bg-yellow-500/15 text-yellow-600 border-yellow-400/30",
+    "NUMERIC": "bg-yellow-600/15 text-yellow-700 border-yellow-500/30",
+    "FLOAT": "bg-yellow-400/15 text-yellow-500 border-yellow-300/30",
+    "DOUBLE": "bg-yellow-700/15 text-yellow-800 border-yellow-600/30",
+    "REAL": "bg-yellow-300/15 text-yellow-400 border-yellow-200/30",
+    "ENUM": "bg-red-500/15 text-red-600 border-red-400/30",
+    "SET": "bg-red-400/15 text-red-500 border-red-300/30",
+    "JSON": "bg-indigo-500/15 text-indigo-600 border-indigo-400/30",
+    "JSONB": "bg-indigo-600/15 text-indigo-700 border-indigo-500/30",
+    "UUID": "bg-pink-500/15 text-pink-600 border-pink-400/30",
+    "BINARY": "bg-gray-500/15 text-gray-600 border-gray-400/30",
+    "BLOB": "bg-gray-600/15 text-gray-700 border-gray-500/30",
   };
 
   // Parse column suggestion in format "tablename.keyname - description - type"
@@ -202,37 +221,7 @@ export function ColumnSuggestionsTab() {
       className="space-y-6"
     >
       {/* Connection Status Card */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <Card className="glass border-border/50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-success animate-pulse"></div>
-                <div>
-                  <h4 className="font-semibold">Connected to Database</h4>
-                  <p className="text-sm text-muted-foreground">
-                    {currentConnection ? (
-                      <>
-                        {currentConnection.host}:{currentConnection.port}/{currentConnection.database} 
-                        {currentConnection.name && ` (${currentConnection.name})`}
-                      </>
-                    ) : (
-                      "No connection"
-                    )}
-                  </p>
-                </div>
-              </div>
-              <Badge variant="outline" className="bg-success/10 text-success border-success/20">
-                Ready
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+      <ConnectionStatusCard />
 
       {/* AI Prompt Interface */}
       <motion.div
