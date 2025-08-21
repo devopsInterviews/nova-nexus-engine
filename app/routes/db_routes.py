@@ -696,17 +696,29 @@ async def analytics_query(request: Request):
 
         # --- Step 3: Process the response ---
         rows = []
+        sql_query = None
+        
         for i, msg in enumerate(result.content):
+            msg_text = getattr(msg, 'text', '')
+            logger.debug("analytics_query: processing part %d: %s", i, msg_text[:200])
+            
+            # Try to parse as JSON first (for rows)
             try:
-                rows_obj = json.loads(msg.text)
+                rows_obj = json.loads(msg_text)
                 if isinstance(rows_obj, list):
                     rows.extend(rows_obj)
                 else:
                     rows.append(rows_obj)
-            except Exception as pe:
-                logger.warning("analytics_query: failed to parse part %d as JSON: %s", i, pe)
+                logger.debug("analytics_query: parsed JSON with %d items", len(rows_obj) if isinstance(rows_obj, list) else 1)
+            except json.JSONDecodeError:
+                # If not JSON, it might be the SQL query
+                if msg_text.strip() and (msg_text.upper().startswith('SELECT') or msg_text.upper().startswith('WITH')):
+                    sql_query = msg_text.strip()
+                    logger.debug("analytics_query: extracted SQL query: %s", sql_query[:100])
+                else:
+                    logger.warning("analytics_query: failed to parse part %d as JSON, content: %s", i, msg_text[:100])
 
-        logger.info("analytics_query: final rows=%d", len(rows))
+        logger.info("analytics_query: final rows=%d, sql_query=%s", len(rows), "present" if sql_query else "missing")
         if rows:
             logger.debug("analytics_query: first row sample=%s", rows[0])
 
@@ -714,7 +726,8 @@ async def analytics_query(request: Request):
         response_data = {
             "status": "success",
             "data": {
-                "rows": rows
+                "rows": rows,
+                "sql_query": sql_query
             }
         }
 

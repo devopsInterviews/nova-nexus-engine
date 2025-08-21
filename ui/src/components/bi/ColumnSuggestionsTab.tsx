@@ -16,16 +16,61 @@ export function ColumnSuggestionsTab() {
   const [confluenceTitle, setConfluenceTitle] = useState("Demo - database keys description");
   const [isLoading, setIsLoading] = useState(false);
   const [suggestedColumns, setSuggestedColumns] = useState<Array<{name: string, type: string, description: string}>>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({name: "", type: "", description: ""});
   const { currentConnection } = useConnectionContext();
   const { toast } = useToast();
 
   const typeColors = {
     "INTEGER": "bg-primary/10 text-primary border-primary/20",
-    "VARCHAR(255)": "bg-secondary/10 text-secondary border-secondary/20",
+    "VARCHAR(255)": "bg-secondary/10 text-secondary border-secondary/20", 
+    "VARCHAR": "bg-secondary/10 text-secondary border-secondary/20",
     "TIMESTAMP": "bg-accent/10 text-accent border-accent/20",
     "BOOLEAN": "bg-success/10 text-success border-success/20",
     "TEXT": "bg-warning/10 text-warning border-warning/20",
     "ENUM": "bg-destructive/10 text-destructive border-destructive/20",
+  };
+
+  // Parse column suggestion in format "tablename.keyname - description - type"
+  const parseColumnSuggestion = (suggestion: any) => {
+    if (typeof suggestion === 'object' && suggestion.name) {
+      // Already parsed object
+      return {
+        name: suggestion.name || "",
+        type: suggestion.data_type || suggestion.type || "TEXT",
+        description: suggestion.description || ""
+      };
+    }
+    
+    if (typeof suggestion === 'string') {
+      // Parse string format "tablename.keyname - description - type"
+      const parts = suggestion.split(' - ');
+      if (parts.length >= 3) {
+        return {
+          name: parts[0].trim(),
+          description: parts[1].trim(),
+          type: parts[2].trim().toUpperCase()
+        };
+      } else if (parts.length === 2) {
+        return {
+          name: parts[0].trim(),
+          description: parts[1].trim(),
+          type: "TEXT"
+        };
+      } else {
+        return {
+          name: suggestion.trim(),
+          description: "",
+          type: "TEXT"
+        };
+      }
+    }
+    
+    return {
+      name: String(suggestion),
+      description: "",
+      type: "TEXT"
+    };
   };
 
   // Generate column suggestions
@@ -49,6 +94,91 @@ export function ColumnSuggestionsTab() {
     }
 
     if (!confluenceSpace.trim() || !confluenceTitle.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Configuration",
+        description: "Please provide both Confluence space and title"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await dbService.suggestColumns({
+        ...currentConnection,
+        user_prompt: prompt,
+        confluenceSpace: confluenceSpace,
+        confluenceTitle: confluenceTitle
+      });
+
+      if (response.status === 'success' && response.data && (response.data as any).suggested_columns) {
+        // Parse the columns using the new parser function
+        const columns = (response.data as any).suggested_columns.map((column: any) => {
+          return parseColumnSuggestion(column);
+        });
+
+        setSuggestedColumns(columns);
+
+        toast({
+          title: "Success",
+          description: `Generated ${columns.length} column suggestions`
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.error || "Failed to generate column suggestions"
+        });
+      }
+    } catch (error) {
+      console.error("Error generating suggestions:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle edit column
+  const handleEditColumn = (index: number) => {
+    setEditingIndex(index);
+    setEditForm(suggestedColumns[index]);
+  };
+
+  // Handle save edit
+  const handleSaveEdit = () => {
+    if (editingIndex !== null) {
+      const updated = [...suggestedColumns];
+      updated[editingIndex] = editForm;
+      setSuggestedColumns(updated);
+      setEditingIndex(null);
+      setEditForm({name: "", type: "", description: ""});
+      toast({
+        title: "Column Updated",
+        description: "Column suggestion has been updated"
+      });
+    }
+  };
+
+  // Handle cancel edit
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
+    setEditForm({name: "", type: "", description: ""});
+  };
+
+  // Handle delete column
+  const handleDeleteColumn = (index: number) => {
+    const updated = suggestedColumns.filter((_, i) => i !== index);
+    setSuggestedColumns(updated);
+    toast({
+      title: "Column Removed",
+      description: "Column suggestion has been removed"
+    });
+  };
       toast({
         variant: "destructive",
         title: "Missing Confluence Info",
@@ -204,32 +334,70 @@ export function ColumnSuggestionsTab() {
             <div className="space-y-3">
               {suggestedColumns.map((column, index) => (
                 <motion.div
-                  key={column.name}
+                  key={`${column.name}-${index}`}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 + index * 0.1 }}
                   className="flex items-center justify-between p-4 rounded-lg bg-surface-elevated/50 hover:bg-surface-elevated transition-colors group"
                 >
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-1">
-                        <code className="font-mono font-medium text-primary">{column.name}</code>
-                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${typeColors[column.type as keyof typeof typeColors] || "bg-muted/20 text-muted-foreground border-border"}`}>
-                          {column.type}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{column.description}</p>
+                  {editingIndex === index ? (
+                    // Edit mode
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <Input
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                        placeholder="Column name"
+                        className="bg-surface-elevated text-sm"
+                      />
+                      <Input
+                        value={editForm.description}
+                        onChange={(e) => setEditForm({...editForm, description: e.target.value})}
+                        placeholder="Description"
+                        className="bg-surface-elevated text-sm"
+                      />
+                      <Input
+                        value={editForm.type}
+                        onChange={(e) => setEditForm({...editForm, type: e.target.value})}
+                        placeholder="Type"
+                        className="bg-surface-elevated text-sm"
+                      />
                     </div>
-                  </div>
+                  ) : (
+                    // Display mode
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-1">
+                          <code className="font-mono font-medium text-primary">{column.name}</code>
+                          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${typeColors[column.type as keyof typeof typeColors] || "bg-muted/20 text-muted-foreground border-border"}`}>
+                            {column.type}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{column.description}</p>
+                      </div>
+                    </div>
+                  )}
                   
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button size="sm" variant="ghost">
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive">
-                      Remove
-                    </Button>
+                  <div className="flex items-center gap-2">
+                    {editingIndex === index ? (
+                      <>
+                        <Button size="sm" variant="ghost" onClick={handleSaveEdit}>
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button size="sm" variant="ghost" onClick={() => handleEditColumn(index)}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDeleteColumn(index)}>
+                          Remove
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </motion.div>
               ))}
