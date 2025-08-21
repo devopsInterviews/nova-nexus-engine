@@ -98,8 +98,11 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
         console.log("✅ Query successful:", {
           rowCount: rows.length,
           sqlQuery: sql_query,
+          sqlQueryType: typeof sql_query,
+          sqlQueryLength: sql_query ? sql_query.length : 0,
           firstRow: rows[0],
-          executionTime
+          executionTime,
+          responseDataKeys: Object.keys(response.data)
         });
         
         setResult({
@@ -111,7 +114,7 @@ and aggregates any measures. Return ONLY the SQL statement. No greetings, no ext
         
         toast({
           title: "Query Executed Successfully",
-          description: `Retrieved ${rows.length} rows in ${executionTime}ms`
+          description: `Retrieved ${rows.length} rows in ${executionTime}ms${sql_query ? ' with SQL' : ' (no SQL)'}`
         });
       } else {
         console.error("❌ Query failed:", response);

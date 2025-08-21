@@ -722,11 +722,29 @@ async def analytics_query(request: Request):
                     elif in_sql_block:
                         sql_lines.append(line_stripped)
                 
+                # If we didn't find a proper SQL block, try extracting full message as SQL
+                if not sql_lines and ('SELECT' in msg_text.upper() or 'WITH' in msg_text.upper()):
+                    # Clean the message and extract just the SQL
+                    clean_msg = msg_text.strip()
+                    # Remove common prefixes
+                    for prefix in ['Here is the SQL query:', 'SQL:', 'Query:', 'The SQL query is:']:
+                        if clean_msg.startswith(prefix):
+                            clean_msg = clean_msg[len(prefix):].strip()
+                    sql_lines = [clean_msg]
+                
                 if sql_lines:
                     sql_query = '\n'.join(sql_lines).strip()
                     if sql_query.endswith(';'):
                         sql_query = sql_query[:-1]  # Remove trailing semicolon
-                    logger.info("analytics_query: extracted SQL query: %s", sql_query)
+                    
+                    # Clean common SQL typos/issues
+                    sql_query = sql_query.replace('1 quater', '1 quarter')
+                    sql_query = sql_query.replace('2 quater', '2 quarter') 
+                    sql_query = sql_query.replace('3 quater', '3 quarter')
+                    sql_query = sql_query.replace('4 quater', '4 quarter')
+                    sql_query = sql_query.replace('quaters', 'quarters')
+                    
+                    logger.info("analytics_query: extracted and cleaned SQL query: %s", sql_query)
             
             # Try to parse as JSON for rows data
             try:
@@ -753,7 +771,11 @@ async def analytics_query(request: Request):
             }
         }
 
-        logger.info("analytics_query: successfully processed %d rows, returning response", len(rows))
+        logger.info("analytics_query: successfully processed %d rows, SQL query: %s", len(rows), "YES" if sql_query else "NO")
+        logger.debug("analytics_query: response data keys: %s", list(response_data["data"].keys()))
+        if sql_query:
+            logger.debug("analytics_query: SQL query preview: %s", sql_query[:200])
+        
         return JSONResponse(response_data)
                 
     except Exception as e:
