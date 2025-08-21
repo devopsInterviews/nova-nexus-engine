@@ -179,58 +179,6 @@ export function ColumnSuggestionsTab() {
       description: "Column suggestion has been removed"
     });
   };
-      toast({
-        variant: "destructive",
-        title: "Missing Confluence Info",
-        description: "Please provide both Confluence Space and Title"
-      });
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const response = await dbService.suggestColumns({
-        ...currentConnection,
-        user_prompt: prompt,
-        confluenceSpace: confluenceSpace,
-        confluenceTitle: confluenceTitle
-      });
-
-      if (response.status === 'success' && response.data && (response.data as any).suggested_columns) {
-        // Use the properly formatted columns from the API
-        const columns = (response.data as any).suggested_columns.map((column: any) => {
-          return {
-            name: column.name || "",
-            type: column.data_type || "TEXT",
-            description: column.description || ""
-          };
-        });
-
-        setSuggestedColumns(columns);
-
-        toast({
-          title: "Success",
-          description: `Generated ${columns.length} column suggestions`
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: response.error || "Failed to generate column suggestions"
-        });
-      }
-    } catch (error) {
-  console.error("Error generating suggestions:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "An unexpected error occurred"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const clearPrompt = () => {
     setPrompt("");
