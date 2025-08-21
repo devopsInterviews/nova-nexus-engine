@@ -532,17 +532,23 @@ async def suggest_columns(request: Request):
         # Parse the suggested keys into structured format
         columns: List[Dict[str, Any]] = []
         for key in keys:
+            logger.debug("suggest_columns: parsing key: %s", key)
             # Parse format: "table.column - description - value type"
-            parts = [p.strip() for p in key.split("-", 2)]
+            parts = [p.strip() for p in key.split(" - ", 2)]  # Fixed: use " - " with spaces
             column_name = parts[0] if parts else key
             description = parts[1] if len(parts) > 1 else ""
-            data_type = parts[2] if len(parts) > 2 else ""
+            data_type = parts[2] if len(parts) > 2 else "TEXT"
             
-            columns.append({
+            parsed_column = {
                 "name": column_name,
                 "description": description,
                 "data_type": data_type
-            })
+            }
+            
+            logger.debug("suggest_columns: parsed column: %s", parsed_column)
+            columns.append(parsed_column)
+
+        logger.info("suggest_columns: parsed %d columns successfully", len(columns))
 
         # Create the response format expected by the frontend
         response_data = {
@@ -568,16 +574,6 @@ async def suggest_columns(request: Request):
             content={
                 "status": "error",
                 "error": f"Column suggestion failed: {str(e)}"
-            }
-        )
-            
-    except Exception as e:
-        logger.error(f"Column suggestion request failed: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "error": f"Request processing failed: {str(e)}"
             }
         )
 
@@ -698,25 +694,51 @@ async def analytics_query(request: Request):
         rows = []
         sql_query = None
         
+        logger.info("analytics_query: processing %d content parts from MCP tool", len(result.content))
+        
         for i, msg in enumerate(result.content):
             msg_text = getattr(msg, 'text', '')
-            logger.debug("analytics_query: processing part %d: %s", i, msg_text[:200])
+            logger.info("analytics_query: part %d content preview: %s", i, msg_text[:300])
             
-            # Try to parse as JSON first (for rows)
+            # First, check if this looks like SQL
+            if msg_text.strip() and (
+                msg_text.upper().startswith('SELECT') or 
+                msg_text.upper().startswith('WITH') or
+                'SELECT' in msg_text.upper()
+            ):
+                # Extract SQL query - look for SQL block between markers or standalone SQL
+                sql_lines = []
+                in_sql_block = False
+                
+                for line in msg_text.split('\n'):
+                    line_stripped = line.strip()
+                    if line_stripped.upper().startswith('SELECT') or line_stripped.upper().startswith('WITH'):
+                        in_sql_block = True
+                        sql_lines.append(line_stripped)
+                    elif in_sql_block and (line_stripped.endswith(';') or line_stripped == ''):
+                        if line_stripped.endswith(';'):
+                            sql_lines.append(line_stripped)
+                        break
+                    elif in_sql_block:
+                        sql_lines.append(line_stripped)
+                
+                if sql_lines:
+                    sql_query = '\n'.join(sql_lines).strip()
+                    if sql_query.endswith(';'):
+                        sql_query = sql_query[:-1]  # Remove trailing semicolon
+                    logger.info("analytics_query: extracted SQL query: %s", sql_query)
+            
+            # Try to parse as JSON for rows data
             try:
                 rows_obj = json.loads(msg_text)
                 if isinstance(rows_obj, list):
                     rows.extend(rows_obj)
+                    logger.info("analytics_query: parsed JSON list with %d rows", len(rows_obj))
                 else:
                     rows.append(rows_obj)
-                logger.debug("analytics_query: parsed JSON with %d items", len(rows_obj) if isinstance(rows_obj, list) else 1)
-            except json.JSONDecodeError:
-                # If not JSON, it might be the SQL query
-                if msg_text.strip() and (msg_text.upper().startswith('SELECT') or msg_text.upper().startswith('WITH')):
-                    sql_query = msg_text.strip()
-                    logger.debug("analytics_query: extracted SQL query: %s", sql_query[:100])
-                else:
-                    logger.warning("analytics_query: failed to parse part %d as JSON, content: %s", i, msg_text[:100])
+                    logger.info("analytics_query: parsed JSON object as single row")
+            except json.JSONDecodeError as jde:
+                logger.debug("analytics_query: part %d not JSON (expected if it's SQL): %s", i, str(jde))
 
         logger.info("analytics_query: final rows=%d, sql_query=%s", len(rows), "present" if sql_query else "missing")
         if rows:
