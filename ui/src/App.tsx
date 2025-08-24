@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import DevOps from "./pages/DevOps";
 import BI from "./pages/BI";
 import Analytics from "./pages/Analytics";
+import Tests from "./pages/Tests";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { ConnectionProvider } from "@/context/connection-context";
@@ -27,6 +28,7 @@ const App = () => (
               <Route path="devops/*" element={<DevOps />} />
               <Route path="bi/*" element={<BI />} />
               <Route path="analytics" element={<Analytics />} />
+              <Route path="tests" element={<Tests />} />
               <Route path="settings" element={<Settings />} />
             </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

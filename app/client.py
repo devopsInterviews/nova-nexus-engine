@@ -56,8 +56,13 @@ logger = logging.getLogger("uvicorn.error")
 
 # Import and include database routes
 from app.routes.db_routes import router as db_router
+# Import and include MCP testing routes
+from app.routes.mcp_routes import router as mcp_router
+
 # Expose database/API routes under /api to match UI calls
 app.include_router(db_router, prefix="/api")
+# Expose MCP testing routes under /api to match frontend expectations
+app.include_router(mcp_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")

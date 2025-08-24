@@ -1,7 +1,8 @@
-import logging
+﻿import logging
 import json
 import traceback
 import os
+import time
 from pathlib import Path
 from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Request
@@ -70,15 +71,30 @@ def _persist_saved_connections(conns: List[Dict[str, Any]]):
 @router.post("/test-connection")
 async def test_connection(request: Request):
     """
-    Test a database connection
+    Test a database connection with comprehensive logging and error handling
+    
+    Args:
+        request (Request): HTTP request containing database connection parameters
+        
+    Returns:
+        JSONResponse: Success/failure status with detailed connection information
+        
+    Logs:
+        - INFO: Connection test initiation with masked credentials
+        - DEBUG: Connection parameter validation and resolution
+        - INFO: MCP tool execution details
+        - WARNING: Connection issues or timeouts
+        - ERROR: Connection failures with detailed error information
     """
+    logger.info("POST /test-connection - Database connection test initiated")
+    
     try:
         from app.client import _mcp_session  # Import here to avoid circular imports
         
-        # Parse request body
+        # Parse request body with validation
         try:
             data = await request.json()
-            logger.debug(f"Received test connection request: {data}")
+            logger.debug("Request JSON parsed successfully")
         except Exception as e:
             logger.error(f"Failed to parse request JSON: {str(e)}")
             return JSONResponse(
@@ -89,9 +105,25 @@ async def test_connection(request: Request):
                 }
             )
             
+        logger.debug("Resolving connection parameters from saved profiles or direct input")
+        
         # Allow referencing saved profile via connection_id/name
+        saved_connections = _load_saved_connections()
         payload = _resolve_connection_payload(data, saved_connections)
-        # Extract connection details
+        
+        # Extract connection details with validation
+        required_fields = ["host", "port", "user", "password", "database", "database_type"]
+        for field in required_fields:
+            if field not in payload:
+                logger.warning(f"Missing required connection field: {field}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "message": f"Missing required field: {field}"
+                    }
+                )
+        
         host = payload["host"]
         port = int(payload["port"])
         user = payload["user"]
@@ -99,13 +131,17 @@ async def test_connection(request: Request):
         database = payload["database"]
         db_type = payload["database_type"]
         
+        # Log connection attempt with masked password
         logger.info(
-            "Testing connection to %s at %s:%s db=%s user=%s",
-            db_type, host, port, database, user
+            f"Testing connection to {db_type} database: {host}:{port}/{database} as user '{user}'"
         )
+        logger.debug(f"Password length: {len(password)} characters (masked for security)")
         
         # Use list_database_tables tool to test the connection
         try:
+            logger.debug("Executing list_database_tables MCP tool for connection test")
+            start_time = time.time()
+            
             result = await _mcp_session.call_tool(
                 "list_database_tables",
                 arguments={
@@ -118,33 +154,41 @@ async def test_connection(request: Request):
                 }
             )
             
+            execution_time = time.time() - start_time
+            logger.info(f"MCP tool executed successfully in {execution_time:.2f}s")
+            
             # If we get here without an exception, the connection worked
             if result.content and len(result.content) > 0:
                 tables_text = result.content[0].text
                 tables = json.loads(tables_text)
                 
-                logger.info(f"Connection successful, found {len(tables)} tables")
+                logger.info(f"Connection successful - found {len(tables)} tables in database '{database}'")
+                logger.debug(f"Sample tables: {tables[:5] if len(tables) > 5 else tables}")
+                
                 return JSONResponse({
                     "success": True,
-                    "message": f"Successfully connected to {database} database ({len(tables)} tables found)"
+                    "message": f"Successfully connected to {database} database ({len(tables)} tables found)",
+                    "execution_time": execution_time,
+                    "table_count": len(tables)
                 })
             else:
-                logger.warning("Connection test returned no content")
+                logger.warning("Connection test returned no content - database may be empty")
                 return JSONResponse({
                     "success": True,
-                    "message": f"Connected to {database} database but no tables were found"
+                    "message": f"Connected to {database} database but no tables were found",
+                    "execution_time": execution_time,
+                    "table_count": 0
                 })
+                
         except Exception as tool_error:
-            logger.error(f"MCP tool error: {str(tool_error)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"MCP tool execution failed: {str(tool_error)}", exc_info=True)
             return JSONResponse({
                 "success": False,
                 "message": f"Database connection error: {str(tool_error)}"
             })
         
     except Exception as e:
-        logger.error(f"Connection test failed: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Connection test failed with unexpected error: {str(e)}", exc_info=True)
         return JSONResponse({
             "success": False,
             "message": f"Connection failed: {str(e)}"
@@ -153,18 +197,44 @@ async def test_connection(request: Request):
 @router.post("/save-connection")
 async def save_connection(request: Request):
     """
-    Save a database connection (for demo purposes, this is just stored in memory)
+    Save a database connection configuration with comprehensive validation and logging
+    
+    Args:
+        request (Request): HTTP request containing connection details to save
+        
+    Returns:
+        JSONResponse: Success status with new connection ID
+        
+    Logs:
+        - INFO: Save operation initiation
+        - DEBUG: Field validation and processing
+        - INFO: Successful save with connection details (masked)
+        - WARNING: Missing required fields
+        - ERROR: Save operation failures
+        
+    Note:
+        In production, passwords should be encrypted before storage
     """
+    logger.info("POST /save-connection - Saving new database connection configuration")
+    
     # In a real application, you would store this in a database
     global connection_id_counter
     
     try:
         data = await request.json()
+        logger.debug("Connection data received, validating required fields")
+        
         required_fields = ["host", "port", "user", "password", "database", "database_type", "name"]
-        for field in required_fields:
-            if field not in data:
-                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            logger.warning(f"Missing required fields for connection save: {missing_fields}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Missing required fields: {', '.join(missing_fields)}"
+            )
 
+        logger.debug("All required fields present, generating connection ID")
         connection_id = len(saved_connections) + 1
 
         connection = {
@@ -178,19 +248,45 @@ async def save_connection(request: Request):
             "database_type": data["database_type"]
         }
         
+        logger.info(
+            f"Saving connection: ID={connection_id}, name='{connection['name']}', "
+            f"type={connection['database_type']}, host={connection['host']}:{connection['port']}, "
+            f"database='{connection['database']}', user='{connection['user']}'"
+        )
+        logger.debug(f"Password length: {len(connection['password'])} characters (encrypted in production)")
+        
+        # Check for duplicate connection names
+        existing_names = [conn['name'] for conn in saved_connections]
+        if connection['name'] in existing_names:
+            logger.warning(f"Connection name '{connection['name']}' already exists")
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "success": False,
+                    "message": f"Connection name '{connection['name']}' already exists"
+                }
+            )
+        
         saved_connections.append(connection)
+        logger.debug("Connection added to in-memory storage, persisting to disk")
+        
         _persist_saved_connections(saved_connections)
         logger.info(
-            "Saved connection id=%s name=%s %s:%s/%s user=%s",
-            connection_id, connection["name"], connection["host"], connection["port"], connection["database"], connection["user"]
+            f"Successfully saved connection '{connection['name']}' with ID {connection_id}"
         )
+        logger.debug(f"Total saved connections: {len(saved_connections)}")
         
         return JSONResponse({
-            "id": str(connection_id)
+            "id": str(connection_id),
+            "success": True,
+            "message": f"Connection '{connection['name']}' saved successfully"
         })
     
+    except HTTPException:
+        # Re-raise HTTP exceptions (validation errors)
+        raise
     except Exception as e:
-        logger.error(f"Error saving connection: {str(e)}")
+        logger.error(f"Error saving connection: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/delete-connection/{connection_id}")
@@ -453,7 +549,7 @@ async def suggest_columns(request: Request):
         }
         safe_desc_args = dict(desc_args)
         safe_desc_args["password"] = _mask_secret(desc_args["password"])
-        logger.info("suggest_columns: calling collect_db_confluence_key_descriptions … args=%s", safe_desc_args)
+        logger.info("suggest_columns: calling collect_db_confluence_key_descriptions ג€¦ args=%s", safe_desc_args)
 
         desc_res = await _mcp_session.call_tool(
             "collect_db_confluence_key_descriptions",
@@ -510,7 +606,7 @@ async def suggest_columns(request: Request):
         safe_tool_args["password"] = _mask_secret(safe_tool_args["password"])
         safe_tool_args["user_prompt"] = f"<redacted user prompt, {len(augmented_user_prompt)} chars>"
         safe_tool_args["system_prompt"] = f"<BI_ANALYTICS_PROMPT, {len(BI_ANALYTICS_PROMPT)} chars>"
-        logger.info("suggest_columns: calling suggest_keys_for_analytics … args=%s", safe_tool_args)
+        logger.info("suggest_columns: calling suggest_keys_for_analytics ג€¦ args=%s", safe_tool_args)
 
         result = await _mcp_session.call_tool(
             "suggest_keys_for_analytics",
@@ -580,10 +676,27 @@ async def suggest_columns(request: Request):
 @router.post("/analytics-query")
 async def analytics_query(request: Request):
     """
-    Run an analytics query based on natural language with confluence integration
-    Replicates the working analytics_query_api function from client.py
+    Execute an analytics query with AI assistance and comprehensive logging
+    
+    This endpoint replicates the working analytics_query_api function from client.py
+    with enhanced logging for debugging and monitoring
+    
+    Args:
+        request (Request): HTTP request containing query parameters and connection info
+        
+    Returns:
+        JSONResponse: Query results with SQL and row data
+        
+    Logs:
+        - INFO: Query execution start with connection details
+        - DEBUG: Confluence integration and prompt augmentation
+        - INFO: MCP tool execution timing and results
+        - WARNING: Missing required fields or invalid parameters
+        - ERROR: Query execution failures with detailed stack traces
     """
     from app.client import _mcp_session  # Import here to avoid circular imports
+    
+    logger.info("POST /analytics-query - Analytics query execution initiated")
     
     # --- Helper functions for safe logging (copied from working client.py) ---
     def _mask_secret(s: str, show: int = 2) -> str:
@@ -599,33 +712,40 @@ async def analytics_query(request: Request):
     try:
         # Parse and validate request data
         data = await request.json()
-        logger.info("analytics_query: received request with payload keys: %s", list(data.keys()))
+        logger.info("Analytics query request received, parsing payload")
+        logger.debug(f"Request payload keys: {list(data.keys())}")
         
         # Resolve connection profile first
         saved_connections = _load_saved_connections()
         data = _resolve_connection_payload(data, saved_connections)
         
         logger.info(
-            "analytics_query: start host=%s port=%s db=%s user=%s space=%r title=%r",
-            data.get("host"), data.get("port"), data.get("database"), data.get("user"),
-            data.get("confluenceSpace"), data.get("confluenceTitle")
+            f"Analytics query - Connection: {data.get('database_type')} database '{data.get('database')}' "
+            f"at {data.get('host')}:{data.get('port')} as user '{data.get('user')}'"
         )
+        
+        if data.get("confluenceSpace") and data.get("confluenceTitle"):
+            logger.debug(
+                f"Confluence integration enabled - Space: '{data.get('confluenceSpace')}', "
+                f"Title: '{data.get('confluenceTitle')}'"
+            )
 
         # Validate required fields
         required = ["host", "port", "user", "password", "database", "analytics_prompt", "system_prompt"]
-        for field in required:
-            if field not in data or data[field] in (None, ""):
-                logger.error("analytics_query: missing field=%r", field)
-                return JSONResponse(
-                    status_code=400,
-                    content={"status": "error", "error": f"Missing required field: {field}"}
-                )
+        missing_fields = [field for field in required if field not in data or data[field] in (None, "")]
+        
+        if missing_fields:
+            logger.warning(f"Missing required fields for analytics query: {missing_fields}")
+            return JSONResponse(
+                status_code=400,
+                content={"status": "error", "error": f"Missing required fields: {', '.join(missing_fields)}"}
+            )
 
         log_copy = dict(data)
         log_copy["password"] = _mask_secret(log_copy.get("password"))
         log_copy["analytics_prompt"] = _truncate(log_copy.get("analytics_prompt"), 200)
         log_copy["system_prompt"] = _truncate(log_copy.get("system_prompt"), 100)
-        logger.debug("analytics_query: validated payload (sanitized): %s", log_copy)
+        logger.debug(f"Validated payload (sanitized): {log_copy}")
 
         # --- Step 1: (Optional) Get Confluence descriptions and augment prompt ---
         analytics_prompt = data["analytics_prompt"]
@@ -633,7 +753,7 @@ async def analytics_query(request: Request):
         title = data.get("confluenceTitle")
         
         if space and title:
-            logger.info("analytics_query: fetching Confluence descriptions space=%r title=%r", space, title)
+            logger.info(f"Fetching Confluence descriptions from space '{space}', title '{title}'")
             desc_args = {
                 "space": space,
                 "title": title,
@@ -644,26 +764,43 @@ async def analytics_query(request: Request):
                 "database": data["database"],
             }
             
-            desc_res = await _mcp_session.call_tool(
-                "collect_db_confluence_key_descriptions",
-                arguments=desc_args,
-                read_timeout_seconds=timedelta(seconds=600)
-            )
-            
-            desc_text = next((m.text for m in (getattr(desc_res, "content", []) or []) if getattr(m, "text", None)), "{}")
-            logger.debug("analytics_query: descriptions JSON length=%d chars", len(desc_text))
-            
             try:
-                key_desc = json.loads(desc_text)
-                logger.info("analytics_query: descriptions entries=%d", len(key_desc))
-                analytics_prompt = (
-                    analytics_prompt.rstrip()
-                    + "\n\n---\nKNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
-                    + json.dumps(key_desc, ensure_ascii=False)
+                logger.debug("Executing collect_db_confluence_key_descriptions MCP tool")
+                desc_start_time = time.time()
+                
+                desc_res = await _mcp_session.call_tool(
+                    "collect_db_confluence_key_descriptions",
+                    arguments=desc_args,
+                    read_timeout_seconds=timedelta(seconds=600)
                 )
-                logger.debug("analytics_query: augmented analytics_prompt length=%d", len(analytics_prompt))
-            except json.JSONDecodeError:
-                logger.warning("analytics_query: descriptions not valid JSON; ignoring")
+                
+                desc_execution_time = time.time() - desc_start_time
+                logger.debug(f"Confluence descriptions fetched in {desc_execution_time:.2f}s")
+                
+                desc_text = next((m.text for m in (getattr(desc_res, "content", []) or []) if getattr(m, "text", None)), "{}")
+                logger.debug(f"Descriptions JSON length: {len(desc_text)} characters")
+                
+                try:
+                    key_desc = json.loads(desc_text)
+                    logger.info(f"Successfully parsed {len(key_desc)} column descriptions from Confluence")
+                    
+                    # Augment analytics prompt with descriptions
+                    original_length = len(analytics_prompt)
+                    analytics_prompt = (
+                        analytics_prompt.rstrip()
+                        + "\n\n---\nKNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
+                        + json.dumps(key_desc, ensure_ascii=False)
+                    )
+                    logger.debug(
+                        f"Analytics prompt augmented with descriptions: "
+                        f"{original_length} -> {len(analytics_prompt)} characters"
+                    )
+                except json.JSONDecodeError:
+                    logger.warning("Confluence descriptions not valid JSON; proceeding without augmentation")
+                    
+            except Exception as confluence_error:
+                logger.warning(f"Failed to fetch Confluence descriptions: {str(confluence_error)}")
+                logger.debug("Proceeding with analytics query without Confluence augmentation")
 
         # --- Step 2: Call MCP tool to run analytics query ---
         tool_args = {
@@ -678,27 +815,32 @@ async def analytics_query(request: Request):
         
         safe_tool_args = dict(tool_args)
         safe_tool_args["password"] = _mask_secret(safe_tool_args["password"])
-        safe_tool_args["analytics_prompt"] = f"<redacted analytics prompt, {len(analytics_prompt)} chars>"
-        safe_tool_args["system_prompt"] = f"<redacted system prompt, {len(data['system_prompt'])} chars>"
-        logger.info("analytics_query: calling run_analytics_query_on_database … args=%s", safe_tool_args)
+        safe_tool_args["analytics_prompt"] = f"<{len(analytics_prompt)} chars>"
+        safe_tool_args["system_prompt"] = f"<{len(data['system_prompt'])} chars>"
+        logger.info(f"Executing run_analytics_query_on_database MCP tool")
+        logger.debug(f"Tool arguments (sanitized): {safe_tool_args}")
 
+        query_start_time = time.time()
+        
         result = await _mcp_session.call_tool(
             "run_analytics_query_on_database",
             arguments=tool_args,
             read_timeout_seconds=timedelta(seconds=600)
         )
         
-        logger.info("analytics_query: tool returned %d part(s)", len(getattr(result, "content", []) or []))
+        query_execution_time = time.time() - query_start_time
+        logger.info(f"Analytics query executed successfully in {query_execution_time:.2f}s")
+        logger.debug(f"MCP tool returned {len(getattr(result, 'content', []) or [])} content parts")
 
         # --- Step 3: Process the response ---
         rows = []
         sql_query = None
         
-        logger.info("analytics_query: processing %d content parts from MCP tool", len(result.content))
+        logger.debug("Processing MCP tool response content")
         
         for i, msg in enumerate(result.content):
             msg_text = getattr(msg, 'text', '')
-            logger.info("analytics_query: processing message part %d", i)
+            logger.debug(f"Processing response part {i+1}/{len(result.content)} (length: {len(msg_text)})")
             
             # The MCP server returns {"rows": rows, "sql": sql} as JSON
             try:
@@ -707,30 +849,36 @@ async def analytics_query(request: Request):
                     # This is the structured response from MCP server
                     rows = response_data.get('rows', [])
                     sql_query = response_data.get('sql', None)
-                    logger.info("analytics_query: found structured response with %d rows and SQL: %s", 
-                              len(rows) if isinstance(rows, list) else 0, 
-                              "present" if sql_query else "missing")
+                    logger.info(
+                        f"Parsed structured response: {len(rows) if isinstance(rows, list) else 0} rows, "
+                        f"SQL query: {'present' if sql_query else 'missing'}"
+                    )
+                    if sql_query:
+                        logger.debug(f"Generated SQL: {sql_query[:200]}{'...' if len(sql_query) > 200 else ''}")
                     break  # We found the main response, no need to process other parts
                 else:
-                    logger.debug("analytics_query: JSON found but not structured response format")
+                    logger.debug(f"Response part {i+1} contains JSON but not in expected format")
             except json.JSONDecodeError:
                 # Not JSON, might be additional text from the AI
-                logger.debug("analytics_query: message part %d is not JSON", i)
+                logger.debug(f"Response part {i+1} is not JSON (length: {len(msg_text)})")
 
-        logger.info("analytics_query: processing complete - %d rows, SQL: %s", 
-                   len(rows), "found" if sql_query else "not found")
+        logger.info(f"Analytics query processing complete: {len(rows)} rows returned")
+        if isinstance(rows, list) and len(rows) > 0:
+            logger.debug(f"Sample result columns: {list(rows[0].keys()) if rows[0] else 'N/A'}")
 
         # Return the results
         return JSONResponse({
             "status": "success",
             "data": {
                 "rows": rows,
-                "sql": sql_query
+                "sql": sql_query,
+                "execution_time": query_execution_time,
+                "row_count": len(rows) if isinstance(rows, list) else 0
             }
         })
                 
     except Exception as e:
-        logger.error("analytics_query: error occurred: %s", str(e), exc_info=True)
+        logger.error(f"Analytics query failed: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
@@ -1510,3 +1658,130 @@ async def sync_all_tables_with_progress(request: Request):
         )
 
 
+@router.get("/endpoints")
+async def get_api_endpoints():
+    """
+    Get list of all available API endpoints for testing
+    
+    Returns:
+        JSONResponse: Comprehensive list of API endpoints with metadata
+        
+    Logs:
+        - INFO: Request received
+        - DEBUG: Endpoint catalog generation
+        - INFO: Response statistics
+        - ERROR: Any failures during endpoint discovery
+        
+    Note:
+        In a production environment, this could be generated dynamically
+        from FastAPI's OpenAPI schema for automatic endpoint discovery
+    """
+    logger.info("GET /endpoints - Fetching list of all available API endpoints for testing")
+    
+    try:
+        logger.debug("Generating comprehensive API endpoint catalog")
+        
+        # This endpoint returns a list of all available endpoints
+        # In a real implementation, this could be generated from FastAPI's OpenAPI schema
+        endpoints = [
+            {
+                "path": "/api/health",
+                "method": "GET",
+                "description": "Check API health status",
+                "tags": ["system"]
+            },
+            {
+                "path": "/api/test-connection",
+                "method": "POST",
+                "description": "Test database connection",
+                "parameters": ["host", "port", "user", "password", "database", "database_type"],
+                "tags": ["database"]
+            },
+            {
+                "path": "/api/save-connection", 
+                "method": "POST",
+                "description": "Save a new database connection",
+                "parameters": ["connection_name", "host", "port", "user", "password", "database", "database_type"],
+                "tags": ["database"]
+            },
+            {
+                "path": "/api/get-connections",
+                "method": "GET", 
+                "description": "Get all saved database connections",
+                "tags": ["database"]
+            },
+            {
+                "path": "/api/delete-connection/{connection_id}",
+                "method": "DELETE",
+                "description": "Delete a saved database connection",
+                "parameters": ["connection_id"],
+                "tags": ["database"]
+            },
+            {
+                "path": "/api/list-tables",
+                "method": "POST",
+                "description": "List all tables in database",
+                "parameters": ["host", "port", "user", "password", "database", "database_type"],
+                "tags": ["database"]
+            },
+            {
+                "path": "/api/describe-columns",
+                "method": "POST", 
+                "description": "Get AI descriptions of database columns",
+                "parameters": ["host", "port", "user", "password", "database", "database_type", "table", "columns", "limit"],
+                "tags": ["database", "ai"]
+            },
+            {
+                "path": "/api/suggest-columns",
+                "method": "POST",
+                "description": "Get AI column suggestions for queries",
+                "parameters": ["connection_name", "query"],
+                "tags": ["database", "ai"]
+            },
+            {
+                "path": "/api/analytics-query",
+                "method": "POST",
+                "description": "Execute analytics query with AI assistance",
+                "parameters": ["connection_name", "query"],
+                "tags": ["analytics"]
+            },
+            {
+                "path": "/api/sync-all-tables",
+                "method": "POST",
+                "description": "Sync all database tables to Confluence",
+                "parameters": ["connection_name", "space", "title", "limit"],
+                "tags": ["sync"]
+            },
+            {
+                "path": "/api/sync-all-tables-with-progress-stream",
+                "method": "POST",
+                "description": "Sync tables with real-time progress streaming",
+                "parameters": ["connection_name", "space", "title", "limit"],
+                "tags": ["sync"]
+            }
+        ]
+        
+        # Count endpoints by method and tag
+        method_counts = {}
+        tag_counts = {}
+        for endpoint in endpoints:
+            method = endpoint["method"]
+            method_counts[method] = method_counts.get(method, 0) + 1
+            for tag in endpoint["tags"]:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        
+        logger.info(f"Successfully generated {len(endpoints)} API endpoints")
+        logger.debug(f"Endpoints by method: {method_counts}")
+        logger.debug(f"Endpoints by tag: {tag_counts}")
+        
+        return JSONResponse({
+            "status": "success",
+            "data": endpoints
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get API endpoints: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "error": f"Failed to get endpoints: {str(e)}"}
+        )
