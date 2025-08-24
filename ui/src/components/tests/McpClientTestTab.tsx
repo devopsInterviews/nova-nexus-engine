@@ -109,7 +109,10 @@ export const McpClientTestTab = () => {
       const response = await fetch("/api/all-endpoints");
       const data = await response.json();
       
+      console.log('Endpoint discovery response:', data);
+      
       if (data.endpoints) {
+        console.log('First 5 discovered endpoints:', data.endpoints.slice(0, 5));
         setEndpoints(data.endpoints);
         setGroupedEndpoints(data.grouped_endpoints || {});
       }
@@ -139,22 +142,28 @@ export const McpClientTestTab = () => {
 
     try {
       let res;
-      // The discovered path doesn't include /api prefix, so we need to add it
-      // Also handle special cases where the path might already include /api or be a root path
+      // Debug: Log the endpoint details first
+      console.log('Selected endpoint details:', endpointDetails);
+      
+      // Use the exact path as discovered - don't modify it
+      // The route discovery returns paths exactly as they exist in the app
       let url = endpointDetails.path;
+      
+      // Skip system routes that would return HTML
       if (url === '/' || url.startsWith('/static') || url.includes('openapi') || url === '/docs' || url === '/redoc') {
         throw new Error('Cannot execute system/static routes');
       }
       
-      if (!url.startsWith('/api')) {
-        url = `/api${url}`;
-      }
+      // DO NOT add /api prefix - use exact path from discovery
+      // Routes defined on main app (like /list-all-keys-test) exist at root level
+      // Routes defined in routers with /api prefix are already prefixed in discovery
       
-      console.log('Executing endpoint:', {
+      console.log('URL construction:', {
         original_path: endpointDetails.path,
         final_url: url,
         method: endpointDetails.method,
-        params: params
+        params: params,
+        'note': 'Using exact path from discovery (no prefix modification)'
       });
       
       const options: RequestInit = {
@@ -166,26 +175,52 @@ export const McpClientTestTab = () => {
 
       if (endpointDetails.method === 'POST') {
         options.body = JSON.stringify(params);
+        console.log('POST request to:', url, 'with body:', options.body);
         res = await fetch(url, options);
       } else { // GET request
         const query = new URLSearchParams(params).toString();
         const fullUrl = query ? `${url}?${query}` : url;
-        console.log('GET request final URL:', fullUrl);
+        console.log('GET request to:', fullUrl);
         res = await fetch(fullUrl, { ...options, method: 'GET' });
       }
+      
+      // Debug response
+      console.log('Response received:', {
+        status: res.status,
+        statusText: res.statusText,
+        url: res.url,
+        headers: Object.fromEntries(res.headers.entries())
+      });
       
       // Check if response is successful and contains JSON
       let data;
       const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
+      console.log('Response details:', {
+        status: res.status,
+        statusText: res.statusText,
+        contentType: contentType,
+        url: res.url
+      });
+      
+      if (res.status === 404) {
+        data = {
+          error: `Route not found: ${url}`,
+          status: 404,
+          message: "The endpoint you're trying to access doesn't exist. Check if the route is defined in your backend.",
+          attempted_url: url
+        };
+      } else if (contentType && contentType.includes("application/json")) {
         data = await res.json();
+        console.log('JSON response data:', data);
       } else {
         // If not JSON, get text content (likely HTML error page)
         const textContent = await res.text();
+        console.log('Non-JSON response received. First 200 chars:', textContent.substring(0, 200));
         data = { 
           error: `Server returned ${res.status} ${res.statusText}`,
           content_type: contentType,
-          raw_response: textContent.substring(0, 500) // Limit response length
+          raw_response: textContent.substring(0, 500), // Limit response length
+          attempted_url: url
         };
       }
       
