@@ -23,7 +23,7 @@ interface SavedEndpointTest {
   created_at: string;
 }
 
-export const McpClientTestTab = () => {
+const McpClientTestTab = () => {
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [groupedEndpoints, setGroupedEndpoints] = useState<{ [key: string]: ApiEndpoint[] }>({});
   const [selectedEndpoint, setSelectedEndpoint] = useState<string>("");
@@ -518,3 +518,5 @@ export const McpClientTestTab = () => {
     </div>
   );
 };
+
+export default McpClientTestTab;

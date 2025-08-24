@@ -1,7 +1,7 @@
 import React from "react";
 import { ThemedTabs, ThemedTabsList, ThemedTabsTrigger, ThemedTabsContent } from "@/components/ui/themed-tabs";
-import { McpServerTestTab } from "../components/tests/McpServerTestTab";
-import { McpClientTestTab } from "../components/tests/McpClientTestTab";
+import McpServerTestTab from "@/components/tests/McpServerTestTab";
+import McpClientTestTab from "@/components/tests/McpClientTestTab";
 
 export default function Tests() {
   return (
