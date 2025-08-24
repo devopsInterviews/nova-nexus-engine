@@ -140,10 +140,6 @@ async def spa_root(request: Request):
     # templates points at your templates dir
     return templates.TemplateResponse("ui.html", {"request": request})
 
-@app.get("/{full_path:path}", response_class=HTMLResponse)
-async def spa_catch_all(request: Request, full_path: str):
-    return templates.TemplateResponse("ui.html", {"request": request})
-
 
 @app.post("/events/code-analysis", status_code=202)
 async def code_analysis_endpoint(request: Request) -> QueryResponse:
@@ -1485,3 +1481,8 @@ async def on_pr_event(request: Request):
     logger.debug("[on_pr_event] completed, handled %d keys", len(new_keys))
     return JSONResponse({"status": "ok", "handled": len(new_keys)})
 
+
+# SPA catch-all route - MUST be defined last to avoid intercepting API routes
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+async def spa_catch_all(request: Request, full_path: str):
+    return templates.TemplateResponse("ui.html", {"request": request})
