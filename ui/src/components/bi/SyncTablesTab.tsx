@@ -104,54 +104,53 @@ export function SyncTablesTab() {
     setOverallProgress(5);
 
     try {
-      const response = await dbService.syncAllTablesWithProgress({
+      const connectionData = {
         ...currentConnection,
         space: confluenceSpace,
         title: confluenceTitle,
         limit: limit
-      });
+      };
 
-      console.log("📊 Enhanced sync response received", response);
+      console.log("� Starting streaming sync request", connectionData);
 
-      if (response.status === 'success' && response.data) {
-        const progressInfo = response.data;
-        console.log("🔍 Progress data received:", progressInfo);
-        
-        setProgressData(progressInfo);
-        
-        // Extract final results if available
-        if (progressInfo.results) {
-          setSyncResults(progressInfo.results);
-          console.log("📋 Final results set:", progressInfo.results.length, "tables");
+      // Use the streaming API for real-time progress updates
+      const result = await dbService.syncAllTablesWithProgressStream(
+        connectionData,
+        (progressData) => {
+          console.log("� Real-time progress update:", progressData);
+          
+          // Update progress data immediately as we receive it
+          setProgressData(progressData);
+          setOverallProgress(progressData.progress_percentage || 0);
+          
+          // If we have final results, set them
+          if (progressData.results) {
+            setSyncResults(progressData.results);
+          }
+          
+          // Show completion toast only when fully completed
+          if (progressData.status === 'completed') {
+            const summary = progressData.summary;
+            toast({
+              title: "Sync Completed",
+              description: `Synced ${summary.successful_tables}/${summary.total_tables} tables with ${summary.total_synced_columns} new columns${progressData.duration ? ` in ${progressData.duration.toFixed(1)}s` : ''}`
+            });
+          }
         }
-        
-        // Set final progress
-        setOverallProgress(progressInfo.progress_percentage || 100);
-        console.log("📈 Progress percentage:", progressInfo.progress_percentage);
-        
-        // Calculate success metrics
-        const summary = progressInfo.summary;
-        
-        console.log("✅ Enhanced sync completed successfully", {
-          summary,
-          progressInfo,
-          duration: progressInfo.duration
-        });
+      );
 
-        toast({
-          title: "Sync Completed",
-          description: `Synced ${summary.successful_tables}/${summary.total_tables} tables with ${summary.total_synced_columns} new columns${progressInfo.duration ? ` in ${progressInfo.duration.toFixed(1)}s` : ''}`
-        });
-      } else {
-        console.error("❌ Enhanced sync failed", response.error);
+      console.log("📊 Streaming sync completed with result:", result);
+
+      if (result.status === 'error') {
+        console.error("❌ Streaming sync failed", result.error);
         toast({
           variant: "destructive",
           title: "Sync Failed",
-          description: response.error || "Failed to sync tables"
+          description: result.error || "Failed to sync tables"
         });
       }
     } catch (error) {
-      console.error("💥 Enhanced sync error", error);
+      console.error("💥 Streaming sync error", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -416,7 +415,7 @@ export function SyncTablesTab() {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         </motion.div>

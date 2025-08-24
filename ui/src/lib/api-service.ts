@@ -273,6 +273,79 @@ export const dbService = {
       body: JSON.stringify(body),
     });
   },
+
+  // Sync all tables with real-time streaming progress
+  syncAllTablesWithProgressStream: async (
+    connection: DbConnection & {
+      space: string;
+      title: string;
+      limit: number;
+    },
+    onProgress: (progressData: any) => void
+  ): Promise<{ status: 'success' | 'error', error?: string }> => {
+    const { space, title, limit, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { space, title, limit });
+    
+    try {
+      const response = await fetch('/api/sync-all-tables-with-progress-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6); // Remove 'data: ' prefix
+            
+            if (data === '[DONE]') {
+              return { status: 'success' };
+            }
+            
+            try {
+              const progressData = JSON.parse(data);
+              onProgress(progressData);
+              
+              if (progressData.status === 'error') {
+                return { status: 'error', error: progressData.error };
+              }
+            } catch (e) {
+              console.warn('Failed to parse progress data:', data, e);
+            }
+          }
+        }
+      }
+
+      return { status: 'success' };
+    } catch (error) {
+      console.error('Stream sync error:', error);
+      return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  },
 };
 
 // Context for storing connection info across tabs
