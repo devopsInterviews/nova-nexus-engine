@@ -545,6 +545,10 @@ async def get_api_endpoints(request: Request):
                 path = route.path
                 name = getattr(route, 'name', 'unnamed_route')
                 
+                # Skip SPA routes, static files, and internal routes
+                if path in ['/', '/{full_path:path}'] or path.startswith('/static') or 'openapi' in path.lower() or path in ['/docs', '/redoc']:
+                    continue
+                
                 # Get route tags if available
                 tags = []
                 if hasattr(route, 'endpoint') and hasattr(route.endpoint, '__wrapped__'):
