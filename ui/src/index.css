@@ -6,16 +6,16 @@
 
 @layer base {
   :root {
-    /* Base Colors - Cyberpunk Theme */
-    --background: 220 27% 5%;
-    --foreground: 210 40% 98%;
+    /* Base Colors - Default Light Mode */
+    --background: 210 40% 98%;
+    --foreground: 220 27% 5%;
     
-    --surface: 220 25% 8%;
-    --surface-elevated: 220 23% 12%;
+    --surface: 210 40% 96%;
+    --surface-elevated: 210 40% 94%;
     
     /* Glass Morphism */
-    --glass: 220 25% 8% / 0.6;
-    --glass-border: 220 40% 40% / 0.2;
+    --glass: 210 40% 96% / 0.8;
+    --glass-border: 220 40% 60% / 0.2;
     
     /* Primary - Electric Blue */
     --primary: 195 100% 50%;
@@ -45,8 +45,8 @@
     --destructive-foreground: 210 40% 98%;
     
     /* Muted */
-    --muted: 220 20% 20%;
-    --muted-foreground: 220 15% 65%;
+    --muted: 210 40% 90%;
+    --muted-foreground: 220 15% 35%;
     
     /* Card */
     --card: var(--surface);
@@ -57,7 +57,7 @@
     --popover-foreground: var(--foreground);
     
     /* Borders */
-    --border: 220 30% 25%;
+    --border: 220 30% 80%;
     --border-glow: var(--primary) / 0.3;
     
     /* Inputs */
@@ -94,8 +94,21 @@
     --sidebar-ring: var(--primary);
   }
 
+  .dark {
+    /* Dark Mode - Override for dark theme */
+    --background: 220 27% 5%;
+    --foreground: 210 40% 98%;
+    --surface: 220 25% 8%;
+    --surface-elevated: 220 23% 12%;
+    --glass: 220 25% 8% / 0.6;
+    --glass-border: 220 40% 40% / 0.2;
+    --muted: 220 20% 20%;
+    --muted-foreground: 220 15% 65%;
+    --border: 220 30% 25%;
+  }
+
   .light {
-    /* Light Mode - Minimal override for accessibility */
+    /* Light Mode - Explicitly ensure light mode (already defaults to this) */
     --background: 210 40% 98%;
     --foreground: 220 27% 5%;
     --surface: 210 40% 96%;
