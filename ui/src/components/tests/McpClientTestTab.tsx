@@ -35,6 +35,7 @@ export const McpClientTestTab = () => {
   const [requestType, setRequestType] = useState<'body' | 'query'>('body');
   const [filterText, setFilterText] = useState("");
   const [methodFilter, setMethodFilter] = useState<"ALL" | "GET" | "POST">("ALL");
+  const [testName, setTestName] = useState("");
 
   // Load saved tests from localStorage
   useEffect(() => {
@@ -104,7 +105,7 @@ export const McpClientTestTab = () => {
   const fetchEndpoints = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/mcp/api/endpoints");
+      const response = await fetch("/api/mcp/endpoints");
       const data = await response.json();
       
       if (data.endpoints) {
@@ -155,7 +156,21 @@ export const McpClientTestTab = () => {
         res = await fetch(fullUrl, { ...options, method: 'GET' });
       }
       
-      const data = await res.json();
+      // Check if response is successful and contains JSON
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        // If not JSON, get text content (likely HTML error page)
+        const textContent = await res.text();
+        data = { 
+          error: `Server returned ${res.status} ${res.statusText}`,
+          content_type: contentType,
+          raw_response: textContent.substring(0, 500) // Limit response length
+        };
+      }
+      
       setResponse({ status: res.status, data });
     } catch (error) {
       console.error("Error executing endpoint:", error);
@@ -335,48 +350,50 @@ export const McpClientTestTab = () => {
           </div>
         </div>
 
-        {/* Request Type Selection */}
-        {selectedEndpoint && (
-          <div className="border rounded-lg p-4">
-            <h4 className="font-medium mb-3">2. Request Type</h4>
-            <div className="space-y-2">
-              <label className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  value="body"
-                  checked={requestType === 'body'}
-                  onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
-                  disabled={endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method === 'GET'}
-                />
-                <span>Request Body (JSON)</span>
-                <span className="text-xs text-gray-500">- Send parameters as JSON in request body</span>
-              </label>
-              <label className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  value="query"
-                  checked={requestType === 'query'}
-                  onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
-                />
-                <span>Query Parameters</span>
-                <span className="text-xs text-gray-500">- Send parameters in URL query string</span>
-              </label>
-            </div>
-          </div>
-        )}
-
         {/* Parameter Configuration */}
         {selectedEndpoint && (
           <div className="border rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium">3. Configure Parameters</h4>
+              <h4 className="font-medium">2. Configure Parameters & Request Type</h4>
               <button
                 onClick={addParameter}
-                className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                className="inline-flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-medium rounded-lg shadow-md hover:from-blue-600 hover:to-blue-700 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
               >
-                + Add Parameter
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/>
+                </svg>
+                <span>Add Parameter</span>
               </button>
             </div>
+            
+            {/* Request Type Selection */}
+            <div className="mb-4 p-3 bg-gray-50 rounded">
+              <h5 className="font-medium mb-2 text-sm">Request Type:</h5>
+              <div className="space-y-2">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    value="body"
+                    checked={requestType === 'body'}
+                    onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
+                    disabled={endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method === 'GET'}
+                  />
+                  <span className="text-sm">Request Body (JSON)</span>
+                  <span className="text-xs text-gray-500">- Send parameters as JSON in request body</span>
+                </label>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    value="query"
+                    checked={requestType === 'query'}
+                    onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
+                  />
+                  <span className="text-sm">Query Parameters</span>
+                  <span className="text-xs text-gray-500">- Send parameters in URL query string</span>
+                </label>
+              </div>
+            </div>
+            
             <div className="space-y-4">
               <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
                 <strong>Request Type:</strong> {requestType === 'body' ? 'JSON Body' : 'URL Query Parameters'}
@@ -411,9 +428,12 @@ export const McpClientTestTab = () => {
                       />
                       <button
                         onClick={() => removeParameter(index)}
-                        className="px-2 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                        className="px-2 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200"
+                        title="Remove parameter"
                       >
-                        ✕
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
+                        </svg>
                       </button>
                     </div>
                   ))}
@@ -453,9 +473,9 @@ export const McpClientTestTab = () => {
             <div className="flex space-x-2">
               <input
                 type="text"
-                placeholder="Test configuration name"
-                value={requestParameters.length > 0 ? `${requestParameters[0].value} - ${new Date().toISOString()}` : ""}
-                readOnly
+                placeholder="Enter test name..."
+                value={testName}
+                onChange={(e) => setTestName(e.target.value)}
                 className="flex-1 p-2 border rounded"
               />
               <button 
@@ -478,7 +498,7 @@ export const McpClientTestTab = () => {
         {/* Response */}
         {response && (
           <div className="border rounded-lg p-4">
-            <h4 className="font-medium mb-3">Response</h4>
+            <h4 className="font-medium mb-3">3. Response</h4>
             <div className="text-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium">Status:</span>

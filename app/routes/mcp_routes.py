@@ -509,7 +509,7 @@ async def mcp_health_check():
         )
 
 # API Endpoint Discovery (moved from db_routes.py)
-@router.get("/api/endpoints", tags=["API Discovery"])
+@router.get("/endpoints", tags=["API Discovery"])
 async def get_api_endpoints(request: Request):
     """
     Discover all available FastAPI endpoints with real route information
@@ -555,16 +555,19 @@ async def get_api_endpoints(request: Request):
                 
                 logger.debug(f"Found route: {methods} {path} (name: {name})")
                 
-                endpoint_info = {
-                    "path": path,
-                    "methods": methods,
-                    "name": name,
-                    "tags": tags if tags else ["untagged"],
-                    "summary": getattr(route, 'summary', ''),
-                    "description": getattr(route, 'description', '')
-                }
-                
-                endpoints.append(endpoint_info)
+                # Create separate endpoint for each HTTP method to match frontend expectations
+                for method in methods:
+                    endpoint_info = {
+                        "path": path,
+                        "method": method,  # Single method instead of array
+                        "name": name,
+                        "tags": tags if tags else ["untagged"],
+                        "summary": getattr(route, 'summary', ''),
+                        "description": getattr(route, 'description', ''),
+                        "parameters": []  # Add empty parameters list for frontend compatibility
+                    }
+                    
+                    endpoints.append(endpoint_info)
         
         discovery_time = time.time() - discovery_start_time
         logger.info(f"API discovery complete: {len(endpoints)} endpoints found in {discovery_time:.3f}s")
