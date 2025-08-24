@@ -9,8 +9,9 @@ interface ApiEndpoint {
 }
 
 interface RequestParameter {
-  key: string;
+  name: string;
   value: string;
+  type?: string;
 }
 
 interface SavedEndpointTest {
@@ -59,8 +60,9 @@ export const McpClientTestTab = () => {
       if (endpoint && endpoint.parameters) {
         // Initialize parameters based on endpoint definition
         const initialParams: RequestParameter[] = endpoint.parameters.map(param => ({
-          key: param,
-          value: ""
+          name: param,
+          value: "",
+          type: "string"
         }));
         setRequestParameters(initialParams);
         
@@ -84,7 +86,18 @@ export const McpClientTestTab = () => {
         return matchesText && matchesMethod;
       });
       
-      setGroupedEndpoints(filtered);
+      // Group filtered endpoints by tags
+      const grouped = filtered.reduce((acc, endpoint) => {
+        endpoint.tags.forEach(tag => {
+          if (!acc[tag]) {
+            acc[tag] = [];
+          }
+          acc[tag].push(endpoint);
+        });
+        return acc;
+      }, {} as { [key: string]: ApiEndpoint[] });
+      
+      setGroupedEndpoints(grouped);
     }
   }, [endpoints, filterText, methodFilter]);
 
@@ -118,13 +131,14 @@ export const McpClientTestTab = () => {
     }
 
     const params = requestParameters.reduce((acc, p) => {
-      acc[p.key] = p.value;
+      acc[p.name] = p.value;
       return acc;
     }, {} as Record<string, any>);
 
     try {
       let res;
-      const url = endpointDetails.path;
+      // Use the exact path without adding /api prefix
+      const url = `/api${endpointDetails.path}`;
       const options: RequestInit = {
         method: endpointDetails.method,
         headers: {
@@ -135,9 +149,10 @@ export const McpClientTestTab = () => {
       if (endpointDetails.method === 'POST') {
         options.body = JSON.stringify(params);
         res = await fetch(url, options);
-      } else { // Assuming GET
+      } else { // GET request
         const query = new URLSearchParams(params).toString();
-        res = await fetch(`${url}?${query}`, options);
+        const fullUrl = query ? `${url}?${query}` : url;
+        res = await fetch(fullUrl, { ...options, method: 'GET' });
       }
       
       const data = await res.json();
@@ -220,10 +235,37 @@ export const McpClientTestTab = () => {
           onChange={(e) => setFilterText(e.target.value)}
           className="w-full p-2 border rounded"
         />
-        <div className="flex items-center space-x-1">
-          <button onClick={() => setMethodFilter('ALL')} className={`px-3 py-1 rounded text-sm ${methodFilter === 'ALL' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}>ALL</button>
-          <button onClick={() => setMethodFilter('GET')} className={`px-3 py-1 rounded text-sm ${methodFilter === 'GET' ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>GET</button>
-          <button onClick={() => setMethodFilter('POST')} className={`px-3 py-1 rounded text-sm ${methodFilter === 'POST' ? 'bg-yellow-500 text-white' : 'bg-gray-200'}`}>POST</button>
+        <div className="flex items-center space-x-2">
+          <button 
+            onClick={() => setMethodFilter('ALL')} 
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+              methodFilter === 'ALL' 
+                ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg transform scale-105' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
+            }`}
+          >
+            ALL
+          </button>
+          <button 
+            onClick={() => setMethodFilter('GET')} 
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+              methodFilter === 'GET' 
+                ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg transform scale-105' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
+            }`}
+          >
+            GET
+          </button>
+          <button 
+            onClick={() => setMethodFilter('POST')} 
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+              methodFilter === 'POST' 
+                ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg transform scale-105' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
+            }`}
+          >
+            POST
+          </button>
         </div>
       </div>
 
@@ -382,9 +424,22 @@ export const McpClientTestTab = () => {
                 <button 
                   onClick={executeEndpoint} 
                   disabled={loading || !selectedEndpoint}
-                  className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300"
+                  className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-lg shadow-lg hover:from-green-600 hover:to-green-700 hover:shadow-xl disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
                 >
-                  {loading ? "Executing..." : "🚀 Execute Endpoint"}
+                  {loading ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Executing...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center space-x-2">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
+                      </svg>
+                      <span>Execute Endpoint</span>
+                    </div>
+                  )}
                 </button>
               </div>
             </div>
@@ -406,9 +461,15 @@ export const McpClientTestTab = () => {
               <button 
                 onClick={saveTest} 
                 disabled={loading || !selectedEndpoint}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
+                className="px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg shadow-md hover:from-blue-600 hover:to-blue-700 hover:shadow-lg disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
               >
-                💾 Save Test
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6a1 1 0 10-2 0v5.586l-1.293-1.293z"/>
+                    <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v1a1 1 0 11-2 0V4H7v1a1 1 0 11-2 0V4z"/>
+                  </svg>
+                  <span>Save Test</span>
+                </div>
               </button>
             </div>
           </div>
@@ -448,18 +509,25 @@ export const McpClientTestTab = () => {
                     {test.method} {test.endpoint_path} ({test.parameters.length} params, {test.request_type}) - {new Date(test.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <div className="space-x-2">
+                <div className="flex items-center space-x-3">
                   <button 
                     onClick={() => loadTest(test)}
-                    className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-sm font-medium rounded-lg shadow-md hover:from-indigo-600 hover:to-indigo-700 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
                   >
-                    Load
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                    <span>Load</span>
                   </button>
                   <button 
                     onClick={() => deleteTest(test.id)}
-                    className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-medium rounded-lg shadow-md hover:from-red-600 hover:to-red-700 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
                   >
-                    Delete
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd"/>
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+                    </svg>
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>

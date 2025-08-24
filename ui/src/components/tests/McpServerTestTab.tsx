@@ -216,11 +216,30 @@ export const McpServerTestTab = () => {
     setTestName("");
   };
 
-  const loadTest = (test: SavedTest) => {
-    setSelectedServer(test.server_id);
-    setSelectedTool(test.tool_name);
-    setToolParameters([...test.parameters]);
+  const loadTest = async (test: SavedTest) => {
     setResponse(null);
+    
+    // First set the server
+    setSelectedServer(test.server_id);
+    
+    // Fetch tools for this server if not already loaded
+    if (selectedServer !== test.server_id) {
+      try {
+        const response = await fetch(`/api/mcp/servers/${test.server_id}/tools`);
+        const data = await response.json();
+        if (data.tools) {
+          setTools(data.tools);
+        }
+      } catch (error) {
+        console.error("Error fetching tools for loaded test:", error);
+      }
+    }
+    
+    // Then set the tool
+    setSelectedTool(test.tool_name);
+    
+    // Finally set the parameters with their values
+    setToolParameters([...test.parameters]);
   };
 
   const deleteTest = (testId: string) => {
@@ -239,14 +258,6 @@ export const McpServerTestTab = () => {
           Test MCP server tools with interactive interfaces
         </p>
       </div>
-
-      <input
-        type="text"
-        placeholder="Filter tools..."
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        className="w-full p-2 border rounded mb-4"
-      />
 
       {/* Server and Tool Selection */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -299,8 +310,15 @@ export const McpServerTestTab = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  Available Tools ({tools.length})
+                  Available Tools ({filteredTools.length})
                 </label>
+                <input
+                  type="text"
+                  placeholder="Type to filter tools..."
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  className="w-full p-2 border rounded mb-2 text-sm"
+                />
                 <select 
                   value={selectedTool} 
                   onChange={(e) => setSelectedTool(e.target.value)}
@@ -393,9 +411,16 @@ export const McpServerTestTab = () => {
               <button 
                 onClick={executeTool} 
                 disabled={loading || !selectedTool}
-                className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300"
+                className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-lg shadow-lg hover:from-green-600 hover:to-green-700 hover:shadow-xl disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
               >
-                {loading ? "Executing..." : "▶ Execute Tool"}
+                {loading ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Executing...</span>
+                  </div>
+                ) : (
+                  "Execute Tool"
+                )}
               </button>
             </div>
           </div>
@@ -417,9 +442,15 @@ export const McpServerTestTab = () => {
             <button 
               onClick={saveTest} 
               disabled={!testName}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
+              className="px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg shadow-md hover:from-blue-600 hover:to-blue-700 hover:shadow-lg disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
             >
-              💾 Save Test
+              <div className="flex items-center space-x-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6a1 1 0 10-2 0v5.586l-1.293-1.293z"/>
+                  <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v1a1 1 0 11-2 0V4H7v1a1 1 0 11-2 0V4z"/>
+                </svg>
+                <span>Save Test</span>
+              </div>
             </button>
           </div>
         </div>
@@ -468,18 +499,25 @@ export const McpServerTestTab = () => {
                     {test.tool_name} ({test.parameters.length} params) - {new Date(test.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <div className="space-x-2">
-                  <button 
-                    onClick={() => loadTest(test)}
-                    className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={async () => await loadTest(test)}
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-sm font-medium rounded-lg shadow-md hover:from-indigo-600 hover:to-indigo-700 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
                   >
-                    Load
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                    <span>Load</span>
                   </button>
                   <button 
                     onClick={() => deleteTest(test.id)}
-                    className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-medium rounded-lg shadow-md hover:from-red-600 hover:to-red-700 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
                   >
-                    Delete
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd"/>
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+                    </svg>
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>
