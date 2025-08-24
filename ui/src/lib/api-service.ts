@@ -201,6 +201,78 @@ export const dbService = {
       body: JSON.stringify(body),
     });
   },
+
+  // Sync all tables to Confluence with progress tracking
+  syncAllTablesWithProgress: async (connection: DbConnection & {
+    space: string;
+    title: string;
+    limit: number;
+  }): Promise<ApiResponse<{
+    status: string;
+    stage: string;
+    current_table: string | null;
+    current_table_index: number;
+    total_tables: number;
+    progress_percentage: number;
+    stage_details: string;
+    tables_processed: Array<{
+      table: string;
+      newColumns: Array<{ column: string; description: string }>;
+      error: string | null;
+      stage: string;
+    }>;
+    tables_pending: string[];
+    summary: {
+      total_tables: number;
+      successful_tables: number;
+      failed_tables: number;
+      total_synced_columns: number;
+    };
+    results?: Array<{
+      table: string;
+      newColumns: Array<{ column: string; description: string }>;
+      error: string | null;
+    }>;
+    start_time?: number;
+    end_time?: number;
+    duration?: number;
+  }>> => {
+    const { space, title, limit, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { space, title, limit });
+    return fetchApi<{
+      status: string;
+      stage: string;
+      current_table: string | null;
+      current_table_index: number;
+      total_tables: number;
+      progress_percentage: number;
+      stage_details: string;
+      tables_processed: Array<{
+        table: string;
+        newColumns: Array<{ column: string; description: string }>;
+        error: string | null;
+        stage: string;
+      }>;
+      tables_pending: string[];
+      summary: {
+        total_tables: number;
+        successful_tables: number;
+        failed_tables: number;
+        total_synced_columns: number;
+      };
+      results?: Array<{
+        table: string;
+        newColumns: Array<{ column: string; description: string }>;
+        error: string | null;
+      }>;
+      start_time?: number;
+      end_time?: number;
+      duration?: number;
+    }>('/api/sync-all-tables-with-progress', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // Context for storing connection info across tabs

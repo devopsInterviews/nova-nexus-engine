@@ -750,6 +750,14 @@ async def sync_all_tables(request: Request):
     from client.py through the MCP session
     """
     from app.client import _mcp_session  # Import here to avoid circular imports
+
+@router.post("/sync-all-tables-with-progress")
+async def sync_all_tables_with_progress(request: Request):
+    """
+    Sync all tables to Confluence with detailed progress reporting.
+    Returns intermediate progress updates instead of waiting for completion.
+    """
+    from app.client import _mcp_session  # Import here to avoid circular imports
     
     # --- Helper functions for safe logging ---
     def _mask_secret(s: str, show: int = 2) -> str:
@@ -936,6 +944,270 @@ async def sync_all_tables(request: Request):
                 
     except Exception as e:
         logger.error("sync_all_tables: error occurred: %s", str(e), exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": f"Table sync failed: {str(e)}"
+            }
+        )
+
+@router.post("/sync-all-tables-with-progress") 
+async def sync_all_tables_with_progress(request: Request):
+    """
+    Sync all tables to Confluence with detailed progress reporting.
+    This endpoint immediately returns a task ID and the frontend can poll for progress.
+    """
+    from app.client import _mcp_session
+    import asyncio
+    import time
+    
+    # --- Helper functions for safe logging ---
+    def _mask_secret(s: str, show: int = 2) -> str:
+        if s is None:
+            return "None"
+        s = str(s)
+        return (s[:show] + "..." + s[-show:]) if len(s) > (show * 2) else "***"
+
+    try:
+        # Parse and validate request data
+        data = await request.json()
+        logger.info("sync_all_tables_with_progress: received request")
+        
+        # Resolve connection profile first
+        saved_connections = _load_saved_connections()
+        data = _resolve_connection_payload(data, saved_connections)
+        
+        # Validate required fields
+        required = ["host", "port", "user", "password", "database", "database_type", "space", "title", "limit"]
+        for field in required:
+            if field not in data or data[field] in (None, ""):
+                logger.error("sync_all_tables_with_progress: missing field=%r", field)
+                return JSONResponse(
+                    status_code=400,
+                    content={"status": "error", "error": f"Missing required field: {field}"}
+                )
+
+        # Prepare common arguments
+        common_args = {
+            "host": data["host"],
+            "port": data["port"],
+            "user": data["user"],
+            "password": data["password"],
+            "database": data["database"],
+            "database_type": data["database_type"],
+        }
+
+        # Create a comprehensive progress object that we'll return
+        progress_data = {
+            "status": "running",
+            "stage": "initializing",
+            "current_table": None,
+            "current_table_index": 0,
+            "total_tables": 0,
+            "progress_percentage": 0,
+            "stage_details": "Starting sync process...",
+            "tables_processed": [],
+            "tables_pending": [],
+            "summary": {
+                "total_tables": 0,
+                "successful_tables": 0,
+                "failed_tables": 0,
+                "total_synced_columns": 0
+            },
+            "start_time": time.time()
+        }
+
+        # --- Stage 1: List tables (5% of progress) ---
+        logger.info("sync_all_tables_with_progress: Stage 1 - Listing tables")
+        progress_data.update({
+            "stage": "listing_tables",
+            "progress_percentage": 5,
+            "stage_details": "Fetching database tables..."
+        })
+        
+        list_res = await _mcp_session.call_tool(
+            "list_database_tables",
+            arguments=common_args,
+            read_timeout_seconds=timedelta(seconds=60),
+        )
+        tables = json.loads(list_res.content[0].text)
+        logger.info("sync_all_tables_with_progress: found %d tables", len(tables))
+        
+        progress_data.update({
+            "total_tables": len(tables),
+            "tables_pending": tables.copy(),
+            "summary": {"total_tables": len(tables), "successful_tables": 0, "failed_tables": 0, "total_synced_columns": 0}
+        })
+
+        # --- Stage 2: Fetch schema map (10% of progress) ---
+        logger.info("sync_all_tables_with_progress: Stage 2 - Fetching schema")
+        progress_data.update({
+            "stage": "fetching_schema",
+            "progress_percentage": 10,
+            "stage_details": "Loading database schema and keys..."
+        })
+        
+        keys_res = await _mcp_session.call_tool(
+            "list_database_keys",
+            arguments=common_args,
+            read_timeout_seconds=timedelta(seconds=60),
+        )
+        schema_map = json.loads(keys_res.content[0].text)
+        logger.info("sync_all_tables_with_progress: loaded schema for %d tables", len(schema_map))
+
+        # --- Stage 3: Process each table (85% of progress, distributed among tables) ---
+        results = []
+        table_progress_increment = 85 / len(tables) if tables else 0
+        
+        for table_index, tbl in enumerate(tables):
+            current_progress = 10 + (table_index * table_progress_increment)
+            logger.info("sync_all_tables_with_progress: processing table %d/%d: %s", table_index + 1, len(tables), tbl)
+            
+            # Update progress for current table
+            progress_data.update({
+                "stage": "processing_table",
+                "current_table": tbl,
+                "current_table_index": table_index + 1,
+                "progress_percentage": int(current_progress),
+                "stage_details": f"Processing table '{tbl}' ({table_index + 1}/{len(tables)})",
+                "tables_pending": tables[table_index + 1:]
+            })
+            
+            all_cols = schema_map.get(tbl, [])
+            if not all_cols:
+                logger.warning("sync_all_tables_with_progress: no schema found for table %s", tbl)
+                result = {"table": tbl, "newColumns": [], "error": "no_schema", "stage": "completed"}
+                results.append(result)
+                progress_data["tables_processed"].append(result)
+                progress_data["summary"]["failed_tables"] += 1
+                continue
+
+            # Sub-stage 3a: Compute delta
+            progress_data["stage_details"] = f"Computing delta for table '{tbl}' ({len(all_cols)} columns)"
+            logger.debug("sync_all_tables_with_progress: computing delta for table %s", tbl)
+            
+            delta_res = await _mcp_session.call_tool(
+                "get_table_delta_keys",
+                arguments={
+                    "space": data["space"],
+                    "title": data["title"],
+                    "columns": [f"{tbl}.{c}" for c in all_cols]
+                },
+                read_timeout_seconds=timedelta(seconds=60),
+            )
+            delta_chunks = [msg.text for msg in delta_res.content]
+            delta_text = "".join(delta_chunks)
+            
+            try:
+                missing = json.loads(delta_text)
+            except Exception as e:
+                logger.warning("sync_all_tables_with_progress: failed to parse delta JSON for %s: %s", tbl, e)
+                missing = []
+
+            if not missing:
+                logger.info("sync_all_tables_with_progress: no missing columns for table %s", tbl)
+                result = {"table": tbl, "newColumns": [], "error": None, "stage": "completed"}
+                results.append(result)
+                progress_data["tables_processed"].append(result)
+                progress_data["summary"]["successful_tables"] += 1
+                continue
+
+            # Sub-stage 3b: Describe missing columns
+            progress_data["stage_details"] = f"Describing {len(missing)} missing columns for table '{tbl}'"
+            logger.info("sync_all_tables_with_progress: found %d missing columns for table %s", len(missing), tbl)
+            
+            desc_res = await _mcp_session.call_tool(
+                "describe_columns",
+                arguments={
+                    **common_args,
+                    "table": tbl,
+                    "columns": [c.split(".", 1)[1] for c in missing],
+                    "limit": data["limit"],
+                },
+                read_timeout_seconds=None,
+            )
+            desc_chunks = [msg.text for msg in desc_res.content]
+            desc_text = "".join(desc_chunks)
+            
+            try:
+                descriptions = json.loads(desc_text)
+            except Exception as e:
+                logger.error("sync_all_tables_with_progress: failed to parse descriptions JSON for %s: %s", tbl, e)
+                descriptions = []
+
+            # Sub-stage 3c: Sync to Confluence
+            progress_data["stage_details"] = f"Syncing {len(descriptions)} descriptions to Confluence for table '{tbl}'"
+            logger.debug("sync_all_tables_with_progress: syncing descriptions to Confluence for table %s", tbl)
+            
+            sync_res = await _mcp_session.call_tool(
+                "sync_confluence_table_delta",
+                arguments={
+                    "space": data["space"],
+                    "title": data["title"],
+                    "data": descriptions
+                },
+                read_timeout_seconds=timedelta(seconds=300),
+            )
+            
+            sync_info = {"delta": []}
+            if sync_res.content:
+                try:
+                    sync_info = json.loads(sync_res.content[0].text)
+                except Exception as e:
+                    logger.error("sync_all_tables_with_progress: failed to parse sync JSON for %s: %s", tbl, e)
+
+            synced_columns = sync_info.get("delta", [])
+            logger.info("sync_all_tables_with_progress: synced %d columns for table %s", len(synced_columns), tbl)
+
+            result = {"table": tbl, "newColumns": synced_columns, "error": None, "stage": "completed"}
+            results.append(result)
+            progress_data["tables_processed"].append(result)
+            progress_data["summary"]["successful_tables"] += 1
+            progress_data["summary"]["total_synced_columns"] += len(synced_columns)
+
+        # --- Stage 4: Finalization (100%) ---
+        total_synced_columns = sum(len(r["newColumns"]) for r in results)
+        successful_tables = len([r for r in results if r["error"] is None])
+        failed_tables = len([r for r in results if r["error"] is not None])
+        
+        end_time = time.time()
+        duration = end_time - progress_data["start_time"]
+
+        final_progress = {
+            "status": "completed",
+            "stage": "completed",
+            "current_table": None,
+            "current_table_index": len(tables),
+            "total_tables": len(tables),
+            "progress_percentage": 100,
+            "stage_details": f"Sync completed! Processed {len(tables)} tables in {duration:.1f}s",
+            "tables_processed": progress_data["tables_processed"],
+            "tables_pending": [],
+            "summary": {
+                "total_tables": len(tables),
+                "successful_tables": successful_tables,
+                "failed_tables": failed_tables,
+                "total_synced_columns": total_synced_columns
+            },
+            "results": results,
+            "start_time": progress_data["start_time"],
+            "end_time": end_time,
+            "duration": duration
+        }
+
+        logger.info(
+            "sync_all_tables_with_progress: completed - %d tables processed, %d successful, %d failed, %d total columns synced in %.1fs",
+            len(tables), successful_tables, failed_tables, total_synced_columns, duration
+        )
+
+        return JSONResponse({
+            "status": "success",
+            "data": final_progress
+        })
+                
+    except Exception as e:
+        logger.error("sync_all_tables_with_progress: error occurred: %s", str(e), exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
