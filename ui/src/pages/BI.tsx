@@ -2,7 +2,6 @@ import { ThemedTabs, ThemedTabsList, ThemedTabsTrigger, ThemedTabsContent } from
 import { ConnectDBTab } from "@/components/bi/ConnectDBTab";
 import { ColumnSuggestionsTab } from "@/components/bi/ColumnSuggestionsTab";
 import { SQLBuilderTab } from "@/components/bi/SQLBuilderTab";
-import { DescribeColumnsTab } from "@/components/bi/DescribeColumnsTab";
 import { SyncTablesTab } from "@/components/bi/SyncTablesTab";
 import { motion } from "framer-motion";
 
@@ -31,12 +30,11 @@ export default function BI() {
         transition={{ delay: 0.4 }}
       >
         <ThemedTabs defaultValue="connect" className="w-full">
-          <ThemedTabsList className="grid w-full grid-cols-5">
+          <ThemedTabsList className="grid w-full grid-cols-4">
             <ThemedTabsTrigger value="connect" layoutId="biTab">Connect to DB</ThemedTabsTrigger>
             <ThemedTabsTrigger value="suggestions" layoutId="biTab">Column Suggestions</ThemedTabsTrigger>
             <ThemedTabsTrigger value="sql" layoutId="biTab">SQL Builder</ThemedTabsTrigger>
-            <ThemedTabsTrigger value="describe" layoutId="biTab">Describe Columns</ThemedTabsTrigger>
-            <ThemedTabsTrigger value="sync" layoutId="biTab">Sync Tables</ThemedTabsTrigger>
+            <ThemedTabsTrigger value="sync" layoutId="biTab">Sync Tables to Confluence</ThemedTabsTrigger>
           </ThemedTabsList>
 
           <ThemedTabsContent value="connect">
@@ -49,10 +47,6 @@ export default function BI() {
 
           <ThemedTabsContent value="sql">
             <SQLBuilderTab />
-          </ThemedTabsContent>
-
-          <ThemedTabsContent value="describe">
-            <DescribeColumnsTab />
           </ThemedTabsContent>
 
           <ThemedTabsContent value="sync">

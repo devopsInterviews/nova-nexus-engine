@@ -75,37 +75,49 @@ export function ConnectionStatusCard({ className = "" }: ConnectionStatusCardPro
             </Badge>
             
             {/* Connection Switch Menu */}
-            {savedConnections && savedConnections.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Switch Connection">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                  <div className="px-2 py-1.5 text-sm font-semibold">Switch Connection</div>
-                  {savedConnections
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Switch Connection">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <div className="px-2 py-1.5 text-sm font-semibold">Switch Connection</div>
+                {savedConnections && savedConnections.length > 0 ? (
+                  savedConnections
                     .filter(conn => conn.id !== currentConnection?.id)
-                    .map((connection) => (
-                      <DropdownMenuItem
-                        key={connection.id}
-                        onClick={() => handleSwitchConnection(connection)}
-                        className="cursor-pointer"
-                      >
-                        <Database className="w-4 h-4 mr-2" />
-                        <div className="flex-1">
-                          <div className="font-medium">
-                            {connection.name || `${connection.host}:${connection.port}`}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {connection.database} ({connection.database_type})
-                          </div>
-                        </div>
-                      </DropdownMenuItem>
-                    ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                    .length > 0 ? (
+                      savedConnections
+                        .filter(conn => conn.id !== currentConnection?.id)
+                        .map((connection) => (
+                          <DropdownMenuItem
+                            key={connection.id}
+                            onClick={() => handleSwitchConnection(connection)}
+                            className="cursor-pointer"
+                          >
+                            <Database className="w-4 h-4 mr-2" />
+                            <div className="flex-1">
+                              <div className="font-medium">
+                                {connection.name || `${connection.host}:${connection.port}`}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {connection.database} ({connection.database_type})
+                              </div>
+                            </div>
+                          </DropdownMenuItem>
+                        ))
+                    ) : (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                        There are currently no other profiles to switch to
+                      </div>
+                    )
+                ) : (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    There are currently no other profiles to switch to
+                  </div>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </CardContent>

@@ -743,4 +743,205 @@ async def analytics_query(request: Request):
 saved_connections: List[Dict[str, Any]] = _load_saved_connections()
 connection_id_counter = 1
 
+@router.post("/sync-all-tables")
+async def sync_all_tables(request: Request):
+    """
+    Sync all tables to Confluence by calling the existing sync_all_tables function
+    from client.py through the MCP session
+    """
+    from app.client import _mcp_session  # Import here to avoid circular imports
+    
+    # --- Helper functions for safe logging ---
+    def _mask_secret(s: str, show: int = 2) -> str:
+        if s is None:
+            return "None"
+        s = str(s)
+        return (s[:show] + "..." + s[-show:]) if len(s) > (show * 2) else "***"
+
+    try:
+        # Parse and validate request data
+        data = await request.json()
+        logger.info("sync_all_tables: received request with payload keys: %s", list(data.keys()))
+        
+        # Resolve connection profile first
+        saved_connections = _load_saved_connections()
+        data = _resolve_connection_payload(data, saved_connections)
+        
+        logger.info(
+            "sync_all_tables: start space=%r title=%r host=%s port=%s db=%s user=%s limit=%s",
+            data.get("space"), data.get("title"),
+            data.get("host"), data.get("port"), data.get("database"), data.get("user"),
+            data.get("limit")
+        )
+
+        # Validate required fields
+        required = ["host", "port", "user", "password", "database", "database_type", "space", "title", "limit"]
+        for field in required:
+            if field not in data or data[field] in (None, ""):
+                logger.error("sync_all_tables: missing field=%r", field)
+                return JSONResponse(
+                    status_code=400,
+                    content={"status": "error", "error": f"Missing required field: {field}"}
+                )
+
+        log_copy = dict(data)
+        log_copy["password"] = _mask_secret(log_copy.get("password"))
+        logger.debug("sync_all_tables: validated payload (sanitized): %s", log_copy)
+
+        # Prepare the payload for the MCP sync function
+        common_args = {
+            "host": data["host"],
+            "port": data["port"],
+            "user": data["user"],
+            "password": data["password"],
+            "database": data["database"],
+            "database_type": data["database_type"],
+        }
+
+        # --- Step 1: List tables ---
+        logger.info("sync_all_tables: fetching list of tables")
+        list_res = await _mcp_session.call_tool(
+            "list_database_tables",
+            arguments=common_args,
+            read_timeout_seconds=timedelta(seconds=60),
+        )
+        tables = json.loads(list_res.content[0].text)
+        logger.info("sync_all_tables: found %d tables: %s", len(tables), tables[:5])  # Log first 5 tables
+
+        # --- Step 2: Fetch schema map ---
+        logger.info("sync_all_tables: fetching database keys/schema")
+        keys_res = await _mcp_session.call_tool(
+            "list_database_keys",
+            arguments=common_args,
+            read_timeout_seconds=timedelta(seconds=60),
+        )
+        schema_map = json.loads(keys_res.content[0].text)
+        logger.debug("sync_all_tables: schema map keys: %s", list(schema_map.keys())[:10])  # Log first 10 schema keys
+
+        # --- Step 3: Process each table ---
+        results = []
+        total_tables = len(tables)
+        processed_tables = 0
+
+        for tbl in tables:
+            processed_tables += 1
+            logger.info("sync_all_tables: processing table %d/%d: %s", processed_tables, total_tables, tbl)
+            
+            all_cols = schema_map.get(tbl, [])
+            if not all_cols:
+                logger.warning("sync_all_tables: no schema found for table %s", tbl)
+                results.append({"table": tbl, "newColumns": [], "error": "no_schema"})
+                continue
+
+            # --- Step 3a: Compute delta (which columns are missing from Confluence) ---
+            logger.debug("sync_all_tables: computing delta for table %s with %d columns", tbl, len(all_cols))
+            delta_res = await _mcp_session.call_tool(
+                "get_table_delta_keys",
+                arguments={
+                    "space": data["space"],
+                    "title": data["title"],
+                    "columns": [f"{tbl}.{c}" for c in all_cols]
+                },
+                read_timeout_seconds=timedelta(seconds=60),
+            )
+            delta_chunks = [msg.text for msg in delta_res.content]
+            delta_text = "".join(delta_chunks)
+            logger.debug("sync_all_tables: delta JSON for %s: %s", tbl, delta_text[:200])
+            
+            try:
+                missing = json.loads(delta_text)
+            except Exception as e:
+                logger.warning("sync_all_tables: failed to parse delta JSON for %s: %s", tbl, e)
+                missing = []
+
+            if not missing:
+                logger.info("sync_all_tables: no missing columns for table %s", tbl)
+                results.append({"table": tbl, "newColumns": [], "error": None})
+                continue
+
+            logger.info("sync_all_tables: found %d missing columns for table %s", len(missing), tbl)
+
+            # --- Step 3b: Describe only the missing columns ---
+            logger.debug("sync_all_tables: describing missing columns for table %s", tbl)
+            desc_res = await _mcp_session.call_tool(
+                "describe_columns",
+                arguments={
+                    **common_args,
+                    "table": tbl,
+                    "columns": [c.split(".", 1)[1] for c in missing],
+                    "limit": data["limit"],
+                },
+                read_timeout_seconds=None,
+            )
+            desc_chunks = [msg.text for msg in desc_res.content]
+            desc_text = "".join(desc_chunks)
+            logger.debug("sync_all_tables: description JSON for %s (length=%d)", tbl, len(desc_text))
+            
+            try:
+                descriptions = json.loads(desc_text)
+            except Exception as e:
+                logger.error("sync_all_tables: failed to parse descriptions JSON for %s: %s", tbl, e)
+                descriptions = []
+
+            # --- Step 3c: Sync delta descriptions to Confluence ---
+            logger.debug("sync_all_tables: syncing %d descriptions to Confluence for table %s", len(descriptions), tbl)
+            sync_res = await _mcp_session.call_tool(
+                "sync_confluence_table_delta",
+                arguments={
+                    "space": data["space"],
+                    "title": data["title"],
+                    "data": descriptions
+                },
+                read_timeout_seconds=timedelta(seconds=300),
+            )
+            
+            sync_info = {"delta": []}
+            if sync_res.content:
+                try:
+                    sync_info = json.loads(sync_res.content[0].text)
+                except Exception as e:
+                    logger.error("sync_all_tables: failed to parse sync JSON for %s: %s", tbl, e)
+
+            synced_columns = sync_info.get("delta", [])
+            logger.info("sync_all_tables: synced %d columns for table %s", len(synced_columns), tbl)
+
+            results.append({
+                "table": tbl,
+                "newColumns": synced_columns,
+                "error": None
+            })
+
+        # --- Step 4: Generate summary ---
+        total_synced_columns = sum(len(r["newColumns"]) for r in results)
+        successful_tables = len([r for r in results if r["error"] is None])
+        failed_tables = len([r for r in results if r["error"] is not None])
+
+        logger.info(
+            "sync_all_tables: completed - %d tables processed, %d successful, %d failed, %d total columns synced",
+            total_tables, successful_tables, failed_tables, total_synced_columns
+        )
+
+        return JSONResponse({
+            "status": "success",
+            "data": {
+                "results": results,
+                "summary": {
+                    "total_tables": total_tables,
+                    "successful_tables": successful_tables,
+                    "failed_tables": failed_tables,
+                    "total_synced_columns": total_synced_columns
+                }
+            }
+        })
+                
+    except Exception as e:
+        logger.error("sync_all_tables: error occurred: %s", str(e), exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": f"Table sync failed: {str(e)}"
+            }
+        )
+
 
