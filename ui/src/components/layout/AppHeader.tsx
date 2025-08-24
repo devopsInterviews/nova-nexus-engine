@@ -15,12 +15,12 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function AppHeader() {
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false); // Default to light mode
   const [notifications, setNotifications] = useState(3);
 
   const toggleTheme = () => {
     setIsDark(!isDark);
-    document.documentElement.classList.toggle('light');
+    document.documentElement.classList.toggle('dark');
   };
 
   return (

@@ -24,6 +24,65 @@ interface SavedEndpointTest {
   created_at: string;
 }
 
+// Helper component to render different types of response data
+const ResponseRenderer = ({ data }: { data: any }) => {
+  // If data is a string that looks like structured data (contains newlines), format it nicely
+  if (typeof data === 'string') {
+    // Check if it's a list-like string (contains newlines)
+    if (data.includes('\n')) {
+      const lines = data.split('\n').filter(line => line.trim());
+      return (
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-gray-600 mb-2">Formatted Result ({lines.length} items):</div>
+          <div className="bg-gray-50 p-3 rounded border">
+            {lines.map((line, index) => (
+              <div key={index} className="text-sm font-mono py-1 border-b border-gray-200 last:border-b-0">
+                {line.trim()}
+              </div>
+            ))}
+          </div>
+          <details className="mt-4">
+            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+              View Raw Response
+            </summary>
+            <pre className="bg-gray-100 p-3 rounded text-xs font-mono overflow-x-auto mt-2 border">
+              {data}
+            </pre>
+          </details>
+        </div>
+      );
+    }
+    
+    // For short strings, just display them nicely
+    return (
+      <div className="bg-gray-50 p-3 rounded text-sm">
+        <div className="text-xs font-medium text-gray-600 mb-1">String Response:</div>
+        <div className="font-mono">{data}</div>
+      </div>
+    );
+  }
+  
+  // For objects/arrays, show formatted JSON
+  if (typeof data === 'object' && data !== null) {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-gray-600">JSON Response:</div>
+        <pre className="bg-gray-50 p-3 rounded text-xs font-mono overflow-x-auto border">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      </div>
+    );
+  }
+  
+  // For primitives (numbers, booleans, etc.)
+  return (
+    <div className="bg-gray-50 p-3 rounded text-sm">
+      <div className="text-xs font-medium text-gray-600 mb-1">Response:</div>
+      <div className="font-mono">{String(data)}</div>
+    </div>
+  );
+};
+
 export const McpClientTestTab = () => {
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [groupedEndpoints, setGroupedEndpoints] = useState<{ [key: string]: ApiEndpoint[] }>({});
@@ -213,15 +272,23 @@ export const McpClientTestTab = () => {
         data = await res.json();
         console.log('JSON response data:', data);
       } else {
-        // If not JSON, get text content (likely HTML error page)
+        // Handle non-JSON responses
         const textContent = await res.text();
-        console.log('Non-JSON response received. First 200 chars:', textContent.substring(0, 200));
-        data = { 
-          error: `Server returned ${res.status} ${res.statusText}`,
-          content_type: contentType,
-          raw_response: textContent.substring(0, 500), // Limit response length
-          attempted_url: url
-        };
+        console.log('Non-JSON response received. Content length:', textContent.length);
+        
+        if (res.ok) {
+          // If response is successful (200-299), treat text content as valid data
+          data = textContent;
+          console.log('Treating text response as valid data');
+        } else {
+          // If response has error status, treat as error
+          data = { 
+            error: `Server returned ${res.status} ${res.statusText}`,
+            content_type: contentType,
+            raw_response: textContent.substring(0, 500), // Limit response length
+            attempted_url: url
+          };
+        }
       }
       
       setResponse({ status: res.status, data });
@@ -562,9 +629,7 @@ export const McpClientTestTab = () => {
                   {response.status}
                 </span>
               </div>
-              <pre className="bg-gray-50 p-3 rounded text-xs font-mono overflow-x-auto">
-                {JSON.stringify(response.data, null, 2)}
-              </pre>
+              <ResponseRenderer data={response.data} />
             </div>
           </div>
         )}
