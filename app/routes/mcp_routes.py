@@ -524,7 +524,7 @@ async def get_api_endpoints(request: Request):
         - INFO: Endpoint discovery process and results
         - DEBUG: Individual route details and parameter information
     """
-    logger.info("GET /api/endpoints - API endpoint discovery initiated")
+    logger.info("GET /api/all-endpoints - API endpoint discovery initiated")
     
     try:
         from app.client import app  # Get the FastAPI app instance

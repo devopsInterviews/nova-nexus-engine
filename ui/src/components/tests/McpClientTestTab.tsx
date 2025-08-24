@@ -105,7 +105,8 @@ export const McpClientTestTab = () => {
   const fetchEndpoints = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/mcp/all-endpoints");
+      // Backend mcp_router is mounted at /api, so discovery endpoint is /api/all-endpoints
+      const response = await fetch("/api/all-endpoints");
       const data = await response.json();
       
       if (data.endpoints) {
@@ -138,8 +139,8 @@ export const McpClientTestTab = () => {
 
     try {
       let res;
-      // Use the exact path as discovered from the API (already includes /api prefix)
-      const url = endpointDetails.path;
+      // The discovered path doesn't include /api prefix, so we need to add it
+      const url = endpointDetails.path.startsWith('/api') ? endpointDetails.path : `/api${endpointDetails.path}`;
       const options: RequestInit = {
         method: endpointDetails.method,
         headers: {
@@ -187,10 +188,10 @@ export const McpClientTestTab = () => {
   };
 
   const addParameter = () => {
-    setRequestParameters([...requestParameters, { key: "", value: "" }]);
+    setRequestParameters([...requestParameters, { name: "", value: "" }]);
   };
 
-  const updateParameter = (index: number, field: 'key' | 'value', value: string) => {
+  const updateParameter = (index: number, field: 'name' | 'value', value: string) => {
     const updated = [...requestParameters];
     updated[index][field] = value;
     setRequestParameters(updated);
@@ -415,8 +416,8 @@ export const McpClientTestTab = () => {
                       <input
                         type="text"
                         placeholder="Parameter name"
-                        value={param.key}
-                        onChange={(e) => updateParameter(index, 'key', e.target.value)}
+                        value={param.name}
+                        onChange={(e) => updateParameter(index, 'name', e.target.value)}
                         className="flex-1 p-2 border rounded"
                       />
                       <input
