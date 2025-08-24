@@ -11,16 +11,51 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function AppHeader() {
-  const [isDark, setIsDark] = useState(false); // Default to light mode
+  const [isDark, setIsDark] = useState(false);
   const [notifications, setNotifications] = useState(3);
 
+  // Initialize theme on component mount
+  useEffect(() => {
+    // Check if there's a saved theme preference, otherwise default to light
+    const savedTheme = localStorage.getItem('theme');
+    
+    // If no saved theme, default to light mode
+    const prefersDark = savedTheme === 'dark';
+    
+    setIsDark(prefersDark);
+    
+    // Always start with light mode as default, only add dark if explicitly set
+    if (prefersDark) {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+      // If no theme was saved, save light as the default
+      if (!savedTheme) {
+        localStorage.setItem('theme', 'light');
+      }
+    }
+  }, []);
+
   const toggleTheme = () => {
-    setIsDark(!isDark);
-    document.documentElement.classList.toggle('dark');
+    const newIsDark = !isDark;
+    setIsDark(newIsDark);
+    
+    // Apply theme to document
+    if (newIsDark) {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
   };
 
   return (
