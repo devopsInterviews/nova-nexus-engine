@@ -6,7 +6,7 @@ import {
   Database,
   Cpu,
   Zap,
-  TestTube
+  CheckSquare
 } from "lucide-react";
 import {
   Sidebar,
@@ -46,7 +46,7 @@ const navigationItems = [
   {
     title: "Tests",
     url: "/tests",
-    icon: TestTube,
+    icon: CheckSquare,
   },
   {
     title: "Settings",
