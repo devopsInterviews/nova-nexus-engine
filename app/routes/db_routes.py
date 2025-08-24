@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 from app.prompts import BI_ANALYTICS_PROMPT
 
 # Create router with tags for API documentation
-router = APIRouter(prefix="", tags=["database"])  # prefix inherited from app.include_router("/api")
+router = APIRouter(tags=["database"])  # prefix inherited from app.include_router("/api")
 logger = logging.getLogger("uvicorn.error")
 
 def _mask_secret(value: Optional[str]) -> str:

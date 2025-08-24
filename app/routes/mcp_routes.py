@@ -28,7 +28,7 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 # Create router for MCP-related endpoints
-router = APIRouter(prefix="/mcp", tags=["MCP Testing"])
+router = APIRouter(tags=["MCP Testing"])
 
 @router.get("/servers")
 async def get_mcp_servers():
