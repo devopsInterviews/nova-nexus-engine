@@ -101,7 +101,7 @@ export function SyncTablesTab() {
     setIsLoading(true);
     setSyncResults([]);
     setProgressData(null);
-    setOverallProgress(0);
+    setOverallProgress(5);
 
     try {
       const response = await dbService.syncAllTablesWithProgress({
@@ -115,15 +115,19 @@ export function SyncTablesTab() {
 
       if (response.status === 'success' && response.data) {
         const progressInfo = response.data;
+        console.log("🔍 Progress data received:", progressInfo);
+        
         setProgressData(progressInfo);
         
         // Extract final results if available
         if (progressInfo.results) {
           setSyncResults(progressInfo.results);
+          console.log("📋 Final results set:", progressInfo.results.length, "tables");
         }
         
         // Set final progress
-        setOverallProgress(progressInfo.progress_percentage);
+        setOverallProgress(progressInfo.progress_percentage || 100);
+        console.log("📈 Progress percentage:", progressInfo.progress_percentage);
         
         // Calculate success metrics
         const summary = progressInfo.summary;
@@ -136,7 +140,7 @@ export function SyncTablesTab() {
 
         toast({
           title: "Sync Completed",
-          description: `Synced ${summary.successful_tables}/${summary.total_tables} tables with ${summary.total_synced_columns} new columns in ${progressInfo.duration?.toFixed(1)}s`
+          description: `Synced ${summary.successful_tables}/${summary.total_tables} tables with ${summary.total_synced_columns} new columns${progressInfo.duration ? ` in ${progressInfo.duration.toFixed(1)}s` : ''}`
         });
       } else {
         console.error("❌ Enhanced sync failed", response.error);
@@ -154,6 +158,7 @@ export function SyncTablesTab() {
         description: "An unexpected error occurred during sync"
       });
     } finally {
+      console.log("🏁 Sync process finished, clearing loading state");
       setIsLoading(false);
     }
   };
@@ -270,7 +275,7 @@ export function SyncTablesTab() {
               <CardTitle>Sync Progress</CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoading && progressData ? (
+              {isLoading ? (
                 <div className="space-y-6">
                   {/* Current Status */}
                   <div className="text-center">
@@ -279,7 +284,7 @@ export function SyncTablesTab() {
                     </div>
                     <h3 className="text-lg font-medium">Syncing Tables...</h3>
                     <p className="text-muted-foreground">
-                      {progressData.stage_details}
+                      {progressData?.stage_details || "Reading database schema and syncing with Confluence"}
                     </p>
                   </div>
 
@@ -287,13 +292,13 @@ export function SyncTablesTab() {
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Overall Progress</span>
-                      <span>{progressData.progress_percentage}%</span>
+                      <span>{progressData?.progress_percentage || overallProgress}%</span>
                     </div>
-                    <Progress value={progressData.progress_percentage} className="h-3" />
+                    <Progress value={progressData?.progress_percentage || overallProgress} className="h-3" />
                   </div>
 
-                  {/* Current Table Info */}
-                  {progressData.current_table && (
+                  {/* Current Table Info - only show if we have progress data */}
+                  {progressData?.current_table && (
                     <div className="bg-surface-elevated/50 rounded-lg p-4 border border-border/50">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-medium">Current Table</h4>
@@ -311,36 +316,38 @@ export function SyncTablesTab() {
                     </div>
                   )}
 
-                  {/* Tables Summary */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="text-center p-3 rounded-lg glass border-border/50">
-                      <div className="text-xl font-bold text-primary">
-                        {progressData.total_tables}
+                  {/* Tables Summary - only show if we have progress data */}
+                  {progressData && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="text-center p-3 rounded-lg glass border-border/50">
+                        <div className="text-xl font-bold text-primary">
+                          {progressData.total_tables || 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Total Tables</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">Total Tables</div>
-                    </div>
-                    <div className="text-center p-3 rounded-lg glass border-border/50">
-                      <div className="text-xl font-bold text-success">
-                        {progressData.summary.successful_tables}
+                      <div className="text-center p-3 rounded-lg glass border-border/50">
+                        <div className="text-xl font-bold text-success">
+                          {progressData.summary?.successful_tables || 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Processed</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">Processed</div>
-                    </div>
-                    <div className="text-center p-3 rounded-lg glass border-border/50">
-                      <div className="text-xl font-bold text-warning">
-                        {progressData.tables_pending.length}
+                      <div className="text-center p-3 rounded-lg glass border-border/50">
+                        <div className="text-xl font-bold text-warning">
+                          {progressData.tables_pending?.length || 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Pending</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">Pending</div>
-                    </div>
-                    <div className="text-center p-3 rounded-lg glass border-border/50">
-                      <div className="text-xl font-bold text-accent">
-                        {progressData.summary.total_synced_columns}
+                      <div className="text-center p-3 rounded-lg glass border-border/50">
+                        <div className="text-xl font-bold text-accent">
+                          {progressData.summary?.total_synced_columns || 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">New Columns</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">New Columns</div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Recently Processed Tables */}
-                  {progressData.tables_processed.length > 0 && (
+                  {/* Recently Processed Tables - only show if we have data */}
+                  {progressData?.tables_processed && progressData.tables_processed.length > 0 && (
                     <div className="space-y-3">
                       <h4 className="font-medium">Recently Processed</h4>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
@@ -408,20 +415,6 @@ export function SyncTablesTab() {
                       <div className="text-sm text-muted-foreground">New Columns</div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                // Fallback for old progress display
-                <div className="space-y-4">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <RefreshCw className="w-8 h-8 text-primary animate-spin" />
-                    </div>
-                    <h3 className="text-lg font-medium">Syncing Tables...</h3>
-                    <p className="text-muted-foreground">
-                      Reading database schema and syncing with Confluence
-                    </p>
-                  </div>
-                  <Progress value={overallProgress} className="h-3" />
                 </div>
               )}
             </CardContent>
