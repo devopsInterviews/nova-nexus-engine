@@ -5,7 +5,8 @@ import {
   Activity, 
   Database,
   Cpu,
-  Zap
+  Zap,
+  TestTube
 } from "lucide-react";
 import {
   Sidebar,
@@ -41,6 +42,11 @@ const navigationItems = [
     title: "Analytics",
     url: "/analytics", 
     icon: Activity,
+  },
+  {
+    title: "Tests",
+    url: "/tests",
+    icon: TestTube,
   },
   {
     title: "Settings",
