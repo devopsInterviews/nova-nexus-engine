@@ -110,7 +110,8 @@ export const McpServerTestTab = () => {
   const fetchServers = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/mcp/servers");
+      // Backend mcp_router is mounted at /api, so servers endpoint is /api/servers
+      const response = await fetch("/api/servers");
       const data = await response.json();
       
       if (data.servers) {
@@ -129,7 +130,8 @@ export const McpServerTestTab = () => {
   const fetchTools = async (serverId: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/mcp/servers/${serverId}/tools`);
+      // Backend mcp_router is mounted at /api, so tools endpoint is /api/servers/{serverId}/tools
+      const response = await fetch(`/api/servers/${serverId}/tools`);
       const data = await response.json();
       
       if (data.tools) {
@@ -172,7 +174,7 @@ export const McpServerTestTab = () => {
         }
       });
 
-      const response = await fetch(`/api/mcp/servers/${selectedServer}/tools/${selectedTool}/execute`, {
+      const response = await fetch(`/api/servers/${selectedServer}/tools/${selectedTool}/execute`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -225,7 +227,7 @@ export const McpServerTestTab = () => {
     // Fetch tools for this server if not already loaded
     if (selectedServer !== test.server_id) {
       try {
-        const response = await fetch(`/api/mcp/servers/${test.server_id}/tools`);
+        const response = await fetch(`/api/servers/${test.server_id}/tools`);
         const data = await response.json();
         if (data.tools) {
           setTools(data.tools);

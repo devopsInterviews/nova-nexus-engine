@@ -140,7 +140,23 @@ export const McpClientTestTab = () => {
     try {
       let res;
       // The discovered path doesn't include /api prefix, so we need to add it
-      const url = endpointDetails.path.startsWith('/api') ? endpointDetails.path : `/api${endpointDetails.path}`;
+      // Also handle special cases where the path might already include /api or be a root path
+      let url = endpointDetails.path;
+      if (url === '/' || url.startsWith('/static') || url.includes('openapi') || url === '/docs' || url === '/redoc') {
+        throw new Error('Cannot execute system/static routes');
+      }
+      
+      if (!url.startsWith('/api')) {
+        url = `/api${url}`;
+      }
+      
+      console.log('Executing endpoint:', {
+        original_path: endpointDetails.path,
+        final_url: url,
+        method: endpointDetails.method,
+        params: params
+      });
+      
       const options: RequestInit = {
         method: endpointDetails.method,
         headers: {
@@ -154,6 +170,7 @@ export const McpClientTestTab = () => {
       } else { // GET request
         const query = new URLSearchParams(params).toString();
         const fullUrl = query ? `${url}?${query}` : url;
+        console.log('GET request final URL:', fullUrl);
         res = await fetch(fullUrl, { ...options, method: 'GET' });
       }
       
@@ -206,7 +223,7 @@ export const McpClientTestTab = () => {
 
     const newTest: SavedEndpointTest = {
       id: Date.now().toString(),
-      name: `${selectedEndpoint} - ${new Date().toISOString()}`,
+      name: testName || `${selectedEndpoint} - ${new Date().toISOString()}`,
       endpoint_path: selectedEndpoint.split(' ')[1],
       method: selectedEndpoint.split(' ')[0],
       parameters: requestParameters,
@@ -217,6 +234,7 @@ export const McpClientTestTab = () => {
     const updatedTests = [...savedTests, newTest];
     setSavedTests(updatedTests);
     localStorage.setItem("mcp-client-tests", JSON.stringify(updatedTests));
+    setTestName(""); // Clear the test name field after saving
   };
 
   const loadTest = (test: SavedEndpointTest) => {
@@ -401,7 +419,7 @@ export const McpClientTestTab = () => {
                 <br />
                 <strong>Final URL:</strong> {endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.path}
                 {requestType === 'query' && requestParameters.length > 0 && (
-                  <>?{requestParameters.filter(p => p.key && p.value).map(p => `${p.key}=${p.value}`).join('&')}</>
+                  <>?{requestParameters.filter(p => p.name && p.value).map(p => `${p.name}=${p.value}`).join('&')}</>
                 )}
               </div>
               
