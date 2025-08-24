@@ -175,6 +175,32 @@ export const dbService = {
       body: JSON.stringify(body),
     });
   },
+
+  // Sync all tables to Confluence
+  syncAllTables: async (connection: DbConnection & {
+    space: string;
+    title: string;
+    limit: number;
+  }): Promise<ApiResponse<{ 
+    results: Array<{
+      table: string;
+      newColumns: Array<{ column: string; description: string }>;
+      error: string | null;
+    }>
+  }>> => {
+    const { space, title, limit, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { space, title, limit });
+    return fetchApi<{ 
+      results: Array<{
+        table: string;
+        newColumns: Array<{ column: string; description: string }>;
+        error: string | null;
+      }>
+    }>('/api/sync-all-tables', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // Context for storing connection info across tabs
