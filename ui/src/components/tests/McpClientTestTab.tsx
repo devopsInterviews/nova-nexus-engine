@@ -138,8 +138,8 @@ export const McpClientTestTab = () => {
 
     try {
       let res;
-      // Use the exact path without adding /api prefix
-      const url = `/api${endpointDetails.path}`;
+      // Use the exact path as discovered from the API (already includes /api prefix)
+      const url = endpointDetails.path;
       const options: RequestInit = {
         method: endpointDetails.method,
         headers: {
@@ -398,7 +398,7 @@ export const McpClientTestTab = () => {
               <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
                 <strong>Request Type:</strong> {requestType === 'body' ? 'JSON Body' : 'URL Query Parameters'}
                 <br />
-                <strong>Final URL:</strong> /api{endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.path}
+                <strong>Final URL:</strong> {endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.path}
                 {requestType === 'query' && requestParameters.length > 0 && (
                   <>?{requestParameters.filter(p => p.key && p.value).map(p => `${p.key}=${p.value}`).join('&')}</>
                 )}
