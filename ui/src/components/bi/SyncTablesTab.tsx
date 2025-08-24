@@ -17,12 +17,44 @@ interface SyncResult {
   error: string | null;
 }
 
+interface ProgressData {
+  status: string;
+  stage: string;
+  current_table: string | null;
+  current_table_index: number;
+  total_tables: number;
+  progress_percentage: number;
+  stage_details: string;
+  tables_processed: Array<{
+    table: string;
+    newColumns: Array<{ column: string; description: string }>;
+    error: string | null;
+    stage: string;
+  }>;
+  tables_pending: string[];
+  summary: {
+    total_tables: number;
+    successful_tables: number;
+    failed_tables: number;
+    total_synced_columns: number;
+  };
+  results?: Array<{
+    table: string;
+    newColumns: Array<{ column: string; description: string }>;
+    error: string | null;
+  }>;
+  start_time?: number;
+  end_time?: number;
+  duration?: number;
+}
+
 export function SyncTablesTab() {
   const [confluenceSpace, setConfluenceSpace] = useState("AAA");
   const [confluenceTitle, setConfluenceTitle] = useState("Demo - database keys description");
   const [limit, setLimit] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
+  const [progressData, setProgressData] = useState<ProgressData | null>(null);
   const [overallProgress, setOverallProgress] = useState(0);
   const { currentConnection } = useConnectionContext();
   const { toast } = useToast();
@@ -55,7 +87,7 @@ export function SyncTablesTab() {
       return;
     }
 
-    console.log("🚀 Starting table sync process", {
+    console.log("🚀 Starting enhanced table sync process with progress tracking", {
       connection: {
         host: currentConnection.host,
         database: currentConnection.database,
@@ -68,42 +100,46 @@ export function SyncTablesTab() {
 
     setIsLoading(true);
     setSyncResults([]);
+    setProgressData(null);
     setOverallProgress(0);
 
     try {
-      const response = await dbService.syncAllTables({
+      const response = await dbService.syncAllTablesWithProgress({
         ...currentConnection,
         space: confluenceSpace,
         title: confluenceTitle,
         limit: limit
       });
 
-      console.log("📊 Sync response received", response);
+      console.log("📊 Enhanced sync response received", response);
 
       if (response.status === 'success' && response.data) {
-        const results = response.data.results;
-        setSyncResults(results);
+        const progressInfo = response.data;
+        setProgressData(progressInfo);
+        
+        // Extract final results if available
+        if (progressInfo.results) {
+          setSyncResults(progressInfo.results);
+        }
+        
+        // Set final progress
+        setOverallProgress(progressInfo.progress_percentage);
         
         // Calculate success metrics
-        const totalTables = results.length;
-        const successfulTables = results.filter(r => r.error === null).length;
-        const totalNewColumns = results.reduce((sum, r) => sum + r.newColumns.length, 0);
+        const summary = progressInfo.summary;
         
-        console.log("✅ Sync completed successfully", {
-          totalTables,
-          successfulTables,
-          totalNewColumns,
-          results
+        console.log("✅ Enhanced sync completed successfully", {
+          summary,
+          progressInfo,
+          duration: progressInfo.duration
         });
 
-        setOverallProgress(100);
-        
         toast({
           title: "Sync Completed",
-          description: `Synced ${successfulTables}/${totalTables} tables with ${totalNewColumns} new columns`
+          description: `Synced ${summary.successful_tables}/${summary.total_tables} tables with ${summary.total_synced_columns} new columns in ${progressInfo.duration?.toFixed(1)}s`
         });
       } else {
-        console.error("❌ Sync failed", response.error);
+        console.error("❌ Enhanced sync failed", response.error);
         toast({
           variant: "destructive",
           title: "Sync Failed",
@@ -111,7 +147,7 @@ export function SyncTablesTab() {
         });
       }
     } catch (error) {
-      console.error("💥 Sync error", error);
+      console.error("💥 Enhanced sync error", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -222,8 +258,8 @@ export function SyncTablesTab() {
         </Card>
       </motion.div>
 
-      {/* Sync Progress Overview */}
-      {(isLoading || syncResults.length > 0) && (
+      {/* Enhanced Sync Progress with Detailed Information */}
+      {(isLoading || progressData || syncResults.length > 0) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -234,7 +270,147 @@ export function SyncTablesTab() {
               <CardTitle>Sync Progress</CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
+              {isLoading && progressData ? (
+                <div className="space-y-6">
+                  {/* Current Status */}
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+                    </div>
+                    <h3 className="text-lg font-medium">Syncing Tables...</h3>
+                    <p className="text-muted-foreground">
+                      {progressData.stage_details}
+                    </p>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Overall Progress</span>
+                      <span>{progressData.progress_percentage}%</span>
+                    </div>
+                    <Progress value={progressData.progress_percentage} className="h-3" />
+                  </div>
+
+                  {/* Current Table Info */}
+                  {progressData.current_table && (
+                    <div className="bg-surface-elevated/50 rounded-lg p-4 border border-border/50">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium">Current Table</h4>
+                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                          {progressData.current_table_index}/{progressData.total_tables}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Database className="w-4 h-4 text-primary" />
+                        <code className="font-mono text-primary">{progressData.current_table}</code>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Stage: {progressData.stage.replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Tables Summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="text-center p-3 rounded-lg glass border-border/50">
+                      <div className="text-xl font-bold text-primary">
+                        {progressData.total_tables}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Total Tables</div>
+                    </div>
+                    <div className="text-center p-3 rounded-lg glass border-border/50">
+                      <div className="text-xl font-bold text-success">
+                        {progressData.summary.successful_tables}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Processed</div>
+                    </div>
+                    <div className="text-center p-3 rounded-lg glass border-border/50">
+                      <div className="text-xl font-bold text-warning">
+                        {progressData.tables_pending.length}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Pending</div>
+                    </div>
+                    <div className="text-center p-3 rounded-lg glass border-border/50">
+                      <div className="text-xl font-bold text-accent">
+                        {progressData.summary.total_synced_columns}
+                      </div>
+                      <div className="text-xs text-muted-foreground">New Columns</div>
+                    </div>
+                  </div>
+
+                  {/* Recently Processed Tables */}
+                  {progressData.tables_processed.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Recently Processed</h4>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {progressData.tables_processed.slice(-3).map((table, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 rounded bg-surface/50 border border-border/30">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4 text-success" />
+                              <code className="text-sm font-mono">{table.table}</code>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {table.newColumns.length} columns
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : progressData && progressData.status === 'completed' ? (
+                <div className="space-y-4">
+                  {/* Completion Status */}
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle className="w-8 h-8 text-success" />
+                    </div>
+                    <h3 className="text-lg font-medium">Sync Completed!</h3>
+                    <p className="text-muted-foreground">
+                      {progressData.stage_details}
+                    </p>
+                  </div>
+
+                  {/* Final Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Overall Progress</span>
+                      <span>100%</span>
+                    </div>
+                    <Progress value={100} className="h-3" />
+                  </div>
+
+                  {/* Final Summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 rounded-lg glass border-border/50">
+                      <div className="text-2xl font-bold text-primary">
+                        {progressData.summary.total_tables}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Total Tables</div>
+                    </div>
+                    <div className="text-center p-4 rounded-lg glass border-border/50">
+                      <div className="text-2xl font-bold text-success">
+                        {progressData.summary.successful_tables}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Successful</div>
+                    </div>
+                    <div className="text-center p-4 rounded-lg glass border-border/50">
+                      <div className="text-2xl font-bold text-destructive">
+                        {progressData.summary.failed_tables}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Failed</div>
+                    </div>
+                    <div className="text-center p-4 rounded-lg glass border-border/50">
+                      <div className="text-2xl font-bold text-accent">
+                        {progressData.summary.total_synced_columns}
+                      </div>
+                      <div className="text-sm text-muted-foreground">New Columns</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Fallback for old progress display
                 <div className="space-y-4">
                   <div className="text-center">
                     <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -247,37 +423,6 @@ export function SyncTablesTab() {
                   </div>
                   <Progress value={overallProgress} className="h-3" />
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center p-4 rounded-lg glass border-border/50">
-                      <div className="text-2xl font-bold text-success">
-                        {syncResults.filter(r => r.error === null && r.newColumns.length > 0).length}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Tables Updated</div>
-                    </div>
-                    <div className="text-center p-4 rounded-lg glass border-border/50">
-                      <div className="text-2xl font-bold text-primary">
-                        {syncResults.reduce((sum, r) => sum + r.newColumns.length, 0)}
-                      </div>
-                      <div className="text-sm text-muted-foreground">New Columns</div>
-                    </div>
-                    <div className="text-center p-4 rounded-lg glass border-border/50">
-                      <div className="text-2xl font-bold text-destructive">
-                        {syncResults.filter(r => r.error !== null).length}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Errors</div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Overall Progress</span>
-                      <span>100%</span>
-                    </div>
-                    <Progress value={100} className="h-3" />
-                  </div>
-                </div>
               )}
             </CardContent>
           </Card>
@@ -285,7 +430,7 @@ export function SyncTablesTab() {
       )}
 
       {/* Table Sync Results */}
-      {syncResults.length > 0 && (
+      {(syncResults.length > 0 || (progressData && progressData.results)) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -293,11 +438,11 @@ export function SyncTablesTab() {
         >
           <Card className="glass border-border/50">
             <CardHeader>
-              <CardTitle>Sync Results</CardTitle>
+              <CardTitle>Detailed Sync Results</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {syncResults.map((result, index) => {
+                {(progressData?.results || syncResults).map((result, index) => {
                   const status = getTableStatus(result);
                   const StatusIcon = statusIcons[status as keyof typeof statusIcons];
                   
