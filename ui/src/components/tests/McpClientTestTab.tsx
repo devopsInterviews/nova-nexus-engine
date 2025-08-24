@@ -28,12 +28,12 @@ export const McpClientTestTab = () => {
   const [groupedEndpoints, setGroupedEndpoints] = useState<{ [key: string]: ApiEndpoint[] }>({});
   const [selectedEndpoint, setSelectedEndpoint] = useState<string>("");
   const [requestParameters, setRequestParameters] = useState<RequestParameter[]>([]);
-  const [requestType, setRequestType] = useState<'body' | 'query'>('body');
-  const [executionResult, setExecutionResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>("");
+  const [response, setResponse] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(false);
   const [savedTests, setSavedTests] = useState<SavedEndpointTest[]>([]);
-  const [testName, setTestName] = useState<string>("");
+  const [requestType, setRequestType] = useState<'body' | 'query'>('body');
+  const [filterText, setFilterText] = useState("");
+  const [methodFilter, setMethodFilter] = useState<"ALL" | "GET" | "POST">("ALL");
 
   // Load saved tests from localStorage
   useEffect(() => {
@@ -72,9 +72,21 @@ export const McpClientTestTab = () => {
     } else {
       setRequestParameters([]);
     }
-    setExecutionResult(null);
-    setError("");
+    setResponse(null);
   }, [selectedEndpoint, endpoints]);
+
+  useEffect(() => {
+    if (endpoints.length > 0) {
+      // Filter endpoints based on text input and method filter
+      const filtered = endpoints.filter(endpoint => {
+        const matchesText = endpoint.path.toLowerCase().includes(filterText.toLowerCase());
+        const matchesMethod = methodFilter === "ALL" || endpoint.method === methodFilter;
+        return matchesText && matchesMethod;
+      });
+      
+      setGroupedEndpoints(filtered);
+    }
+  }, [endpoints, filterText, methodFilter]);
 
   const fetchEndpoints = async () => {
     try {
@@ -88,10 +100,60 @@ export const McpClientTestTab = () => {
       }
     } catch (err) {
       console.error("Failed to fetch endpoints:", err);
-      setError("Failed to load API endpoints");
     } finally {
       setLoading(false);
     }
+  };
+
+  const executeEndpoint = async () => {
+    if (!selectedEndpoint) return;
+
+    setLoading(true);
+    setResponse(null);
+
+    const endpointDetails = endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint);
+    if (!endpointDetails) {
+      setLoading(false);
+      return;
+    }
+
+    const params = requestParameters.reduce((acc, p) => {
+      acc[p.key] = p.value;
+      return acc;
+    }, {} as Record<string, any>);
+
+    try {
+      let res;
+      const url = endpointDetails.path;
+      const options: RequestInit = {
+        method: endpointDetails.method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      };
+
+      if (endpointDetails.method === 'POST') {
+        options.body = JSON.stringify(params);
+        res = await fetch(url, options);
+      } else { // Assuming GET
+        const query = new URLSearchParams(params).toString();
+        res = await fetch(`${url}?${query}`, options);
+      }
+      
+      const data = await res.json();
+      setResponse({ status: res.status, data });
+    } catch (error) {
+      console.error("Error executing endpoint:", error);
+      setResponse({ status: 500, data: { error: (error as Error).message } });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEndpointChange = (value: string) => {
+    setSelectedEndpoint(value);
+    setRequestParameters([]);
+    setResponse(null);
   };
 
   const addParameter = () => {
@@ -108,380 +170,270 @@ export const McpClientTestTab = () => {
     setRequestParameters(requestParameters.filter((_, i) => i !== index));
   };
 
-  const executeEndpoint = async () => {
-    if (!selectedEndpoint) {
-      setError("Please select an endpoint");
-      return;
-    }
-
-    const [method, path] = selectedEndpoint.split(' ', 2);
-    
-    try {
-      setLoading(true);
-      setError("");
-      
-      // Convert parameters to object
-      const parameterObject: { [key: string]: string } = {};
-      requestParameters.forEach(param => {
-        if (param.key && param.value) {
-          parameterObject[param.key] = param.value;
-        }
-      });
-
-      let url = `/api${path}`;
-      let options: RequestInit = {
-        method: method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      };
-
-      if (requestType === 'query' || method === 'GET') {
-        // Add parameters as query string
-        const queryParams = new URLSearchParams();
-        Object.entries(parameterObject).forEach(([key, value]) => {
-          queryParams.append(key, value);
-        });
-        if (queryParams.toString()) {
-          url += `?${queryParams.toString()}`;
-        }
-      } else {
-        // Add parameters as request body
-        options.body = JSON.stringify(parameterObject);
-      }
-
-      const response = await fetch(url, options);
-      const result = await response.json();
-      
-      // Create detailed result object
-      const executionResult = {
-        status: response.ok ? "success" : "error",
-        status_code: response.status,
-        method: method,
-        url: url,
-        request_type: requestType,
-        parameters_sent: parameterObject,
-        response: result,
-        response_headers: Object.fromEntries(response.headers.entries()),
-        timestamp: new Date().toISOString()
-      };
-      
-      setExecutionResult(executionResult);
-      
-      if (!response.ok) {
-        setError(`HTTP ${response.status}: ${result.error || result.detail || "Request failed"}`);
-      }
-    } catch (err) {
-      console.error("Endpoint execution failed:", err);
-      setError("Failed to execute endpoint");
-      const errorResult = {
-        status: "error",
-        error: err instanceof Error ? err.message : "Unknown error",
-        method: method,
-        url: `/api${path}`,
-        parameters_sent: {},
-        timestamp: new Date().toISOString()
-      };
-      setExecutionResult(errorResult);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const saveTest = () => {
-    if (!testName || !selectedEndpoint) {
-      setError("Please provide a test name and select an endpoint");
-      return;
-    }
+    if (!selectedEndpoint) return;
 
-    const [method, path] = selectedEndpoint.split(' ', 2);
     const newTest: SavedEndpointTest = {
       id: Date.now().toString(),
-      name: testName,
-      endpoint_path: path,
-      method: method,
-      parameters: [...requestParameters],
+      name: `${selectedEndpoint} - ${new Date().toISOString()}`,
+      endpoint_path: selectedEndpoint.split(' ')[1],
+      method: selectedEndpoint.split(' ')[0],
+      parameters: requestParameters,
       request_type: requestType,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
 
-    const updated = [...savedTests, newTest];
-    setSavedTests(updated);
-    localStorage.setItem("mcp-client-tests", JSON.stringify(updated));
-    setTestName("");
-    setError("");
+    const updatedTests = [...savedTests, newTest];
+    setSavedTests(updatedTests);
+    localStorage.setItem("mcp-client-tests", JSON.stringify(updatedTests));
   };
 
   const loadTest = (test: SavedEndpointTest) => {
     setSelectedEndpoint(`${test.method} ${test.endpoint_path}`);
-    setRequestParameters([...test.parameters]);
+    setRequestParameters(test.parameters);
     setRequestType(test.request_type);
-    setExecutionResult(null);
-    setError("");
+    setResponse(null);
   };
 
-  const deleteTest = (testId: string) => {
-    const updated = savedTests.filter(t => t.id !== testId);
-    setSavedTests(updated);
-    localStorage.setItem("mcp-client-tests", JSON.stringify(updated));
+  const deleteTest = (id: string) => {
+    const updatedTests = savedTests.filter(t => t.id !== id);
+    setSavedTests(updatedTests);
+    localStorage.setItem("mcp-client-tests", JSON.stringify(updatedTests));
   };
 
-  const selectedEndpointInfo = endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint);
+  const filteredEndpoints = Object.entries(groupedEndpoints).filter(([tag]) => tag.toLowerCase().includes(filterText.toLowerCase()));
 
   return (
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold mb-2">FastAPI Client Testing</h3>
         <p className="text-sm text-muted-foreground">
-          Test FastAPI endpoints by selecting an endpoint, providing parameters, and choosing request type.
-          You can send data as request body (JSON) or query parameters.
+          Test FastAPI client endpoints with interactive interfaces
         </p>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
-
-      {/* Endpoint Selection */}
-      <div className="border rounded-lg p-4">
-        <h4 className="font-medium mb-3">1. Select API Endpoint</h4>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Available Endpoints ({endpoints.length} total)
-            </label>
-            <select 
-              value={selectedEndpoint} 
-              onChange={(e) => setSelectedEndpoint(e.target.value)}
-              className="w-full p-2 border rounded"
-            >
-              <option value="">Choose an endpoint to test</option>
-              {Object.entries(groupedEndpoints).map(([tag, taggedEndpoints]) => (
-                <optgroup key={tag} label={`${tag.toUpperCase()} (${(taggedEndpoints as ApiEndpoint[]).length})`}>
-                  {(taggedEndpoints as ApiEndpoint[]).map((endpoint) => (
-                    <option key={`${endpoint.method} ${endpoint.path}`} value={`${endpoint.method} ${endpoint.path}`}>
-                      {endpoint.method} {endpoint.path}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-
-          {selectedEndpointInfo && (
-            <div className="text-sm bg-gray-50 p-3 rounded">
-              <p className="font-medium">Description:</p>
-              <p className="text-gray-600 mb-2">{selectedEndpointInfo.description}</p>
-              <div className="flex items-center space-x-4 mb-2">
-                <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                  selectedEndpointInfo.method === 'GET' ? 'bg-blue-100 text-blue-800' :
-                  selectedEndpointInfo.method === 'POST' ? 'bg-green-100 text-green-800' :
-                  selectedEndpointInfo.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
-                  selectedEndpointInfo.method === 'DELETE' ? 'bg-red-100 text-red-800' :
-                  'bg-gray-100 text-gray-800'
-                }`}>
-                  {selectedEndpointInfo.method}
-                </span>
-                <span className="text-sm text-gray-600">{selectedEndpointInfo.path}</span>
-              </div>
-              {selectedEndpointInfo.parameters && selectedEndpointInfo.parameters.length > 0 && (
-                <div>
-                  <p className="font-medium">Expected Parameters:</p>
-                  <div className="text-xs text-gray-600">
-                    {selectedEndpointInfo.parameters.join(", ")}
-                  </div>
-                </div>
-              )}
-              <div className="mt-2">
-                <p className="font-medium">Tags:</p>
-                <div className="space-x-1">
-                  {selectedEndpointInfo.tags.map((tag) => (
-                    <span key={tag} className="inline-block px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+      <div className="flex space-x-2">
+        <input
+          type="text"
+          placeholder="Filter endpoints..."
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          className="w-full p-2 border rounded"
+        />
+        <div className="flex items-center space-x-1">
+          <button onClick={() => setMethodFilter('ALL')} className={`px-3 py-1 rounded text-sm ${methodFilter === 'ALL' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}>ALL</button>
+          <button onClick={() => setMethodFilter('GET')} className={`px-3 py-1 rounded text-sm ${methodFilter === 'GET' ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>GET</button>
+          <button onClick={() => setMethodFilter('POST')} className={`px-3 py-1 rounded text-sm ${methodFilter === 'POST' ? 'bg-yellow-500 text-white' : 'bg-gray-200'}`}>POST</button>
         </div>
       </div>
 
-      {/* Request Type Selection */}
-      {selectedEndpoint && (
-        <div className="border rounded-lg p-4">
-          <h4 className="font-medium mb-3">2. Request Type</h4>
-          <div className="space-y-2">
-            <label className="flex items-center space-x-2">
-              <input
-                type="radio"
-                value="body"
-                checked={requestType === 'body'}
-                onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
-                disabled={selectedEndpointInfo?.method === 'GET'}
-              />
-              <span>Request Body (JSON)</span>
-              <span className="text-xs text-gray-500">- Send parameters as JSON in request body</span>
-            </label>
-            <label className="flex items-center space-x-2">
-              <input
-                type="radio"
-                value="query"
-                checked={requestType === 'query'}
-                onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
-              />
-              <span>Query Parameters</span>
-              <span className="text-xs text-gray-500">- Send parameters in URL query string</span>
-            </label>
-          </div>
-        </div>
-      )}
-
-      {/* Parameter Configuration */}
-      {selectedEndpoint && (
-        <div className="border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">3. Configure Parameters</h4>
-            <button
-              onClick={addParameter}
-              className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-            >
-              + Add Parameter
-            </button>
-          </div>
+      {/* Endpoint Selection */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h4 className="font-medium mb-3">1. Select API Endpoint</h4>
           <div className="space-y-4">
-            <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
-              <strong>Request Type:</strong> {requestType === 'body' ? 'JSON Body' : 'URL Query Parameters'}
-              <br />
-              <strong>Final URL:</strong> /api{selectedEndpointInfo?.path}
-              {requestType === 'query' && requestParameters.length > 0 && (
-                <>?{requestParameters.filter(p => p.key && p.value).map(p => `${p.key}=${p.value}`).join('&')}</>
-              )}
-            </div>
-            
-            {requestParameters.length === 0 ? (
-              <p className="text-sm text-gray-600">
-                No parameters configured. Click "Add Parameter" to add request parameters.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {requestParameters.map((param, index) => (
-                  <div key={index} className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      placeholder="Parameter name"
-                      value={param.key}
-                      onChange={(e) => updateParameter(index, 'key', e.target.value)}
-                      className="flex-1 p-2 border rounded"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Parameter value"
-                      value={param.value}
-                      onChange={(e) => updateParameter(index, 'value', e.target.value)}
-                      className="flex-2 p-2 border rounded"
-                    />
-                    <button
-                      onClick={() => removeParameter(index)}
-                      className="px-2 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                    >
-                      ✕
-                    </button>
-                  </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Available Endpoints ({endpoints.length} total)
+              </label>
+              <select 
+                value={selectedEndpoint} 
+                onChange={(e) => handleEndpointChange(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">Choose an endpoint to test</option>
+                {filteredEndpoints.map(([tag, taggedEndpoints]) => (
+                  <optgroup key={tag} label={`${tag.toUpperCase()} (${(taggedEndpoints as ApiEndpoint[]).length})`}>
+                    {(taggedEndpoints as ApiEndpoint[]).map((endpoint) => (
+                      <option key={`${endpoint.method} ${endpoint.path}`} value={`${endpoint.method} ${endpoint.path}`}>
+                        {endpoint.method} {endpoint.path}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
+              </select>
+            </div>
+
+            {selectedEndpoint && (
+              <div className="text-sm bg-gray-50 p-3 rounded">
+                <p className="font-medium">Description:</p>
+                <p className="text-gray-600 mb-2">{endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.description}</p>
+                <div className="flex items-center space-x-4 mb-2">
+                  <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                    endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method === 'GET' ? 'bg-blue-100 text-blue-800' :
+                    endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method === 'POST' ? 'bg-green-100 text-green-800' :
+                    endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
+                    endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method === 'DELETE' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method}
+                  </span>
+                  <span className="text-sm text-gray-600">{endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.path}</span>
+                </div>
+                {endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.parameters && endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.parameters.length > 0 && (
+                  <div>
+                    <p className="font-medium">Expected Parameters:</p>
+                    <div className="text-xs text-gray-600">
+                      {endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.parameters.join(", ")}
+                    </div>
+                  </div>
+                )}
+                <div className="mt-2">
+                  <p className="font-medium">Tags:</p>
+                  <div className="space-x-1">
+                    {endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.tags.map((tag) => (
+                      <span key={tag} className="inline-block px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
+          </div>
+        </div>
 
-            <div>
-              <button 
-                onClick={executeEndpoint} 
-                disabled={loading || !selectedEndpoint}
-                className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300"
+        {/* Request Type Selection */}
+        {selectedEndpoint && (
+          <div className="border rounded-lg p-4">
+            <h4 className="font-medium mb-3">2. Request Type</h4>
+            <div className="space-y-2">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  value="body"
+                  checked={requestType === 'body'}
+                  onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
+                  disabled={endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.method === 'GET'}
+                />
+                <span>Request Body (JSON)</span>
+                <span className="text-xs text-gray-500">- Send parameters as JSON in request body</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  value="query"
+                  checked={requestType === 'query'}
+                  onChange={(e) => setRequestType(e.target.value as 'body' | 'query')}
+                />
+                <span>Query Parameters</span>
+                <span className="text-xs text-gray-500">- Send parameters in URL query string</span>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* Parameter Configuration */}
+        {selectedEndpoint && (
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium">3. Configure Parameters</h4>
+              <button
+                onClick={addParameter}
+                className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
               >
-                {loading ? "Executing..." : "🚀 Execute Endpoint"}
+                + Add Parameter
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
+                <strong>Request Type:</strong> {requestType === 'body' ? 'JSON Body' : 'URL Query Parameters'}
+                <br />
+                <strong>Final URL:</strong> /api{endpoints.find(e => `${e.method} ${e.path}` === selectedEndpoint)?.path}
+                {requestType === 'query' && requestParameters.length > 0 && (
+                  <>?{requestParameters.filter(p => p.key && p.value).map(p => `${p.key}=${p.value}`).join('&')}</>
+                )}
+              </div>
+              
+              {requestParameters.length === 0 ? (
+                <p className="text-sm text-gray-600">
+                  No parameters configured. Click "Add Parameter" to add request parameters.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {requestParameters.map((param, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        placeholder="Parameter name"
+                        value={param.key}
+                        onChange={(e) => updateParameter(index, 'key', e.target.value)}
+                        className="flex-1 p-2 border rounded"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Parameter value"
+                        value={param.value}
+                        onChange={(e) => updateParameter(index, 'value', e.target.value)}
+                        className="flex-2 p-2 border rounded"
+                      />
+                      <button
+                        onClick={() => removeParameter(index)}
+                        className="px-2 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div>
+                <button 
+                  onClick={executeEndpoint} 
+                  disabled={loading || !selectedEndpoint}
+                  className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300"
+                >
+                  {loading ? "Executing..." : "🚀 Execute Endpoint"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Save Test Configuration */}
+        {selectedEndpoint && (
+          <div className="border rounded-lg p-4">
+            <h4 className="font-medium mb-3">4. Save Test Configuration</h4>
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                placeholder="Test configuration name"
+                value={requestParameters.length > 0 ? `${requestParameters[0].value} - ${new Date().toISOString()}` : ""}
+                readOnly
+                className="flex-1 p-2 border rounded"
+              />
+              <button 
+                onClick={saveTest} 
+                disabled={loading || !selectedEndpoint}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
+              >
+                💾 Save Test
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Save Test Configuration */}
-      {selectedEndpoint && (
-        <div className="border rounded-lg p-4">
-          <h4 className="font-medium mb-3">4. Save Test Configuration</h4>
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              placeholder="Test configuration name"
-              value={testName}
-              onChange={(e) => setTestName(e.target.value)}
-              className="flex-1 p-2 border rounded"
-            />
-            <button 
-              onClick={saveTest} 
-              disabled={!testName}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
-            >
-              💾 Save Test
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Execution Results */}
-      {executionResult && (
-        <div className="border rounded-lg p-4">
-          <h4 className="font-medium mb-3">Execution Results</h4>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="flex items-center space-x-2">
+        {/* Response */}
+        {response && (
+          <div className="border rounded-lg p-4">
+            <h4 className="font-medium mb-3">Response</h4>
+            <div className="text-sm">
+              <div className="flex items-center justify-between mb-2">
                 <span className="font-medium">Status:</span>
-                <span className={`inline-block px-2 py-1 rounded text-xs ${
-                  executionResult.status === "success" ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                <span className={`px-2 py-1 rounded text-xs ${
+                  response.status === 200 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {executionResult.status} {executionResult.status_code && `(${executionResult.status_code})`}
+                  {response.status}
                 </span>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className="font-medium">Method:</span>
-                <span className="text-gray-600">{executionResult.method}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="font-medium">URL:</span>
-                <span className="text-gray-600 text-xs">{executionResult.url}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="font-medium">Request Type:</span>
-                <span className="text-gray-600">{executionResult.request_type}</span>
-              </div>
-            </div>
-            
-            {executionResult.parameters_sent && Object.keys(executionResult.parameters_sent).length > 0 && (
-              <div>
-                <label className="block text-sm font-medium mb-2">Parameters Sent:</label>
-                <textarea
-                  value={JSON.stringify(executionResult.parameters_sent, null, 2)}
-                  readOnly
-                  className="w-full p-2 border rounded font-mono text-xs"
-                  rows={4}
-                />
-              </div>
-            )}
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Response:</label>
-              <textarea
-                value={JSON.stringify(executionResult.response, null, 2)}
-                readOnly
-                className="w-full p-3 border rounded font-mono text-xs"
-                rows={12}
-              />
+              <pre className="bg-gray-50 p-3 rounded text-xs font-mono overflow-x-auto">
+                {JSON.stringify(response.data, null, 2)}
+              </pre>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Saved Tests */}
       {savedTests.length > 0 && (
