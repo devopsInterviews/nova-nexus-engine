@@ -509,7 +509,7 @@ async def mcp_health_check():
         )
 
 # API Endpoint Discovery (moved from db_routes.py)
-@router.get("/endpoints", tags=["API Discovery"])
+@router.get("/all-endpoints", tags=["API Discovery"])
 async def get_api_endpoints(request: Request):
     """
     Discover all available FastAPI endpoints with real route information
@@ -524,7 +524,7 @@ async def get_api_endpoints(request: Request):
         - INFO: Endpoint discovery process and results
         - DEBUG: Individual route details and parameter information
     """
-    logger.info("GET /api/endpoints - API endpoint discovery initiated")
+    logger.info("GET /api/all-endpoints - API endpoint discovery initiated")
     
     try:
         from app.client import app  # Get the FastAPI app instance
