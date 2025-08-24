@@ -23,7 +23,7 @@ interface SavedEndpointTest {
   created_at: string;
 }
 
-export function McpClientTestTab() {
+const McpClientTestTab = () => {
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [groupedEndpoints, setGroupedEndpoints] = useState<{ [key: string]: ApiEndpoint[] }>({});
   const [selectedEndpoint, setSelectedEndpoint] = useState<string>("");
@@ -259,8 +259,8 @@ export function McpClientTestTab() {
             >
               <option value="">Choose an endpoint to test</option>
               {Object.entries(groupedEndpoints).map(([tag, taggedEndpoints]) => (
-                <optgroup key={tag} label={`${tag.toUpperCase()} (${taggedEndpoints.length})`}>
-                  {taggedEndpoints.map((endpoint) => (
+                <optgroup key={tag} label={`${tag.toUpperCase()} (${(taggedEndpoints as ApiEndpoint[]).length})`}>
+                  {(taggedEndpoints as ApiEndpoint[]).map((endpoint) => (
                     <option key={`${endpoint.method} ${endpoint.path}`} value={`${endpoint.method} ${endpoint.path}`}>
                       {endpoint.method} {endpoint.path}
                     </option>
@@ -517,4 +517,7 @@ export function McpClientTestTab() {
       )}
     </div>
   );
-}
+};
+
+export { McpClientTestTab };
+export default McpClientTestTab;
