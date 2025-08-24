@@ -105,7 +105,7 @@ export const McpClientTestTab = () => {
   const fetchEndpoints = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/mcp/endpoints");
+      const response = await fetch("/api/mcp/all-endpoints");
       const data = await response.json();
       
       if (data.endpoints) {
