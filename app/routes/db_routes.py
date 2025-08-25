@@ -3,6 +3,7 @@ import json
 import traceback
 import os
 import time
+import re
 from pathlib import Path
 from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Request
@@ -629,11 +630,48 @@ async def suggest_columns(request: Request):
         columns: List[Dict[str, Any]] = []
         for key in keys:
             logger.debug("suggest_columns: parsing key: %s", key)
+            
             # Parse format: "table.column - description - value type"
-            parts = [p.strip() for p in key.split(" - ", 2)]  # Fixed: use " - " with spaces
-            column_name = parts[0] if parts else key
-            description = parts[1] if len(parts) > 1 else ""
-            data_type = parts[2] if len(parts) > 2 else "TEXT"
+            # But also handle cases where type might be at the end of description
+            parts = [p.strip() for p in key.split(" - ")]
+            
+            if len(parts) >= 3:
+                # Standard format: "table.column - description - type"
+                column_name = parts[0]
+                description = parts[1]
+                data_type = parts[2]
+            elif len(parts) == 2:
+                # Format: "table.column - description with type at end"
+                column_name = parts[0]
+                description_with_type = parts[1]
+                
+                # Try to extract type from end of description
+                # Look for common database types at the end
+                type_pattern = r'\b(varchar|integer|int|bigint|smallint|text|char|boolean|bool|decimal|numeric|timestamp|datetime|date|time|float|double|real)\b\s*$'
+                type_match = re.search(type_pattern, description_with_type, re.IGNORECASE)
+                
+                if type_match:
+                    data_type = type_match.group(1).upper()
+                    # Remove the type from description
+                    description = description_with_type[:type_match.start()].strip()
+                    # Remove trailing dash if present
+                    description = description.rstrip(' -')
+                else:
+                    description = description_with_type
+                    data_type = "TEXT"
+            else:
+                # Only column name provided
+                column_name = parts[0] if parts else key
+                description = ""
+                data_type = "TEXT"
+            
+            # Clean up the data type - handle VARCHAR(255) etc.
+            if data_type != "TEXT":
+                type_match = re.match(r'^([A-Z]+)(?:\(\d+\))?', data_type.upper())
+                if type_match:
+                    data_type = type_match.group(1)
+                else:
+                    data_type = data_type.upper()
             
             parsed_column = {
                 "name": column_name,
