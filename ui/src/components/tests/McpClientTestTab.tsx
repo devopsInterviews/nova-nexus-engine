@@ -24,64 +24,7 @@ interface SavedEndpointTest {
   created_at: string;
 }
 
-// Helper component to render different types of response data
-const ResponseRenderer = ({ data }: { data: any }) => {
-  // If data is a string that looks like structured data (contains newlines), format it nicely
-  if (typeof data === 'string') {
-    // Check if it's a list-like string (contains newlines)
-    if (data.includes('\n')) {
-      const lines = data.split('\n').filter(line => line.trim());
-      return (
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-gray-600 mb-2">Formatted Result ({lines.length} items):</div>
-          <div className="bg-gray-50 p-3 rounded border">
-            {lines.map((line, index) => (
-              <div key={index} className="text-sm font-mono py-1 border-b border-gray-200 last:border-b-0">
-                {line.trim()}
-              </div>
-            ))}
-          </div>
-          <details className="mt-4">
-            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-              View Raw Response
-            </summary>
-            <pre className="bg-gray-100 p-3 rounded text-xs font-mono overflow-x-auto mt-2 border">
-              {data}
-            </pre>
-          </details>
-        </div>
-      );
-    }
-    
-    // For short strings, just display them nicely
-    return (
-      <div className="bg-gray-50 p-3 rounded text-sm">
-        <div className="text-xs font-medium text-gray-600 mb-1">String Response:</div>
-        <div className="font-mono">{data}</div>
-      </div>
-    );
-  }
-  
-  // For objects/arrays, show formatted JSON
-  if (typeof data === 'object' && data !== null) {
-    return (
-      <div className="space-y-2">
-        <div className="text-xs font-medium text-gray-600">JSON Response:</div>
-        <pre className="bg-gray-50 p-3 rounded text-xs font-mono overflow-x-auto border">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      </div>
-    );
-  }
-  
-  // For primitives (numbers, booleans, etc.)
-  return (
-    <div className="bg-gray-50 p-3 rounded text-sm">
-      <div className="text-xs font-medium text-gray-600 mb-1">Response:</div>
-      <div className="font-mono">{String(data)}</div>
-    </div>
-  );
-};
+
 
 export const McpClientTestTab = () => {
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
@@ -629,7 +572,12 @@ export const McpClientTestTab = () => {
                   {response.status}
                 </span>
               </div>
-              <ResponseRenderer data={response.data} />
+              <div className="mt-2">
+                <div className="text-xs font-medium text-gray-600 mb-2">Response Data:</div>
+                <pre className="bg-gray-50 p-3 rounded text-xs font-mono overflow-x-auto border whitespace-pre-wrap">
+                  {typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2)}
+                </pre>
+              </div>
             </div>
           </div>
         )}
