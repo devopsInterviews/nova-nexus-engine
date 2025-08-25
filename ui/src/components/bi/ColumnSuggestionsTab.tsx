@@ -83,13 +83,25 @@ export function ColumnSuggestionsTab() {
     return "bg-gray-400/15 text-gray-600 border-gray-400/30";
   };
 
-  // Parse column suggestion in format "tablename.keyname - description - type"
+  // Parse column suggestion - handles both objects from API and string formats
   const parseColumnSuggestion = (suggestion: any) => {
     if (typeof suggestion === 'object' && suggestion.name) {
-      // Already parsed object
+      // Already parsed object from API
+      let type = (suggestion.data_type || suggestion.type || "TEXT").toString();
+      
+      // Clean up the type - extract the actual database type
+      // Handle cases like "VARCHAR(255)", "INTEGER", "TEXT", etc.
+      const typeMatch = type.match(/^([A-Z]+(?:\(\d+\))?)/i);
+      if (typeMatch) {
+        type = typeMatch[1].toUpperCase();
+      } else {
+        // If no match, take the first word and uppercase it
+        type = type.split(/\s+/)[0].toUpperCase();
+      }
+      
       return {
         name: suggestion.name || "",
-        type: (suggestion.data_type || suggestion.type || "TEXT").toUpperCase(),
+        type: type,
         description: suggestion.description || ""
       };
     }
