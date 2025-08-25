@@ -95,33 +95,39 @@ export function ColumnSuggestionsTab() {
     }
     
     if (typeof suggestion === 'string') {
-      // Parse string format "tablename.keyname - description - type (optional extra info)"
+      // Parse string format "tablename.keyname - description - type"
       const parts = suggestion.split(' - ');
+      
       if (parts.length >= 3) {
-        // Extract just the type part and remove any extra info in parentheses or after spaces
-        let typeString = parts[2].trim();
+        // We have all three parts: name, description, type
+        const name = parts[0].trim();
+        const description = parts[1].trim();
+        let type = parts[2].trim();
         
-        // Remove anything in parentheses: "VARCHAR(255) (example)" -> "VARCHAR(255)"
-        typeString = typeString.replace(/\s*\([^)]*\)\s*$/, '');
-        
-        // Extract the actual type before any additional words
-        // "INTEGER auto-increment" -> "INTEGER"
-        // "VARCHAR(255) unique" -> "VARCHAR(255)" 
-        const typeMatch = typeString.match(/^([A-Z]+(?:\(\d+\))?)/i);
-        const cleanType = typeMatch ? typeMatch[1] : typeString.split(/\s+/)[0];
+        // Clean up the type - take only the first word/type declaration
+        // Handle cases like "VARCHAR(255)" or "INTEGER" or "TEXT etc"
+        const typeMatch = type.match(/^([A-Z]+(?:\(\d+\))?)/i);
+        if (typeMatch) {
+          type = typeMatch[1].toUpperCase();
+        } else {
+          // If no match, take the first word and uppercase it
+          type = type.split(/\s+/)[0].toUpperCase();
+        }
         
         return {
-          name: parts[0].trim(),
-          description: parts[1].trim(),
-          type: cleanType.toUpperCase()
+          name: name,
+          description: description,
+          type: type
         };
       } else if (parts.length === 2) {
+        // Only name and description, default type to TEXT
         return {
           name: parts[0].trim(),
           description: parts[1].trim(),
           type: "TEXT"
         };
       } else {
+        // Only name provided
         return {
           name: suggestion.trim(),
           description: "",
