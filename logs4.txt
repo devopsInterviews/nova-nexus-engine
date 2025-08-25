@@ -1,5 +1,0 @@
-{
-  "error": "Server returned 200 OK",
-  "content_type": "text/html; charset=utf-8",
-  "raw_response": "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>MCP Control Center - The Future of Infrastructure Management</title>\n    <meta name=\"description\" content=\"Next-generation DevOps and BI control center with AI-powered insights, real-time monitoring, and unified system management.\" />\n    <meta name=\"author\" content=\"MCP Team\" />\n    <meta name=\"keywords\" content=\"DevOps, Business Intellig"
-}
