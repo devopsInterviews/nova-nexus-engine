@@ -57,7 +57,11 @@ class Test(Base):
 def get_db_url():
     return f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@{os.getenv('POSTGRES_HOST')}/{os.getenv('POSTGRES_DB')}"
 
+engine = None
+SessionLocal = None
+
 def init_db():
+    global engine, SessionLocal
     db_url = get_db_url()
     engine = create_engine(db_url)
     
@@ -79,28 +83,31 @@ def init_db():
 
     Base.metadata.create_all(engine)
     
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    
     # Create admin user if it doesn't exist
-    admin_user = session.query(User).filter_by(username='admin').first()
-    if not admin_user:
-        logger.info("Admin user not found, creating one.")
-        admin_password = os.getenv('ADMIN_PASSWORD', 'admin')
-        admin_user = User(username='admin')
-        admin_user.set_password(admin_password)
-        session.add(admin_user)
-        session.commit()
-        logger.info("Admin user created.")
-    else:
-        logger.info("Admin user already exists.")
-        
-    session.close()
-    return engine
-
-engine = init_db()
-Session = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        admin_user = session.query(User).filter_by(username='admin').first()
+        if not admin_user:
+            logger.info("Admin user not found, creating one.")
+            admin_password = os.getenv('ADMIN_PASSWORD', 'admin')
+            admin_user = User(username='admin')
+            admin_user.set_password(admin_password)
+            session.add(admin_user)
+            session.commit()
+            logger.info("Admin user created.")
+        else:
+            logger.info("Admin user already exists.")
+    finally:
+        session.close()
 
 def get_db_session():
-    return Session()
+    if SessionLocal is None:
+        raise Exception("Database is not initialized. Call init_db() first.")
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
