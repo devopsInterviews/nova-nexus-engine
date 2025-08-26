@@ -1,0 +1,58 @@
+# Development values for mcp-client
+# Use this file for local development: helm install mcp-client ./charts/mcp-client -f values-dev.yaml
+
+# Development image settings
+image:
+  repository: mcp-client
+  tag: "dev"
+  pullPolicy: Always
+
+# Development environment variables
+env:
+  LOG_LEVEL: "DEBUG"
+  MCP_SERVER_URL: "http://localhost:8050/mcp/"
+  LLM_API_URL: "http://localhost:11434/v1"  # Local Ollama
+  LLM_MODEL: "llama2"  # Local model
+
+# Reduced resources for development
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# PostgreSQL development settings
+postgres:
+  password: "devpassword123"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  persistence:
+    size: 2Gi  # Smaller for dev
+
+# Enable development features
+features:
+  enableUserRegistration: true
+  enableGuestAccess: true
+  enableMetrics: false
+
+# Development ingress
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: mcp-client.dev.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Security context for development (less restrictive)
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0

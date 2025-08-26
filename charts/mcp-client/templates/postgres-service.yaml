@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "mcp-client.labels" . | nindent 4 }}
     app.kubernetes.io/component: database
+    network-pool: {{ .Values.service.networkPool }}
 spec:
   type: ClusterIP
   ports:
