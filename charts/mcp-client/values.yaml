@@ -2,57 +2,170 @@
 
 # Docker image settings
 image:
-  repository:
-  tag:
-  pullPolicy:
+  repository: mcp-client
+  tag: "latest"
+  pullPolicy: IfNotPresent
 
 # Client settings
 client:
-  host:
-  port:
+  host: "0.0.0.0"
+  port: 8000
 
 # Environment variables for the client
 env:
-  MCP_SERVER_URL:
-  LLM_API_URL:
-  LLM_MODEL:
-  LLM_API_KEY:
-  LLM_SSL_VERIFY:
-  LOG_LEVEL:
+  MCP_SERVER_URL: "http://localhost:8050/mcp/"
+  LLM_API_URL: "https://api.openai.com/v1"
+  LLM_MODEL: "gpt-4"
+  LLM_API_KEY: ""  # Set this via secret or override
+  LLM_SSL_VERIFY: "true"
+  LOG_LEVEL: "INFO"
+  # Database connection
+  DATABASE_URL: ""  # Will be constructed from other DB settings
+  DATABASE_HOST: "mcp-client-postgres"  # Service name
+  DATABASE_PORT: 5432
+  DATABASE_NAME: "mcp_client"
+  DATABASE_USER: "mcp_user"
+  DATABASE_PASSWORD: ""  # Will use postgres.password
 
 # Replicas
-replicaCount:
+replicaCount: 1
 
 # Resources
 resources:
   limits:
-    cpu:
-    memory:
+    cpu: 1000m
+    memory: 1Gi
   requests:
-    cpu:
-    memory:
+    cpu: 500m
+    memory: 512Mi
 
 # Service settings
 service:
-  type: 
-  port:
-  networkPool:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
 
 # Liveness/Readiness probes for client
 livenessProbe:
   httpGet:
     path: /health
     port: 8000
-  initialDelaySeconds: 20
-  periodSeconds: 90
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 readinessProbe:
   httpGet:
     path: /health
     port: 8000
-  initialDelaySeconds: 10
-  periodSeconds: 60
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 # Pod labels and annotations
 podLabels: {}
 podAnnotations: {}
+
+# Node selector for pod placement
+nodeSelector: {}
+
+# Tolerations for pod assignment
+tolerations: []
+
+# Affinity for pod assignment
+affinity: {}
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Pod security context
+podSecurityContext:
+  fsGroup: 1000
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: mcp-client.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Autoscaling configuration
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# PostgreSQL Database Configuration
+postgres:
+  # Database credentials
+  database: mcp_client
+  username: mcp_user
+  password: "McpClient2025!SecurePassword"  # Change this in production!
+  
+  # Resource allocation
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  
+  # Persistence settings
+  persistence:
+    enabled: true
+    size: 10Gi
+    # Storage class - leave empty or comment out if you don't have one
+    # storageClass: "fast-ssd"  # Uncomment and set when you have a storage class
+    storageClass: ""  # Empty means no storage class, will use host path
+    
+    # Host path settings (used when no storage class is available)
+    hostPath: "/data/mcp-client-postgres"  # Path on the host where data will be stored
+    nodeSelector: ""  # Specific node to run postgres on (leave empty for default)
+
+# Authentication and Security
+auth:
+  # JWT token settings
+  jwtSecret: "your-super-secret-jwt-key-change-in-production"  # Change this!
+  accessTokenExpire: 3600  # 1 hour in seconds
+  refreshTokenExpire: 604800  # 7 days in seconds
+  
+  # Default admin user (created automatically)
+  admin:
+    username: "admin"
+    password: "admin123"  # Change this immediately after first login!
+    email: "admin@mcp-client.local"
+
+# Feature flags
+features:
+  enableUserRegistration: true
+  enableGuestAccess: false
+  enableMetrics: true
+  enableTracing: false
+
+# External services
+external:
+  # Redis for caching (optional)
+  redis:
+    enabled: false
+    host: ""
+    port: 6379
+    database: 0
+  
+  # Monitoring
+  prometheus:
+    enabled: false
+    port: 9090
+    path: /metrics

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-client.fullname" . }}-postgres
+  labels:
+    {{- include "mcp-client.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mcp-client.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        {{- include "mcp-client.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_DB
+          value: {{ .Values.postgres.database | default "mcp_client" }}
+        - name: POSTGRES_USER
+          value: {{ .Values.postgres.username | default "mcp_user" }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mcp-client.fullname" . }}-postgres-secret
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - {{ .Values.postgres.username | default "mcp_user" }}
+            - -d
+            - {{ .Values.postgres.database | default "mcp_client" }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - {{ .Values.postgres.username | default "mcp_user" }}
+            - -d
+            - {{ .Values.postgres.database | default "mcp_client" }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.postgres.resources | nindent 10 }}
+      volumes:
+      - name: postgres-storage
+        {{- if .Values.postgres.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "mcp-client.fullname" . }}-postgres-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}

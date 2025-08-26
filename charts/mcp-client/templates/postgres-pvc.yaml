@@ -1,0 +1,65 @@
+{{- if .Values.postgres.persistence.enabled }}
+{{- if .Values.postgres.persistence.storageClass }}
+# PVC with Storage Class
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mcp-client.fullname" . }}-postgres-pvc
+  labels:
+    {{- include "mcp-client.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.postgres.persistence.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+{{- else }}
+# PV and PVC for Host Path (when no storage class is available)
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "mcp-client.fullname" . }}-postgres-pv
+  labels:
+    {{- include "mcp-client.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  capacity:
+    storage: {{ .Values.postgres.persistence.size }}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: {{ .Values.postgres.persistence.hostPath | default "/data/mcp-client-postgres" }}
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          {{- if .Values.postgres.persistence.nodeSelector }}
+          - {{ .Values.postgres.persistence.nodeSelector }}
+          {{- else }}
+          - {{ .Values.nodeSelector | default "localhost" }}
+          {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mcp-client.fullname" . }}-postgres-pvc
+  labels:
+    {{- include "mcp-client.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+  volumeName: {{ include "mcp-client.fullname" . }}-postgres-pv
+{{- end }}
+{{- end }}
