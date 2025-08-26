@@ -1,0 +1,58 @@
+# Default values for mcp-client.
+
+# Docker image settings
+image:
+  repository:
+  tag:
+  pullPolicy:
+
+# Client settings
+client:
+  host:
+  port:
+
+# Environment variables for the client
+env:
+  MCP_SERVER_URL:
+  LLM_API_URL:
+  LLM_MODEL:
+  LLM_API_KEY:
+  LLM_SSL_VERIFY:
+  LOG_LEVEL:
+
+# Replicas
+replicaCount:
+
+# Resources
+resources:
+  limits:
+    cpu:
+    memory:
+  requests:
+    cpu:
+    memory:
+
+# Service settings
+service:
+  type: 
+  port:
+  networkPool:
+
+# Liveness/Readiness probes for client
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 20
+  periodSeconds: 90
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 60
+
+# Pod labels and annotations
+podLabels: {}
+podAnnotations: {}
