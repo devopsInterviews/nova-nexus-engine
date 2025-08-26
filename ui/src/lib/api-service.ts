@@ -28,22 +28,47 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// Generic fetch wrapper with error handling and smart unwrapping of backend {status,data}
+// Generic fetch wrapper with error handling, smart unwrapping, and authentication
 async function fetchApi<T>(
   endpoint: string, 
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   try {
     const url = `${API_BASE_URL}${endpoint}`;
-  console.log(`API -> ${options.method || 'GET'} ${url}`, options.body ? JSON.parse(options.body as string) : undefined);
+    console.log(`API -> ${options.method || 'GET'} ${url}`, options.body ? JSON.parse(options.body as string) : undefined);
+    
+    // Add authentication header if token exists
+    const token = localStorage.getItem('auth_token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    };
+    
+    if (token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+    }
     
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     });
+
+    // Handle 401 unauthorized - token is invalid
+    if (response.status === 401) {
+      // Clear invalid auth state
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_user');
+      
+      // Redirect to login if not already on login page
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+      
+      return {
+        status: 'error',
+        error: 'Authentication required. Please log in again.',
+      };
+    }
 
     // Try to parse the response as JSON
     let data;

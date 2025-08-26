@@ -46,21 +46,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize auth state from localStorage
+  // Initialize auth state from localStorage and verify token
   useEffect(() => {
-    const savedToken = localStorage.getItem('auth_token');
-    const savedUser = localStorage.getItem('auth_user');
-    
-    if (savedToken && savedUser) {
+    const initializeAuth = async () => {
+      const savedToken = localStorage.getItem('auth_token');
+      
+      if (!savedToken) {
+        return; // No token, user needs to login
+      }
+
       try {
+        // Verify token by fetching user data
+        const userResponse = await fetch(`${API_BASE_URL}/me`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${savedToken}`,
+          },
+        });
+
+        if (!userResponse.ok) {
+          throw new Error('Token verification failed');
+        }
+
+        const userData = await userResponse.json();
+        
+        // Token is valid, set auth state
         setToken(savedToken);
-        setUser(JSON.parse(savedUser));
+        setUser(userData);
+        
       } catch (err) {
-        console.error('Failed to parse saved user data:', err);
+        console.warn('Stored token is invalid, clearing auth state:', err);
+        // Clear invalid token and user data
         localStorage.removeItem('auth_token');
         localStorage.removeItem('auth_user');
+        setToken(null);
+        setUser(null);
       }
-    }
+    };
+
+    initializeAuth();
   }, []);
 
   const clearError = () => setError(null);
@@ -70,7 +94,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      // Step 1: Login to get the access token
+      const loginResponse = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,14 +103,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await response.json();
+      const loginData = await loginResponse.json();
 
-      if (!response.ok) {
-        throw new Error(data.detail || 'Login failed');
+      if (!loginResponse.ok) {
+        throw new Error(loginData.detail || 'Login failed');
+      }
+
+      const { access_token } = loginData;
+      
+      // Step 2: Get user data using the token
+      const userResponse = await fetch(`${API_BASE_URL}/me`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${access_token}`,
+        },
+      });
+
+      const userData = await userResponse.json();
+
+      if (!userResponse.ok) {
+        throw new Error(userData.detail || 'Failed to get user data');
       }
 
       // Store auth data
-      const { access_token, user: userData } = data;
       setToken(access_token);
       setUser(userData);
       

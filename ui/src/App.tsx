@@ -20,8 +20,11 @@ import { AuthProvider, useAuth } from "@/context/auth-context";
 const queryClient = new QueryClient();
 
 const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
-  const { user } = useAuth();
-  return user ? children : <Navigate to="/login" replace />;
+  const { user, token } = useAuth();
+  
+  // Only allow access if we have both a valid token AND user data from backend
+  // The token alone is not enough - user data must be fetched from backend
+  return (user && token) ? children : <Navigate to="/login" replace />;
 };
 
 const LoginWrapper = () => {
@@ -31,11 +34,15 @@ const LoginWrapper = () => {
   const handleLogin = async (username: string, password: string) => {
     try {
       clearError(); // Clear any previous errors
+      
+      // Use auth context for proper backend authentication
       await login(username, password);
       navigate('/', { replace: true });
+      
     } catch (err) {
-      // Error is handled by the auth context
       console.error('Login failed:', err);
+      // Re-throw the error to be handled by the LoginScreen component
+      throw err;
     }
   };
 
