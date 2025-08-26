@@ -58,11 +58,19 @@ logger = logging.getLogger("uvicorn.error")
 from app.routes.db_routes import router as db_router
 # Import and include MCP testing routes
 from app.routes.mcp_routes import router as mcp_router
+# Import and include authentication routes
+from app.routes.auth_routes import router as auth_router
+# Import and include test configuration routes
+from app.routes.test_routes import router as test_router
 
 # Expose database/API routes under /api to match UI calls
 app.include_router(db_router, prefix="/api")
 # Expose MCP testing routes under /api to match frontend expectations
 app.include_router(mcp_router, prefix="/api")
+# Expose authentication routes under /api
+app.include_router(auth_router, prefix="/api")
+# Expose test configuration routes under /api
+app.include_router(test_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")
@@ -101,6 +109,16 @@ async def startup_event():
     global _exit_stack, _mcp_session
     _exit_stack = AsyncExitStack()
 
+    # Initialize database first
+    try:
+        from app.database import initialize_database
+        logger.info("Initializing database...")
+        initialize_database()
+        logger.info("Database initialization completed")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {str(e)}")
+        # Don't exit the app, but log the error for debugging
+        
     # Establish http transport
     _http_transport = await _exit_stack.enter_async_context(
         streamablehttp_client(MCP_SERVER_URL, timeout = timedelta(seconds=600), sse_read_timeout = timedelta(seconds=600))

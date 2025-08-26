@@ -1,5 +1,5 @@
 """
-Nova Nexus Engine - Main Application Entry Point
+MCP Client - Main Application Entry Point
 
 This module configures and starts the FastAPI application server with comprehensive
 logging configuration for development and production environments.
@@ -45,7 +45,7 @@ ENV = os.getenv("ENV", "development").lower()
 
 def setup_logging():
     """
-    Configure comprehensive logging for the Nova Nexus Engine application
+    Configure comprehensive logging for the MCP Client application
     
     Sets up structured logging with:
     - Console and file output
@@ -87,7 +87,7 @@ def setup_logging():
                 "class": "logging.handlers.RotatingFileHandler",
                 "level": "DEBUG",
                 "formatter": "detailed",
-                "filename": f"{log_dir}/nova_nexus_engine.log",
+                "filename": f"{log_dir}/mcp_client.log",
                 "maxBytes": 10485760,  # 10MB
                 "backupCount": 5
             },
@@ -95,7 +95,7 @@ def setup_logging():
                 "class": "logging.handlers.RotatingFileHandler",
                 "level": "ERROR",
                 "formatter": "detailed",
-                "filename": f"{log_dir}/nova_nexus_errors.log",
+                "filename": f"{log_dir}/mcp_client_errors.log",
                 "maxBytes": 10485760,  # 10MB
                 "backupCount": 3
             }
@@ -134,7 +134,7 @@ def setup_logging():
     # Get application logger
     logger = logging.getLogger("app")
     logger.info("=" * 80)
-    logger.info("Nova Nexus Engine - Application Starting")
+    logger.info("MCP Client - Application Starting")
     logger.info("=" * 80)
     logger.info(f"Environment: {ENV}")
     logger.info(f"Log Level: {LOG_LEVEL}")
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     logger = setup_logging()
     
     try:
-        logger.info("Initializing Nova Nexus Engine FastAPI application")
+        logger.info("Initializing MCP Client FastAPI application")
         
         # Server configuration
         server_config = {
@@ -182,8 +182,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Application shutdown requested by user (Ctrl+C)")
     except Exception as e:
-        logger.error("Failed to start Nova Nexus Engine: %s", str(e), exc_info=True)
+        logger.error("Failed to start MCP Client: %s", str(e), exc_info=True)
         sys.exit(1)
     finally:
-        logger.info("Nova Nexus Engine shutdown complete")
+        logger.info("MCP Client shutdown complete")
         logging.shutdown()
