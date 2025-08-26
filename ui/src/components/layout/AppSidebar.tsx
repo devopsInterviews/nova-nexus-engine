@@ -50,6 +50,11 @@ const navigationItems = [
     icon: CheckSquare,
   },
   {
+    title: "Users",
+    url: "/users",
+    icon: Users,
+  },
+  {
     title: "Settings",
     url: "/settings",
     icon: Settings,

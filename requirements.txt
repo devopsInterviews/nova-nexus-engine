@@ -1,0 +1,32 @@
+# Core Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Database & ORM
+sqlalchemy>=2.0.23
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
+
+# Authentication & Security
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+cryptography>=41.0.0
+python-multipart>=0.0.6
+
+# Email Validation
+email-validator>=2.1.0
+
+# Environment & Configuration
+python-dotenv>=1.0.0
+
+# Your existing dependencies (add these if not already present)
+pydantic>=2.0.0
+jinja2>=3.1.2
+aiofiles>=23.0.0
+
+# MCP Client dependencies (you might already have these)
+mcp>=1.0.0
+ollama>=0.1.0
+
+# Optional but recommended
+typing-extensions>=4.8.0
