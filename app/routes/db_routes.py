@@ -10,6 +10,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Dict, Any, List, Optional
 from app.prompts import BI_ANALYTICS_PROMPT
+from app.database import get_db_session, DBConnection
+from app.routes.auth_routes import token_required
 
 # Create router with tags for API documentation
 router = APIRouter(tags=["database"])  # prefix inherited from app.include_router("/api")
@@ -46,31 +48,46 @@ def _resolve_connection_payload(data: Dict[str, Any], saved: List[Dict[str, Any]
     return merged
 
 
-# Simple JSON file persistence for saved connections
-DATA_DIR = "/home/appuser/data"
-os.makedirs(DATA_DIR, exist_ok=True)
-CONNECTIONS_FILE = os.path.join(DATA_DIR, "connections.json")
+def _load_saved_connections(user_id: int) -> List[Dict[str, Any]]:
+    session = get_db_session()
+    connections = session.query(DBConnection).filter_by(user_id=user_id).all()
+    session.close()
+    
+    conn_list = []
+    for conn in connections:
+        conn_list.append({
+            "id": conn.id,
+            "name": conn.connection_name,
+            "db_type": conn.db_type,
+            "db_host": conn.db_host,
+            "db_port": conn.db_port,
+            "db_user": conn.db_user,
+            "db_password": conn.db_password,
+            "db_name": conn.db_name,
+        })
+    return conn_list
 
-def _load_saved_connections() -> List[Dict[str, Any]]:
-    try:
-        if os.path.exists(CONNECTIONS_FILE):
-            with open(CONNECTIONS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-    except Exception:
-        logger.error("Failed to load connections.json", exc_info=True)
-    return []
-
-def _persist_saved_connections(conns: List[Dict[str, Any]]):
-    try:
-        with open(CONNECTIONS_FILE, "w", encoding="utf-8") as f:
-            json.dump(conns, f, indent=2)
-    except Exception:
-        logger.error("Failed to write connections.json", exc_info=True)
+def _persist_saved_connections(user_id: int, conn_data: Dict[str, Any]):
+    session = get_db_session()
+    new_conn = DBConnection(
+        user_id=user_id,
+        connection_name=conn_data['name'],
+        db_type=conn_data['database_type'],
+        db_host=conn_data['host'],
+        db_port=conn_data['port'],
+        db_user=conn_data['user'],
+        db_password=conn_data['password'],
+        db_name=conn_data['database']
+    )
+    session.add(new_conn)
+    session.commit()
+    conn_id = new_conn.id
+    session.close()
+    return conn_id
 
 @router.post("/test-connection")
-async def test_connection(request: Request):
+@token_required
+async def test_connection(current_user, request: Request):
     """
     Test a database connection with comprehensive logging and error handling
     
@@ -109,7 +126,7 @@ async def test_connection(request: Request):
         logger.debug("Resolving connection parameters from saved profiles or direct input")
         
         # Allow referencing saved profile via connection_id/name
-        saved_connections = _load_saved_connections()
+        saved_connections = _load_saved_connections(current_user.id)
         payload = _resolve_connection_payload(data, saved_connections)
         
         # Extract connection details with validation
@@ -196,7 +213,8 @@ async def test_connection(request: Request):
         })
 
 @router.post("/save-connection")
-async def save_connection(request: Request):
+@token_required
+async def save_connection(current_user, request: Request):
     """
     Save a database connection configuration with comprehensive validation and logging
     
@@ -218,9 +236,6 @@ async def save_connection(request: Request):
     """
     logger.info("POST /save-connection - Saving new database connection configuration")
     
-    # In a real application, you would store this in a database
-    global connection_id_counter
-    
     try:
         data = await request.json()
         logger.debug("Connection data received, validating required fields")
@@ -235,52 +250,18 @@ async def save_connection(request: Request):
                 detail=f"Missing required fields: {', '.join(missing_fields)}"
             )
 
-        logger.debug("All required fields present, generating connection ID")
-        connection_id = len(saved_connections) + 1
-
-        connection = {
-            "id": str(connection_id),
-            "name": data["name"],
-            "host": data["host"],
-            "port": data["port"],
-            "user": data["user"],
-            "password": data["password"],  # In a real app, encrypt this!
-            "database": data["database"],
-            "database_type": data["database_type"]
-        }
+        logger.debug("All required fields present, saving connection to DB")
+        
+        connection_id = _persist_saved_connections(current_user.id, data)
         
         logger.info(
-            f"Saving connection: ID={connection_id}, name='{connection['name']}', "
-            f"type={connection['database_type']}, host={connection['host']}:{connection['port']}, "
-            f"database='{connection['database']}', user='{connection['user']}'"
+            f"Successfully saved connection '{data['name']}' with ID {connection_id} for user {current_user.username}"
         )
-        logger.debug(f"Password length: {len(connection['password'])} characters (encrypted in production)")
-        
-        # Check for duplicate connection names
-        existing_names = [conn['name'] for conn in saved_connections]
-        if connection['name'] in existing_names:
-            logger.warning(f"Connection name '{connection['name']}' already exists")
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "success": False,
-                    "message": f"Connection name '{connection['name']}' already exists"
-                }
-            )
-        
-        saved_connections.append(connection)
-        logger.debug("Connection added to in-memory storage, persisting to disk")
-        
-        _persist_saved_connections(saved_connections)
-        logger.info(
-            f"Successfully saved connection '{connection['name']}' with ID {connection_id}"
-        )
-        logger.debug(f"Total saved connections: {len(saved_connections)}")
         
         return JSONResponse({
             "id": str(connection_id),
             "success": True,
-            "message": f"Connection '{connection['name']}' saved successfully"
+            "message": f"Connection '{data['name']}' saved successfully"
         })
     
     except HTTPException:
@@ -291,31 +272,31 @@ async def save_connection(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/delete-connection/{connection_id}")
-async def delete_connection(connection_id: str):
+@token_required
+async def delete_connection(current_user, connection_id: int):
     """
     Delete a saved connection by ID
     """
     try:
-        global saved_connections
-        # Find and remove the connection
-        original_count = len(saved_connections)
-        saved_connections = [conn for conn in saved_connections if str(conn.get("id")) != connection_id]
+        session = get_db_session()
+        conn = session.query(DBConnection).filter_by(id=connection_id, user_id=current_user.id).first()
         
-        if len(saved_connections) < original_count:
-            # Connection was found and deleted
-            _persist_saved_connections(saved_connections)
-            logger.info("Deleted connection id=%s", connection_id)
+        if conn:
+            session.delete(conn)
+            session.commit()
+            session.close()
+            logger.info(f"Deleted connection id={connection_id} for user {current_user.username}")
             return JSONResponse({
                 "status": "success",
                 "message": f"Connection {connection_id} deleted successfully"
             })
         else:
-            # Connection not found
+            session.close()
             return JSONResponse(
                 status_code=404,
                 content={
                     "status": "error",
-                    "message": f"Connection {connection_id} not found"
+                    "message": f"Connection {connection_id} not found or you don't have permission to delete it"
                 }
             )
     except Exception as e:
@@ -329,23 +310,22 @@ async def delete_connection(connection_id: str):
         )
 
 @router.get("/get-connections")
-async def get_connections():
+@token_required
+async def get_connections(current_user):
     """
-    Get all saved connections
+    Get all saved connections for the current user
     """
-    # sync from disk in case other processes modified it
-    global saved_connections
-    saved_connections = _load_saved_connections()
-    # Do not return passwords in response
+    saved_connections = _load_saved_connections(current_user.id)
     redacted = [
         {**c, "password": _mask_secret(c.get("password"))}
         for c in saved_connections
     ]
-    logger.info("Returning %d saved connections", len(saved_connections))
+    logger.info(f"Returning {len(saved_connections)} saved connections for user {current_user.username}")
     return JSONResponse(redacted)
 
 @router.get("/health")
-async def api_health_check():
+@token_required
+async def api_health_check(current_user):
     """
     Simple health check endpoint to verify API is running
     """
@@ -356,7 +336,8 @@ async def api_health_check():
     })
 
 @router.post("/list-tables")
-async def list_tables(request: Request):
+@token_required
+async def list_tables(current_user, request: Request):
     """
     List tables in the database
     """
@@ -367,6 +348,7 @@ async def list_tables(request: Request):
         data = await request.json()
 
         # Resolve from profile if needed
+        saved_connections = _load_saved_connections(current_user.id)
         data = _resolve_connection_payload(data, saved_connections)
 
         logger.info("Listing tables for %s on %s:%s/%s", data['database_type'], data['host'], data['port'], data['database'])
@@ -415,7 +397,8 @@ async def list_tables(request: Request):
         )
 
 @router.post("/describe-columns")
-async def describe_columns(request: Request):
+@token_required
+async def describe_columns(current_user, request: Request):
     """
     Describe columns in a table
     """
@@ -426,6 +409,7 @@ async def describe_columns(request: Request):
         data = await request.json()
         
         # Resolve from profile
+        saved_connections = _load_saved_connections(current_user.id)
         data = _resolve_connection_payload(data, saved_connections)
         if "table" not in data:
             return JSONResponse(status_code=400, content={"status":"error","error":"Missing required field: table"})
@@ -487,7 +471,8 @@ async def describe_columns(request: Request):
         )
 
 @router.post("/suggest-columns")
-async def suggest_columns(request: Request):
+@token_required
+async def suggest_columns(current_user, request: Request):
     """
     Suggest columns based on natural language prompt with confluence integration
     Replicates the working suggest_keys_api function from client.py
@@ -514,7 +499,7 @@ async def suggest_columns(request: Request):
         logger.info("suggest_columns: received request with payload keys: %s", list(data.keys()))
         
         # Resolve connection profile first
-        saved_connections = _load_saved_connections()
+        saved_connections = _load_saved_connections(current_user.id)
         data = _resolve_connection_payload(data, saved_connections)
         
         logger.info(
@@ -712,7 +697,8 @@ async def suggest_columns(request: Request):
         )
 
 @router.post("/analytics-query")
-async def analytics_query(request: Request):
+@token_required
+async def analytics_query(current_user, request: Request):
     """
     Execute an analytics query with AI assistance and comprehensive logging
     
@@ -754,7 +740,7 @@ async def analytics_query(request: Request):
         logger.debug(f"Request payload keys: {list(data.keys())}")
         
         # Resolve connection profile first
-        saved_connections = _load_saved_connections()
+        saved_connections = _load_saved_connections(current_user.id)
         data = _resolve_connection_payload(data, saved_connections)
         
         logger.info(

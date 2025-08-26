@@ -2,23 +2,23 @@
 
 # Docker image settings
 image:
-  repository: mcp-client
-  tag: "latest"
-  pullPolicy: IfNotPresent
+  repository:
+  tag:
+  pullPolicy:
 
 # Client settings
 client:
-  host: "0.0.0.0"
-  port: 8000
+  host:
+  port:
 
 # Environment variables for the client
 env:
-  MCP_SERVER_URL: "http://localhost:8050/mcp/"
-  LLM_API_URL: "https://api.openai.com/v1"
-  LLM_MODEL: "gpt-4"
-  LLM_API_KEY: ""  # Set this via secret or override
-  LLM_SSL_VERIFY: "true"
-  LOG_LEVEL: "INFO"
+  MCP_SERVER_URL:
+  LLM_API_URL:
+  LLM_MODEL:
+  LLM_API_KEY:
+  LLM_SSL_VERIFY:
+  LOG_LEVEL:
   # Database connection
   DATABASE_URL: ""  # Will be constructed from other DB settings
   DATABASE_HOST: "mcp-client-postgres"  # Service name
@@ -28,41 +28,37 @@ env:
   DATABASE_PASSWORD: ""  # Will use postgres.password
 
 # Replicas
-replicaCount: 1
+replicaCount:
 
 # Resources
 resources:
   limits:
-    cpu: 1000m
-    memory: 1Gi
+    cpu:
+    memory:
   requests:
-    cpu: 500m
-    memory: 512Mi
+    cpu:
+    memory:
 
 # Service settings
 service:
-  type: ClusterIP
-  port: 8000
-  targetPort: 8000
+  type: 
+  port:
+  networkPool:
 
 # Liveness/Readiness probes for client
 livenessProbe:
   httpGet:
     path: /health
     port: 8000
-  initialDelaySeconds: 30
-  periodSeconds: 30
-  timeoutSeconds: 5
-  failureThreshold: 3
+  initialDelaySeconds: 20
+  periodSeconds: 90
 
 readinessProbe:
   httpGet:
     path: /health
     port: 8000
-  initialDelaySeconds: 15
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 60
 
 # Pod labels and annotations
 podLabels: {}

@@ -15,7 +15,7 @@ interface RequestParameter {
 }
 
 interface SavedEndpointTest {
-  id: string;
+  id: number; // Changed to number to match DB
   name: string;
   endpoint_path: string;
   method: string;
@@ -38,19 +38,36 @@ export const McpClientTestTab = () => {
   const [filterText, setFilterText] = useState("");
   const [methodFilter, setMethodFilter] = useState<"ALL" | "GET" | "POST">("ALL");
   const [testName, setTestName] = useState("");
+  const [authToken, setAuthToken] = useState<string | null>(null);
 
-  // Load saved tests from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("mcp-client-tests");
-    if (saved) {
-      try {
-        setSavedTests(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load saved tests:", e);
-      }
+    const token = localStorage.getItem('authToken');
+    setAuthToken(token);
+    if (token) {
+      fetchSavedTests(token);
     }
   }, []);
 
+  // Load saved tests from the backend
+  const fetchSavedTests = async (token: string) => {
+    if (!token) return;
+    try {
+      const response = await fetch("/api/tests", {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSavedTests(data);
+      } else {
+        console.error("Failed to fetch saved tests:", response.statusText);
+      }
+    } catch (e) {
+      console.error("Failed to load saved tests:", e);
+    }
+  };
+  
   // Fetch available API endpoints on component mount
   useEffect(() => {
     fetchEndpoints();
@@ -263,23 +280,37 @@ export const McpClientTestTab = () => {
     setRequestParameters(requestParameters.filter((_, i) => i !== index));
   };
 
-  const saveTest = () => {
-    if (!selectedEndpoint) return;
+  const saveTest = async () => {
+    if (!selectedEndpoint || !authToken) return;
 
-    const newTest: SavedEndpointTest = {
-      id: Date.now().toString(),
+    const testToSave = {
       name: testName || `${selectedEndpoint} - ${new Date().toISOString()}`,
       endpoint_path: selectedEndpoint.split(' ')[1],
       method: selectedEndpoint.split(' ')[0],
       parameters: requestParameters,
       request_type: requestType,
-      created_at: new Date().toISOString(),
     };
 
-    const updatedTests = [...savedTests, newTest];
-    setSavedTests(updatedTests);
-    localStorage.setItem("mcp-client-tests", JSON.stringify(updatedTests));
-    setTestName(""); // Clear the test name field after saving
+    try {
+      const response = await fetch('/api/tests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(testToSave),
+      });
+
+      if (response.ok) {
+        const newTest = await response.json();
+        setSavedTests([...savedTests, newTest]);
+        setTestName(""); // Clear the test name field after saving
+      } else {
+        console.error("Failed to save test:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error saving test:", error);
+    }
   };
 
   const loadTest = (test: SavedEndpointTest) => {
@@ -289,10 +320,25 @@ export const McpClientTestTab = () => {
     setResponse(null);
   };
 
-  const deleteTest = (id: string) => {
-    const updatedTests = savedTests.filter(t => t.id !== id);
-    setSavedTests(updatedTests);
-    localStorage.setItem("mcp-client-tests", JSON.stringify(updatedTests));
+  const deleteTest = async (id: number) => {
+    if (!authToken) return;
+    try {
+      const response = await fetch(`/api/tests/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const updatedTests = savedTests.filter(t => t.id !== id);
+        setSavedTests(updatedTests);
+      } else {
+        console.error("Failed to delete test:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error deleting test:", error);
+    }
   };
 
   const filteredEndpoints = Object.entries(groupedEndpoints).filter(([tag]) => tag.toLowerCase().includes(filterText.toLowerCase()));

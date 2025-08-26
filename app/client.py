@@ -18,6 +18,7 @@ from contextlib import AsyncExitStack
 from datetime import timedelta
 from app.llm_client import LLMClient
 from app.prompts import *
+from app.database import init_db
 
 
 # Load environment variables
@@ -58,64 +59,19 @@ logger = logging.getLogger("uvicorn.error")
 from app.routes.db_routes import router as db_router
 # Import and include MCP testing routes
 from app.routes.mcp_routes import router as mcp_router
-# Import and include authentication routes
-from app.routes.auth_routes import router as auth_router
-# Import and include test configuration routes
+# Import and include auth routes
+from app.routes.auth_routes import auth_bp
+# Import and include test routes
 from app.routes.test_routes import router as test_router
 
 # Expose database/API routes under /api to match UI calls
 app.include_router(db_router, prefix="/api")
 # Expose MCP testing routes under /api to match frontend expectations
 app.include_router(mcp_router, prefix="/api")
-# Expose authentication routes under /api
-app.include_router(auth_router, prefix="/api")
-# Expose test configuration routes under /api
+# Expose auth routes under /api
+app.include_router(auth_bp, prefix="/api")
+# Expose test routes under /api
 app.include_router(test_router, prefix="/api")
-
-# Startup event handler for database initialization
-@app.on_event("startup")
-async def startup_event():
-    """
-    FastAPI startup event handler.
-    
-    Initializes database connection and sets up application requirements.
-    This runs when the app starts, regardless of how it's launched.
-    """
-    logger.info("🚀 FastAPI startup event triggered")
-    
-    try:
-        from app.database import check_database_connection, initialize_database, get_database_info
-        
-        # Check database connection
-        logger.info("Verifying database connection...")
-        db_info = get_database_info()
-        
-        # Log database configuration (with masked password)
-        masked_url = db_info.get('url', 'Unknown')
-        logger.info(f"Database URL: {masked_url}")
-        logger.info(f"Database: {db_info.get('database', 'Unknown')}")
-        
-        if db_info['status'] == 'connected':
-            logger.info("✅ Database connection verified successfully")
-            if db_info.get('version'):
-                logger.info(f"PostgreSQL Version: {db_info['version']}")
-        else:
-            logger.error("❌ Database connection failed!")
-            logger.error(f"Error: {db_info.get('error', 'Unknown error')}")
-            raise Exception(f"Database connection failed: {db_info.get('error')}")
-        
-        # Initialize database schema and default data
-        logger.info("Initializing database schema and default data...")
-        initialize_database()
-        logger.info("✅ Database initialization completed")
-        
-        logger.info("🎉 Application startup completed successfully!")
-        
-    except Exception as e:
-        logger.error(f"❌ Startup failed: {str(e)}", exc_info=True)
-        # In production, you might want to exit the application here
-        # For now, we'll log the error and continue
-        raise
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")
@@ -154,16 +110,6 @@ async def startup_event():
     global _exit_stack, _mcp_session
     _exit_stack = AsyncExitStack()
 
-    # Initialize database first
-    try:
-        from app.database import initialize_database
-        logger.info("Initializing database...")
-        initialize_database()
-        logger.info("Database initialization completed")
-    except Exception as e:
-        logger.error(f"Database initialization failed: {str(e)}")
-        # Don't exit the app, but log the error for debugging
-        
     # Establish http transport
     _http_transport = await _exit_stack.enter_async_context(
         streamablehttp_client(MCP_SERVER_URL, timeout = timedelta(seconds=600), sse_read_timeout = timedelta(seconds=600))
@@ -176,6 +122,9 @@ async def startup_event():
     )
     await _mcp_session.initialize()
     logger.info(f"MCP session initialized and connected to {MCP_SERVER_URL}")
+
+    # Initialize the database
+    init_db()
 
     llm_client = LLMClient()
     globals()["llm_client"] = llm_client
@@ -301,44 +250,10 @@ async def jenkins_anomaly_endpoint(request: Request):
 @app.get("/health")
 async def health_check():
     """
-    Comprehensive health check endpoint including database connectivity.
-    
-    Returns application and database health status for monitoring.
+    General API health check endpoint
     """
-    from app.database import get_db_health, get_database_info
-    from datetime import datetime
-    
     logger.info("Health check called")
-    
-    # Get database health status
-    db_health = get_db_health()
-    db_info = get_database_info()
-    
-    # Determine overall status
-    overall_status = "healthy" if db_info['status'] == 'connected' else "unhealthy"
-    
-    health_data = {
-        "status": overall_status,
-        "service": "mcp-client",
-        "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0",
-        "database": {
-            "status": db_info['status'],
-            "database": db_info.get('database', 'Unknown'),
-            "version": db_info.get('version', 'Unknown')
-        }
-    }
-    
-    # Add connection pool info if available
-    if 'database' in db_health and 'connection_pool' in db_health['database']:
-        health_data['database']['connection_pool'] = db_health['database']['connection_pool']
-    
-    # Add error info if database is down
-    if db_info['status'] != 'connected':
-        health_data['database']['error'] = db_info.get('error', 'Unknown error')
-        logger.warning(f"Health check detected database issue: {health_data['database']['error']}")
-    
-    return health_data
+    return {"status": "ok", "service": "mcp-client"}
 
 
 @app.get("/tools", summary="List MCP server tools")
