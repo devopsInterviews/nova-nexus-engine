@@ -21,26 +21,26 @@ const RobotEye: React.FC<RobotEyeProps> = ({ isWatching, isBlinking, eyesClosedF
     if (eyesClosedForPassword || isBlinking) return 'translate(0, 0)';
     
     switch (direction) {
-      case 'left': return 'translate(-8px, 0)';
-      case 'right': return 'translate(8px, 0)';
+      case 'left': return 'translate(-10px, 0)';
+      case 'right': return 'translate(10px, 0)';
       default: return 'translate(0, 0)';
     }
   };
 
   const getEyeHeight = () => {
-    if (eyesClosedForPassword) return '2px';
-    if (isBlinking) return '4px';
-    return '24px';
+    if (eyesClosedForPassword) return '3px';
+    if (isBlinking) return '5px';
+    return '28px';
   };
 
   const getEyeWidth = () => {
-    if (eyesClosedForPassword) return '40px';
-    if (isBlinking) return '24px';
-    return '24px';
+    if (eyesClosedForPassword) return '50px';
+    if (isBlinking) return '28px';
+    return '28px';
   };
 
   return (
-    <div className="relative w-16 h-16 bg-gradient-to-b from-slate-700 to-slate-800 rounded-full border-2 border-slate-600 overflow-hidden shadow-lg">
+    <div className="relative w-20 h-20 bg-gradient-to-b from-slate-700 to-slate-800 rounded-full border-2 border-slate-600 overflow-hidden shadow-lg">
       {/* Eye outer ring */}
       <div className="absolute inset-2 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full">
         {/* Eye pupil */}
@@ -58,7 +58,7 @@ const RobotEye: React.FC<RobotEyeProps> = ({ isWatching, isBlinking, eyesClosedF
         >
           {/* Eye glint */}
           {!eyesClosedForPassword && !isBlinking && (
-            <div className="absolute top-1 left-1 w-2 h-2 bg-white rounded-full opacity-80" />
+            <div className="absolute top-1 left-1 w-3 h-3 bg-white rounded-full opacity-80" />
           )}
         </motion.div>
       </div>
@@ -96,6 +96,7 @@ interface FloatingInputProps {
   showPassword?: boolean;
   onTogglePassword?: () => void;
   disabled?: boolean;
+  position?: { x: number; y: number };
 }
 
 const FloatingInput: React.FC<FloatingInputProps> = ({
@@ -110,34 +111,31 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
   onBlur,
   showPassword,
   onTogglePassword,
-  disabled = false
+  disabled = false,
+  position = { x: 0, y: 0 }
 }) => {
-  const baseRotation = Math.random() * 360;
-  const floatDistance = 20 + Math.random() * 40;
-  
   return (
     <motion.div
       className="relative group"
       animate={isFloating ? {
-        x: [0, floatDistance, -floatDistance, 0],
-        y: [0, -floatDistance, floatDistance, 0],
-        rotate: [baseRotation, baseRotation + 10, baseRotation - 10, baseRotation],
+        x: position.x,
+        y: position.y,
       } : {
         x: 0,
         y: 0,
-        rotate: 0
       }}
       transition={{
-        duration: 8,
-        repeat: isFloating ? Infinity : 0,
-        ease: "easeInOut"
+        type: "spring",
+        stiffness: 100,
+        damping: 20,
+        duration: isFloating ? 0 : 0.5
       }}
     >
       <Label htmlFor={id} className="text-sm font-medium text-foreground mb-2 block">
         {placeholder}
       </Label>
       <div className="relative">
-        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground z-10">
+        <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground z-10">
           {icon}
         </div>
         <Input
@@ -149,7 +147,7 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
           onFocus={onFocus}
           onBlur={onBlur}
           disabled={disabled}
-          className="pl-10 pr-12 h-12 glass border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 relative z-0"
+          className="pl-12 pr-14 h-14 text-lg glass border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 relative z-0"
           autoComplete={type === 'password' ? 'current-password' : 'username'}
         />
         {type === 'password' && onTogglePassword && (
@@ -157,10 +155,10 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
             type="button"
             variant="ghost"
             size="sm"
-            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-10 w-10 p-0 hover:bg-surface-elevated z-10"
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-12 w-12 p-0 hover:bg-surface-elevated z-10"
             onClick={onTogglePassword}
           >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
           </Button>
         )}
       </div>
@@ -183,9 +181,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
   const [isFloating, setIsFloating] = useState(false);
   const [activeField, setActiveField] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [floatingPositions, setFloatingPositions] = useState({
+    card: { x: 0, y: 0, vx: 0.5, vy: 0.3 },
+    usernameField: { x: 0, y: 0, vx: 0.4, vy: 0.6 },
+    passwordField: { x: 0, y: 0, vx: 0.7, vy: 0.2 },
+    loginButton: { x: 0, y: 0, vx: 0.3, vy: 0.5 }
+  });
   
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const animationFrame = useRef<number | null>(null);
 
   // Handle inactivity floating animation
   const resetInactivityTimer = () => {
@@ -193,18 +198,76 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
       clearTimeout(inactivityTimer.current);
     }
     
+    if (animationFrame.current) {
+      cancelAnimationFrame(animationFrame.current);
+    }
+    
     setIsFloating(false);
+    // Reset positions to center
+    setFloatingPositions({
+      card: { x: 0, y: 0, vx: 0.5, vy: 0.3 },
+      usernameField: { x: 0, y: 0, vx: 0.4, vy: 0.6 },
+      passwordField: { x: 0, y: 0, vx: 0.7, vy: 0.2 },
+      loginButton: { x: 0, y: 0, vx: 0.3, vy: 0.5 }
+    });
     
     inactivityTimer.current = setTimeout(() => {
       setIsFloating(true);
+      startScreensaverAnimation();
     }, 15000); // 15 seconds of inactivity
   };
+
+  // Screensaver-style bouncing animation
+  const startScreensaverAnimation = () => {
+    const animate = () => {
+      setFloatingPositions(prev => {
+        const newPositions = { ...prev };
+        const bounds = {
+          width: window.innerWidth - 600, // Account for card width
+          height: window.innerHeight - 400 // Account for card height
+        };
+
+        Object.keys(newPositions).forEach(key => {
+          const element = newPositions[key as keyof typeof newPositions];
+          
+          // Update position
+          element.x += element.vx;
+          element.y += element.vy;
+          
+          // Bounce off edges
+          if (element.x <= -bounds.width / 2 || element.x >= bounds.width / 2) {
+            element.vx = -element.vx;
+            element.x = Math.max(-bounds.width / 2, Math.min(bounds.width / 2, element.x));
+          }
+          
+          if (element.y <= -bounds.height / 2 || element.y >= bounds.height / 2) {
+            element.vy = -element.vy;
+            element.y = Math.max(-bounds.height / 2, Math.min(bounds.height / 2, element.y));
+          }
+        });
+
+        return newPositions;
+      });
+
+      if (isFloating) {
+        animationFrame.current = requestAnimationFrame(animate);
+      }
+    };
+
+    animate();
+  };
+
+  // Stop animation when floating state changes
+  useEffect(() => {
+    if (!isFloating && animationFrame.current) {
+      cancelAnimationFrame(animationFrame.current);
+    }
+  }, [isFloating]);
 
   // Handle robot eye movement based on active field
   useEffect(() => {
     if (activeField === 'password' && password.length > 0 && !showPassword) {
-      // Robot looks away when password is being typed and hidden
-      setEyeDirection('right');
+      // Robot covers eyes when password is being typed and hidden
       return;
     }
     
@@ -216,6 +279,33 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
       setEyeDirection('center');
     }
   }, [activeField, password.length, showPassword]);
+
+  // Handle eye movement for each character typed
+  useEffect(() => {
+    if (activeField === 'password' && password.length > 0 && !showPassword) {
+      // Robot covers eyes when password is being typed and hidden
+      return;
+    }
+    
+    if (activeField) {
+      const currentText = activeField === 'username' ? username : password;
+      if (currentText.length > 0) {
+        // Simulate looking at the current cursor position
+        const positions: ('left' | 'center' | 'right')[] = ['left', 'center', 'right'];
+        const position = positions[currentText.length % 3];
+        setEyeDirection(position);
+        
+        // Add a slight delay to make it feel more natural
+        const timer = setTimeout(() => {
+          if (currentText.length > 2) {
+            setEyeDirection('center');
+          }
+        }, 200);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [username.length, password.length, activeField, showPassword]);
 
   // Random blinking animation
   useEffect(() => {
@@ -302,15 +392,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
       {/* Main Login Card */}
       <motion.div
         initial={{ opacity: 0, y: 50, scale: 0.9 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="w-full max-w-md z-10"
+        animate={isFloating ? {
+          opacity: 1,
+          scale: 1,
+          x: floatingPositions.card.x,
+          y: floatingPositions.card.y,
+        } : {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          x: 0
+        }}
+        transition={{
+          duration: isFloating ? 0 : 0.8,
+          ease: "easeOut",
+          type: isFloating ? "tween" : "spring"
+        }}
+        className="w-full max-w-2xl z-10"
       >
         <Card className="glass border-border/50 shadow-2xl">
-          <CardHeader className="text-center pb-8">
+          <CardHeader className="text-center pb-8 pt-8">
             {/* Robot Head */}
             <motion.div
-              className="mx-auto mb-6 relative"
+              className="mx-auto mb-8 relative"
               animate={isFloating ? {
                 rotate: [0, 5, -5, 0],
                 scale: [1, 1.05, 0.95, 1]
@@ -318,17 +422,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               transition={{ duration: 6, repeat: isFloating ? Infinity : 0 }}
             >
               {/* Robot Head Container */}
-              <div className="relative w-32 h-28 bg-gradient-to-b from-slate-600 to-slate-800 rounded-3xl border-2 border-slate-500 shadow-lg">
+              <div className="relative w-48 h-40 bg-gradient-to-b from-slate-600 to-slate-800 rounded-3xl border-2 border-slate-500 shadow-xl">
                 {/* Head top decoration */}
-                <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-8 h-4 bg-gradient-to-b from-primary to-primary/80 rounded-t-lg border border-primary/30" />
+                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-12 h-6 bg-gradient-to-b from-primary to-primary/80 rounded-t-lg border border-primary/30" />
                 
                 {/* MCP Logo/Badge */}
-                <div className="absolute -top-1 right-2 w-6 h-6 bg-gradient-to-br from-accent to-primary rounded-full flex items-center justify-center border border-accent/50">
-                  <Bot className="w-3 h-3 text-white" />
+                <div className="absolute -top-2 right-3 w-8 h-8 bg-gradient-to-br from-accent to-primary rounded-full flex items-center justify-center border border-accent/50">
+                  <Bot className="w-4 h-4 text-white" />
                 </div>
                 
                 {/* Eyes */}
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
+                <div className="absolute top-6 left-1/2 transform -translate-x-1/2 flex space-x-6">
                   <RobotEye
                     isWatching={activeField !== null}
                     isBlinking={isBlinking}
@@ -345,14 +449,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 
                 {/* Mouth */}
                 <motion.div
-                  className="absolute bottom-3 left-1/2 transform -translate-x-1/2"
+                  className="absolute bottom-4 left-1/2 transform -translate-x-1/2"
                   animate={loading ? {
                     scaleX: [1, 1.2, 1],
                     scaleY: [1, 0.8, 1]
                   } : {}}
                   transition={{ duration: 1, repeat: loading ? Infinity : 0 }}
                 >
-                  <div className="w-12 h-3 bg-gradient-to-r from-slate-800 to-slate-900 rounded-full border border-slate-600" />
+                  <div className="w-16 h-4 bg-gradient-to-r from-slate-800 to-slate-900 rounded-full border border-slate-600" />
                   {loading && (
                     <motion.div
                       className="absolute inset-0 bg-gradient-to-r from-primary/30 to-accent/30 rounded-full"
@@ -363,8 +467,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 </motion.div>
                 
                 {/* Side panels */}
-                <div className="absolute left-1 top-1/2 transform -translate-y-1/2 w-2 h-8 bg-gradient-to-b from-slate-700 to-slate-900 rounded-l-lg" />
-                <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-2 h-8 bg-gradient-to-b from-slate-700 to-slate-900 rounded-r-lg" />
+                <div className="absolute left-1 top-1/2 transform -translate-y-1/2 w-3 h-12 bg-gradient-to-b from-slate-700 to-slate-900 rounded-l-lg" />
+                <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-3 h-12 bg-gradient-to-b from-slate-700 to-slate-900 rounded-r-lg" />
               </div>
             </motion.div>
 
@@ -431,6 +535,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 onFocus={() => handleFieldFocus('username')}
                 onBlur={handleFieldBlur}
                 disabled={loading}
+                position={floatingPositions.usernameField}
               />
 
               <FloatingInput
@@ -446,19 +551,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 showPassword={showPassword}
                 onTogglePassword={() => setShowPassword(!showPassword)}
                 disabled={loading}
+                position={floatingPositions.passwordField}
               />
 
               <motion.div
                 animate={isFloating ? {
-                  x: [0, 10, -10, 0],
-                  y: [0, -15, 15, 0],
-                  rotate: [0, 2, -2, 0]
-                } : {}}
-                transition={{ duration: 10, repeat: isFloating ? Infinity : 0 }}
+                  x: floatingPositions.loginButton.x,
+                  y: floatingPositions.loginButton.y,
+                } : {
+                  x: 0,
+                  y: 0
+                }}
+                transition={{
+                  type: isFloating ? "tween" : "spring",
+                  duration: isFloating ? 0 : 0.5
+                }}
               >
                 <Button
                   type="submit"
-                  className="w-full h-12 bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold shadow-glow transition-all duration-300 disabled:opacity-50"
+                  className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold shadow-glow transition-all duration-300 disabled:opacity-50"
                   disabled={loading || !username.trim() || !password.trim()}
                 >
                   {loading ? (
@@ -475,23 +586,43 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                       Authenticating...
                     </motion.div>
                   ) : (
-                    "Access Neural Network"
+                    "Login"
                   )}
                 </Button>
               </motion.div>
             </form>
 
-            {/* Footer */}
+            {/* About Button */}
             <motion.div
-              className="text-center text-sm text-muted-foreground"
+              className="flex justify-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 1 }}
+              transition={{ delay: 1.2 }}
             >
-              Default credentials: admin / admin
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => {
+                  alert(`MCP Control System v2.0\n\nA powerful Model Context Protocol management interface designed for the future of AI interactions.\n\nBuilt with modern web technologies and cyberpunk aesthetics.`);
+                }}
+              >
+                About
+              </Button>
             </motion.div>
           </CardContent>
         </Card>
+      </motion.div>
+
+      {/* Contact Information */}
+      <motion.div
+        className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-center text-sm text-muted-foreground bg-surface/60 backdrop-blur-sm rounded-lg px-6 py-3 border border-border/30 max-w-md"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.5 }}
+      >
+        <p className="mb-1">Need access to the system?</p>
+        <p className="text-xs">Please contact the DevOps team for user credentials</p>
       </motion.div>
 
       {/* Floating Elements Hint */}
