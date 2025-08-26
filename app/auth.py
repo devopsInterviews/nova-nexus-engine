@@ -247,7 +247,7 @@ def log_user_activity(
             status=status,
             ip_address=ip_address,
             user_agent=user_agent,
-            metadata=metadata or {},
+            activity_metadata=metadata or {},
             error_message=error_message
         )
         db.add(activity)

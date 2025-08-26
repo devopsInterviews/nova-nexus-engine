@@ -35,7 +35,14 @@ ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
 if not DATABASE_URL:
     DATABASE_URL = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}"
 
-logger.info(f"Database configuration: {DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
+# Log database configuration (with masked password for security)
+masked_url = DATABASE_URL.replace(DATABASE_PASSWORD, "***") if DATABASE_PASSWORD and DATABASE_PASSWORD in DATABASE_URL else DATABASE_URL
+logger.info(f"📊 Database Configuration:")
+logger.info(f"   URL: {masked_url}")
+logger.info(f"   Host: {DATABASE_HOST}:{DATABASE_PORT}")
+logger.info(f"   Database: {DATABASE_NAME}")
+logger.info(f"   User: {DATABASE_USER}")
+logger.info(f"   SSL Debug: {os.getenv('SQL_DEBUG', 'false')}")
 
 # Create database engine
 engine = create_engine(
@@ -155,18 +162,49 @@ def init_database():
 
 def check_database_connection() -> bool:
     """
-    Check if database connection is working.
+    Check if database connection is working with detailed logging.
     
     Returns:
         bool: True if connection is successful, False otherwise
     """
     try:
+        logger.info("🔍 Testing database connection...")
+        logger.info(f"Host: {DATABASE_HOST}:{DATABASE_PORT}")
+        logger.info(f"Database: {DATABASE_NAME}")
+        logger.info(f"User: {DATABASE_USER}")
+        
         with engine.connect() as connection:
-            connection.execute("SELECT 1")
-        logger.info("Database connection check successful")
-        return True
+            # Test basic connectivity
+            result = connection.execute("SELECT 1 as test")
+            test_value = result.fetchone()[0]
+            
+            if test_value != 1:
+                logger.error("Database connectivity test failed - unexpected result")
+                return False
+                
+            # Test database version
+            version_result = connection.execute("SELECT version()")
+            version = version_result.fetchone()[0] if version_result else "Unknown"
+            logger.info(f"PostgreSQL Version: {version}")
+            
+            # Test database name
+            db_result = connection.execute("SELECT current_database()")
+            current_db = db_result.fetchone()[0] if db_result else "Unknown"
+            
+            if current_db != DATABASE_NAME:
+                logger.warning(f"Connected to database '{current_db}' but expected '{DATABASE_NAME}'")
+            
+            logger.info("✅ Database connection test successful")
+            return True
+            
     except Exception as e:
-        logger.error(f"Database connection check failed: {str(e)}")
+        logger.error(f"❌ Database connection test failed: {str(e)}")
+        logger.error("Possible causes:")
+        logger.error("  - PostgreSQL server is not running")
+        logger.error("  - Incorrect host/port configuration")
+        logger.error("  - Invalid database credentials")
+        logger.error("  - Database does not exist")
+        logger.error("  - Network connectivity issues")
         return False
 
 def get_database_info() -> dict:

@@ -230,7 +230,7 @@ class UserActivity(Base):
     user_agent = Column(Text, nullable=True)
     
     # Additional data (stored as JSON)
-    metadata = Column(JSON, default=dict, nullable=False)
+    activity_metadata = Column(JSON, default=dict, nullable=False)
     
     # Status and result
     status = Column(String(50), nullable=False)  # 'success', 'failure', 'error'
@@ -260,7 +260,7 @@ class UserActivity(Base):
             "action": self.action,
             "ip_address": self.ip_address,
             "user_agent": self.user_agent,
-            "metadata": self.metadata,
+            "metadata": self.activity_metadata,
             "status": self.status,
             "error_message": self.error_message,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None
