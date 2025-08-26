@@ -49,41 +49,44 @@ def _resolve_connection_payload(data: Dict[str, Any], saved: List[Dict[str, Any]
 
 
 def _load_saved_connections(user_id: int) -> List[Dict[str, Any]]:
-    session = get_db_session()
-    connections = session.query(DBConnection).filter_by(user_id=user_id).all()
-    session.close()
-    
-    conn_list = []
-    for conn in connections:
-        conn_list.append({
-            "id": conn.id,
-            "name": conn.connection_name,
-            "db_type": conn.db_type,
-            "db_host": conn.db_host,
-            "db_port": conn.db_port,
-            "db_user": conn.db_user,
-            "db_password": conn.db_password,
-            "db_name": conn.db_name,
-        })
-    return conn_list
+    session = next(get_db_session())
+    try:
+        connections = session.query(DBConnection).filter_by(user_id=user_id).all()
+        conn_list = []
+        for conn in connections:
+            conn_list.append({
+                "id": conn.id,
+                "name": conn.connection_name,
+                "db_type": conn.db_type,
+                "db_host": conn.db_host,
+                "db_port": conn.db_port,
+                "db_user": conn.db_user,
+                "db_password": conn.db_password,
+                "db_name": conn.db_name,
+            })
+        return conn_list
+    finally:
+        session.close()
 
 def _persist_saved_connections(user_id: int, conn_data: Dict[str, Any]):
-    session = get_db_session()
-    new_conn = DBConnection(
-        user_id=user_id,
-        connection_name=conn_data['name'],
-        db_type=conn_data['database_type'],
-        db_host=conn_data['host'],
-        db_port=conn_data['port'],
-        db_user=conn_data['user'],
-        db_password=conn_data['password'],
-        db_name=conn_data['database']
-    )
-    session.add(new_conn)
-    session.commit()
-    conn_id = new_conn.id
-    session.close()
-    return conn_id
+    session = next(get_db_session())
+    try:
+        new_conn = DBConnection(
+            user_id=user_id,
+            connection_name=conn_data['name'],
+            database_type=conn_data['database_type'],
+            host=conn_data['host'],
+            port=conn_data['port'],
+            user=conn_data['user'],
+            password=conn_data['password'],
+            database=conn_data['database']
+        )
+        session.add(new_conn)
+        session.commit()
+        conn_id = new_conn.id
+        return conn_id
+    finally:
+        session.close()
 
 @router.post("/test-connection")
 @token_required
@@ -277,21 +280,19 @@ async def delete_connection(current_user, connection_id: int):
     """
     Delete a saved connection by ID
     """
+    session = next(get_db_session())
     try:
-        session = get_db_session()
         conn = session.query(DBConnection).filter_by(id=connection_id, user_id=current_user.id).first()
         
         if conn:
             session.delete(conn)
             session.commit()
-            session.close()
             logger.info(f"Deleted connection id={connection_id} for user {current_user.username}")
             return JSONResponse({
                 "status": "success",
                 "message": f"Connection {connection_id} deleted successfully"
             })
         else:
-            session.close()
             return JSONResponse(
                 status_code=404,
                 content={
@@ -308,6 +309,8 @@ async def delete_connection(current_user, connection_id: int):
                 "message": f"Failed to delete connection: {str(e)}"
             }
         )
+    finally:
+        session.close()
 
 @router.get("/get-connections")
 @token_required
@@ -324,15 +327,13 @@ async def get_connections(current_user):
     return JSONResponse(redacted)
 
 @router.get("/health")
-@token_required
-async def api_health_check(current_user):
+async def api_health_check():
     """
     Simple health check endpoint to verify API is running
     """
     return JSONResponse({
         "status": "ok", 
-        "service": "database-api",
-        "connections_count": len(saved_connections)
+        "service": "database-api"
     })
 
 @router.post("/list-tables")
@@ -912,7 +913,7 @@ async def analytics_query(current_user, request: Request):
         )
 
 # In-memory storage for connections (would be replaced with a persistent store)
-saved_connections: List[Dict[str, Any]] = _load_saved_connections()
+# saved_connections: List[Dict[str, Any]] = _load_saved_connections()
 connection_id_counter = 1
 
 @router.post("/sync-all-tables")
