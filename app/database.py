@@ -23,7 +23,7 @@ class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
     username = Column(String(80), unique=True, nullable=False)
-    password_hash = Column(String(128))
+    password_hash = Column(String(256))
     creation_date = Column(DateTime, default=datetime.datetime.utcnow)
     last_login = Column(DateTime)
     login_count = Column(Integer, default=0)

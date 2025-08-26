@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, User, Lock, Zap, AlertCircle, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, Zap, AlertCircle, CheckCircle, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,17 +33,23 @@ const RobotEye: React.FC<RobotEyeProps> = ({ isWatching, isBlinking, eyesClosedF
     return '24px';
   };
 
+  const getEyeWidth = () => {
+    if (eyesClosedForPassword) return '40px';
+    if (isBlinking) return '24px';
+    return '24px';
+  };
+
   return (
-    <div className="relative w-16 h-16 bg-gradient-to-b from-slate-700 to-slate-800 rounded-full border-2 border-slate-600 overflow-hidden">
+    <div className="relative w-16 h-16 bg-gradient-to-b from-slate-700 to-slate-800 rounded-full border-2 border-slate-600 overflow-hidden shadow-lg">
       {/* Eye outer ring */}
       <div className="absolute inset-2 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full">
         {/* Eye pupil */}
         <motion.div
-          className="absolute top-1/2 left-1/2 w-6 h-6 bg-gradient-to-b from-slate-900 to-black rounded-full"
+          className="absolute top-1/2 left-1/2 bg-gradient-to-b from-slate-900 to-black rounded-full"
           style={{
             transform: 'translate(-50%, -50%)',
             height: getEyeHeight(),
-            width: eyesClosedForPassword || isBlinking ? '100%' : '24px'
+            width: getEyeWidth()
           }}
           animate={{
             transform: `translate(-50%, -50%) ${getEyePosition()}`
@@ -64,6 +70,15 @@ const RobotEye: React.FC<RobotEyeProps> = ({ isWatching, isBlinking, eyesClosedF
         animate={{ scaleY: isBlinking ? 1 : 0 }}
         transition={{ duration: 0.1 }}
       />
+      
+      {/* Eye glow effect when active */}
+      {isWatching && !isBlinking && (
+        <motion.div
+          className="absolute -inset-1 bg-primary/20 rounded-full blur-sm"
+          animate={{ opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 2, repeat: Infinity }}
+        />
+      )}
     </div>
   );
 };
@@ -80,6 +95,7 @@ interface FloatingInputProps {
   onBlur: () => void;
   showPassword?: boolean;
   onTogglePassword?: () => void;
+  disabled?: boolean;
 }
 
 const FloatingInput: React.FC<FloatingInputProps> = ({
@@ -93,7 +109,8 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
   onFocus,
   onBlur,
   showPassword,
-  onTogglePassword
+  onTogglePassword,
+  disabled = false
 }) => {
   const baseRotation = Math.random() * 360;
   const floatDistance = 20 + Math.random() * 40;
@@ -120,7 +137,7 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
         {placeholder}
       </Label>
       <div className="relative">
-        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground z-10">
           {icon}
         </div>
         <Input
@@ -131,14 +148,16 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
           onBlur={onBlur}
-          className="pl-10 pr-12 h-12 glass border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300"
+          disabled={disabled}
+          className="pl-10 pr-12 h-12 glass border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 relative z-0"
+          autoComplete={type === 'password' ? 'current-password' : 'username'}
         />
         {type === 'password' && onTogglePassword && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-10 w-10 p-0 hover:bg-surface-elevated"
+            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-10 w-10 p-0 hover:bg-surface-elevated z-10"
             onClick={onTogglePassword}
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -165,8 +184,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
   const [activeField, setActiveField] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   
-  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
-  const blinkTimer = useRef<NodeJS.Timeout | null>(null);
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Handle inactivity floating animation
   const resetInactivityTimer = () => {
@@ -181,10 +200,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
     }, 15000); // 15 seconds of inactivity
   };
 
-  // Handle robot eye movement based on password field focus
+  // Handle robot eye movement based on active field
   useEffect(() => {
-    if (activeField === 'password' && password.length > 0) {
-      // Robot covers eyes when password is being typed
+    if (activeField === 'password' && password.length > 0 && !showPassword) {
+      // Robot looks away when password is being typed and hidden
+      setEyeDirection('right');
       return;
     }
     
@@ -195,7 +215,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
     } else {
       setEyeDirection('center');
     }
-  }, [activeField, password.length]);
+  }, [activeField, password.length, showPassword]);
 
   // Random blinking animation
   useEffect(() => {
@@ -227,12 +247,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
       resetInactivityTimer();
     };
 
-    document.addEventListener('mousemove', handleActivity);
-    document.addEventListener('keypress', handleActivity);
+    const handleMouseMove = () => handleActivity();
+    const handleKeyPress = () => handleActivity();
+    const handleClick = () => handleActivity();
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('keypress', handleKeyPress);
+    document.addEventListener('click', handleClick);
 
     return () => {
-      document.removeEventListener('mousemove', handleActivity);
-      document.removeEventListener('keypress', handleActivity);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('keypress', handleKeyPress);
+      document.removeEventListener('click', handleClick);
       if (inactivityTimer.current) {
         clearTimeout(inactivityTimer.current);
       }
@@ -269,7 +295,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
       <ParticleBackground />
       
       {/* Matrix Rain Easter Egg */}
-      {isFloating && <MatrixRain />}
+      <AnimatePresence>
+        {isFloating && <MatrixRain />}
+      </AnimatePresence>
       
       {/* Main Login Card */}
       <motion.div
@@ -293,6 +321,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               <div className="relative w-32 h-28 bg-gradient-to-b from-slate-600 to-slate-800 rounded-3xl border-2 border-slate-500 shadow-lg">
                 {/* Head top decoration */}
                 <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-8 h-4 bg-gradient-to-b from-primary to-primary/80 rounded-t-lg border border-primary/30" />
+                
+                {/* MCP Logo/Badge */}
+                <div className="absolute -top-1 right-2 w-6 h-6 bg-gradient-to-br from-accent to-primary rounded-full flex items-center justify-center border border-accent/50">
+                  <Bot className="w-3 h-3 text-white" />
+                </div>
                 
                 {/* Eyes */}
                 <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
@@ -342,10 +375,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
             >
               <CardTitle className="text-3xl font-bold gradient-text mb-2 flex items-center justify-center gap-2">
                 <Zap className="w-8 h-8 text-primary" />
-                MCP Client
+                MCP Control
               </CardTitle>
               <CardDescription className="text-muted-foreground">
-                Welcome to the future of MCP Control
+                Welcome to the future of Model Context Protocol
               </CardDescription>
             </motion.div>
           </CardHeader>
@@ -397,6 +430,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 isFloating={isFloating}
                 onFocus={() => handleFieldFocus('username')}
                 onBlur={handleFieldBlur}
+                disabled={loading}
               />
 
               <FloatingInput
@@ -411,6 +445,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 onBlur={handleFieldBlur}
                 showPassword={showPassword}
                 onTogglePassword={() => setShowPassword(!showPassword)}
+                disabled={loading}
               />
 
               <motion.div
