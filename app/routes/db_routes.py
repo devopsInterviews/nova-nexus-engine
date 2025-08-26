@@ -6,12 +6,14 @@ import time
 import re
 from pathlib import Path
 from datetime import timedelta
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Dict, Any, List, Optional
+from sqlalchemy.orm import Session
+
 from app.prompts import BI_ANALYTICS_PROMPT
-from app.database import get_db_session, DBConnection
-from app.routes.auth_routes import token_required
+from app.database import get_db_session, DBConnection, User
+from app.routes.auth_routes import get_current_user
 
 # Create router with tags for API documentation
 router = APIRouter(tags=["database"])  # prefix inherited from app.include_router("/api")
@@ -48,49 +50,44 @@ def _resolve_connection_payload(data: Dict[str, Any], saved: List[Dict[str, Any]
     return merged
 
 
-def _load_saved_connections(user_id: int) -> List[Dict[str, Any]]:
-    session = next(get_db_session())
-    try:
-        connections = session.query(DBConnection).filter_by(user_id=user_id).all()
-        conn_list = []
-        for conn in connections:
-            conn_list.append({
-                "id": conn.id,
-                "name": conn.connection_name,
-                "db_type": conn.db_type,
-                "db_host": conn.db_host,
-                "db_port": conn.db_port,
-                "db_user": conn.db_user,
-                "db_password": conn.db_password,
-                "db_name": conn.db_name,
-            })
-        return conn_list
-    finally:
-        session.close()
+def _load_saved_connections(user_id: int, db: Session) -> List[Dict[str, Any]]:
+    connections = db.query(DBConnection).filter_by(user_id=user_id).all()
+    conn_list = []
+    for conn in connections:
+        conn_list.append({
+            "id": conn.id,
+            "name": conn.connection_name,
+            "db_type": conn.db_type,
+            "db_host": conn.db_host,
+            "db_port": conn.db_port,
+            "db_user": conn.db_user,
+            "db_password": conn.db_password,
+            "db_name": conn.db_name,
+        })
+    return conn_list
 
-def _persist_saved_connections(user_id: int, conn_data: Dict[str, Any]):
-    session = next(get_db_session())
-    try:
-        new_conn = DBConnection(
-            user_id=user_id,
-            connection_name=conn_data['name'],
-            database_type=conn_data['database_type'],
-            host=conn_data['host'],
-            port=conn_data['port'],
-            user=conn_data['user'],
-            password=conn_data['password'],
-            database=conn_data['database']
-        )
-        session.add(new_conn)
-        session.commit()
-        conn_id = new_conn.id
-        return conn_id
-    finally:
-        session.close()
+def _persist_saved_connections(user_id: int, conn_data: Dict[str, Any], db: Session) -> int:
+    new_conn = DBConnection(
+        user_id=user_id,
+        connection_name=conn_data['name'],
+        database_type=conn_data['database_type'],
+        host=conn_data['host'],
+        port=conn_data['port'],
+        user=conn_data['user'],
+        password=conn_data['password'],
+        database=conn_data['database']
+    )
+    db.add(new_conn)
+    db.commit()
+    db.refresh(new_conn)
+    return new_conn.id
 
 @router.post("/test-connection")
-@token_required
-async def test_connection(current_user, request: Request):
+async def test_connection(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Test a database connection with comprehensive logging and error handling
     
@@ -129,7 +126,7 @@ async def test_connection(current_user, request: Request):
         logger.debug("Resolving connection parameters from saved profiles or direct input")
         
         # Allow referencing saved profile via connection_id/name
-        saved_connections = _load_saved_connections(current_user.id)
+        saved_connections = _load_saved_connections(current_user.id, db)
         payload = _resolve_connection_payload(data, saved_connections)
         
         # Extract connection details with validation
@@ -216,8 +213,11 @@ async def test_connection(current_user, request: Request):
         })
 
 @router.post("/save-connection")
-@token_required
-async def save_connection(current_user, request: Request):
+async def save_connection(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Save a database connection configuration with comprehensive validation and logging
     
@@ -255,7 +255,7 @@ async def save_connection(current_user, request: Request):
 
         logger.debug("All required fields present, saving connection to DB")
         
-        connection_id = _persist_saved_connections(current_user.id, data)
+        connection_id = _persist_saved_connections(current_user.id, data, db)
         
         logger.info(
             f"Successfully saved connection '{data['name']}' with ID {connection_id} for user {current_user.username}"
@@ -275,18 +275,20 @@ async def save_connection(current_user, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/delete-connection/{connection_id}")
-@token_required
-async def delete_connection(current_user, connection_id: int):
+async def delete_connection(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Delete a saved connection by ID
     """
-    session = next(get_db_session())
     try:
-        conn = session.query(DBConnection).filter_by(id=connection_id, user_id=current_user.id).first()
+        conn = db.query(DBConnection).filter_by(id=connection_id, user_id=current_user.id).first()
         
         if conn:
-            session.delete(conn)
-            session.commit()
+            db.delete(conn)
+            db.commit()
             logger.info(f"Deleted connection id={connection_id} for user {current_user.username}")
             return JSONResponse({
                 "status": "success",
@@ -309,16 +311,16 @@ async def delete_connection(current_user, connection_id: int):
                 "message": f"Failed to delete connection: {str(e)}"
             }
         )
-    finally:
-        session.close()
 
 @router.get("/get-connections")
-@token_required
-async def get_connections(current_user):
+async def get_connections(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Get all saved connections for the current user
     """
-    saved_connections = _load_saved_connections(current_user.id)
+    saved_connections = _load_saved_connections(current_user.id, db)
     redacted = [
         {**c, "password": _mask_secret(c.get("password"))}
         for c in saved_connections
@@ -337,8 +339,11 @@ async def api_health_check():
     })
 
 @router.post("/list-tables")
-@token_required
-async def list_tables(current_user, request: Request):
+async def list_tables(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     List tables in the database
     """
@@ -349,7 +354,7 @@ async def list_tables(current_user, request: Request):
         data = await request.json()
 
         # Resolve from profile if needed
-        saved_connections = _load_saved_connections(current_user.id)
+        saved_connections = _load_saved_connections(current_user.id, db)
         data = _resolve_connection_payload(data, saved_connections)
 
         logger.info("Listing tables for %s on %s:%s/%s", data['database_type'], data['host'], data['port'], data['database'])
@@ -398,8 +403,11 @@ async def list_tables(current_user, request: Request):
         )
 
 @router.post("/describe-columns")
-@token_required
-async def describe_columns(current_user, request: Request):
+async def describe_columns(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Describe columns in a table
     """
@@ -410,7 +418,7 @@ async def describe_columns(current_user, request: Request):
         data = await request.json()
         
         # Resolve from profile
-        saved_connections = _load_saved_connections(current_user.id)
+        saved_connections = _load_saved_connections(current_user.id, db)
         data = _resolve_connection_payload(data, saved_connections)
         if "table" not in data:
             return JSONResponse(status_code=400, content={"status":"error","error":"Missing required field: table"})
@@ -472,8 +480,11 @@ async def describe_columns(current_user, request: Request):
         )
 
 @router.post("/suggest-columns")
-@token_required
-async def suggest_columns(current_user, request: Request):
+async def suggest_columns(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Suggest columns based on natural language prompt with confluence integration
     Replicates the working suggest_keys_api function from client.py
@@ -500,7 +511,7 @@ async def suggest_columns(current_user, request: Request):
         logger.info("suggest_columns: received request with payload keys: %s", list(data.keys()))
         
         # Resolve connection profile first
-        saved_connections = _load_saved_connections(current_user.id)
+        saved_connections = _load_saved_connections(current_user.id, db)
         data = _resolve_connection_payload(data, saved_connections)
         
         logger.info(
@@ -698,8 +709,11 @@ async def suggest_columns(current_user, request: Request):
         )
 
 @router.post("/analytics-query")
-@token_required
-async def analytics_query(current_user, request: Request):
+async def analytics_query(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Execute an analytics query with AI assistance and comprehensive logging
     
@@ -741,7 +755,7 @@ async def analytics_query(current_user, request: Request):
         logger.debug(f"Request payload keys: {list(data.keys())}")
         
         # Resolve connection profile first
-        saved_connections = _load_saved_connections(current_user.id)
+        saved_connections = _load_saved_connections(current_user.id, db)
         data = _resolve_connection_payload(data, saved_connections)
         
         logger.info(
@@ -917,7 +931,11 @@ async def analytics_query(current_user, request: Request):
 connection_id_counter = 1
 
 @router.post("/sync-all-tables")
-async def sync_all_tables(request: Request):
+async def sync_all_tables(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Sync all tables to Confluence by calling the existing sync_all_tables function
     from client.py through the MCP session
@@ -925,7 +943,11 @@ async def sync_all_tables(request: Request):
     from app.client import _mcp_session  # Import here to avoid circular imports
 
 @router.post("/sync-all-tables-with-progress")
-async def sync_all_tables_with_progress(request: Request):
+async def sync_all_tables_with_progress(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Sync all tables to Confluence with detailed progress reporting.
     Returns intermediate progress updates instead of waiting for completion.
@@ -945,7 +967,7 @@ async def sync_all_tables_with_progress(request: Request):
         logger.info("sync_all_tables: received request with payload keys: %s", list(data.keys()))
         
         # Resolve connection profile first
-        saved_connections = _load_saved_connections()
+        saved_connections = _load_saved_connections(current_user.id, db)
         data = _resolve_connection_payload(data, saved_connections)
         
         logger.info(
@@ -1126,7 +1148,11 @@ async def sync_all_tables_with_progress(request: Request):
         )
 
 @router.post("/sync-all-tables-with-progress-stream")
-async def sync_all_tables_with_progress_stream(request: Request):
+async def sync_all_tables_with_progress_stream(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
     """
     Sync all tables to Confluence with real-time progress streaming.
     Returns Server-Sent Events for real-time progress updates.
@@ -1149,7 +1175,7 @@ async def sync_all_tables_with_progress_stream(request: Request):
         logger.info("sync_all_tables_with_progress_stream: received request")
         
         # Resolve connection profile first
-        saved_connections = _load_saved_connections()
+        saved_connections = _load_saved_connections(current_user.id, db)
         data = _resolve_connection_payload(data, saved_connections)
         
         # Validate required fields
@@ -1417,271 +1443,6 @@ async def sync_all_tables_with_progress_stream(request: Request):
             "Connection": "keep-alive",
         }
     )
-
-@router.post("/sync-all-tables-with-progress") 
-async def sync_all_tables_with_progress(request: Request):
-    """
-    Sync all tables to Confluence with detailed progress reporting.
-    This endpoint immediately returns a task ID and the frontend can poll for progress.
-    """
-    from app.client import _mcp_session
-    import asyncio
-    import time
-    
-    # --- Helper functions for safe logging ---
-    def _mask_secret(s: str, show: int = 2) -> str:
-        if s is None:
-            return "None"
-        s = str(s)
-        return (s[:show] + "..." + s[-show:]) if len(s) > (show * 2) else "***"
-
-    try:
-        # Parse and validate request data
-        data = await request.json()
-        logger.info("sync_all_tables_with_progress: received request")
-        
-        # Resolve connection profile first
-        saved_connections = _load_saved_connections()
-        data = _resolve_connection_payload(data, saved_connections)
-        
-        # Validate required fields
-        required = ["host", "port", "user", "password", "database", "database_type", "space", "title", "limit"]
-        for field in required:
-            if field not in data or data[field] in (None, ""):
-                logger.error("sync_all_tables_with_progress: missing field=%r", field)
-                return JSONResponse(
-                    status_code=400,
-                    content={"status": "error", "error": f"Missing required field: {field}"}
-                )
-
-        # Prepare common arguments
-        common_args = {
-            "host": data["host"],
-            "port": data["port"],
-            "user": data["user"],
-            "password": data["password"],
-            "database": data["database"],
-            "database_type": data["database_type"],
-        }
-
-        # Create a comprehensive progress object that we'll return
-        progress_data = {
-            "status": "running",
-            "stage": "initializing",
-            "current_table": None,
-            "current_table_index": 0,
-            "total_tables": 0,
-            "progress_percentage": 0,
-            "stage_details": "Starting sync process...",
-            "tables_processed": [],
-            "tables_pending": [],
-            "summary": {
-                "total_tables": 0,
-                "successful_tables": 0,
-                "failed_tables": 0,
-                "total_synced_columns": 0
-            },
-            "start_time": time.time()
-        }
-
-        # --- Stage 1: List tables (5% of progress) ---
-        logger.info("sync_all_tables_with_progress: Stage 1 - Listing tables")
-        progress_data.update({
-            "stage": "listing_tables",
-            "progress_percentage": 5,
-            "stage_details": "Fetching database tables..."
-        })
-        
-        list_res = await _mcp_session.call_tool(
-            "list_database_tables",
-            arguments=common_args,
-            read_timeout_seconds=timedelta(seconds=60),
-        )
-        tables = json.loads(list_res.content[0].text)
-        logger.info("sync_all_tables_with_progress: found %d tables", len(tables))
-        
-        progress_data.update({
-            "total_tables": len(tables),
-            "tables_pending": tables.copy(),
-            "summary": {"total_tables": len(tables), "successful_tables": 0, "failed_tables": 0, "total_synced_columns": 0}
-        })
-
-        # --- Stage 2: Fetch schema map (10% of progress) ---
-        logger.info("sync_all_tables_with_progress: Stage 2 - Fetching schema")
-        progress_data.update({
-            "stage": "fetching_schema",
-            "progress_percentage": 10,
-            "stage_details": "Loading database schema and keys..."
-        })
-        
-        keys_res = await _mcp_session.call_tool(
-            "list_database_keys",
-            arguments=common_args,
-            read_timeout_seconds=timedelta(seconds=60),
-        )
-        schema_map = json.loads(keys_res.content[0].text)
-        logger.info("sync_all_tables_with_progress: loaded schema for %d tables", len(schema_map))
-
-        # --- Stage 3: Process each table (85% of progress, distributed among tables) ---
-        results = []
-        table_progress_increment = 85 / len(tables) if tables else 0
-        
-        for table_index, tbl in enumerate(tables):
-            current_progress = 10 + (table_index * table_progress_increment)
-            logger.info("sync_all_tables_with_progress: processing table %d/%d: %s", table_index + 1, len(tables), tbl)
-            
-            # Update progress for current table
-            progress_data.update({
-                "stage": "processing_table",
-                "current_table": tbl,
-                "current_table_index": table_index + 1,
-                "progress_percentage": int(current_progress),
-                "stage_details": f"Processing table '{tbl}' ({table_index + 1}/{len(tables)})",
-                "tables_pending": tables[table_index + 1:]
-            })
-            
-            all_cols = schema_map.get(tbl, [])
-            if not all_cols:
-                logger.warning("sync_all_tables_with_progress: no schema found for table %s", tbl)
-                result = {"table": tbl, "newColumns": [], "error": "no_schema", "stage": "completed"}
-                results.append(result)
-                progress_data["tables_processed"].append(result)
-                progress_data["summary"]["failed_tables"] += 1
-                continue
-
-            # Sub-stage 3a: Compute delta
-            progress_data["stage_details"] = f"Computing delta for table '{tbl}' ({len(all_cols)} columns)"
-            logger.debug("sync_all_tables_with_progress: computing delta for table %s", tbl)
-            
-            delta_res = await _mcp_session.call_tool(
-                "get_table_delta_keys",
-                arguments={
-                    "space": data["space"],
-                    "title": data["title"],
-                    "columns": [f"{tbl}.{c}" for c in all_cols]
-                },
-                read_timeout_seconds=timedelta(seconds=60),
-            )
-            delta_chunks = [msg.text for msg in delta_res.content]
-            delta_text = "".join(delta_chunks)
-            
-            try:
-                missing = json.loads(delta_text)
-            except Exception as e:
-                logger.warning("sync_all_tables_with_progress: failed to parse delta JSON for %s: %s", tbl, e)
-                missing = []
-
-            if not missing:
-                logger.info("sync_all_tables_with_progress: no missing columns for table %s", tbl)
-                result = {"table": tbl, "newColumns": [], "error": None, "stage": "completed"}
-                results.append(result)
-                progress_data["tables_processed"].append(result)
-                progress_data["summary"]["successful_tables"] += 1
-                continue
-
-            # Sub-stage 3b: Describe missing columns
-            progress_data["stage_details"] = f"Describing {len(missing)} missing columns for table '{tbl}'"
-            logger.info("sync_all_tables_with_progress: found %d missing columns for table %s", len(missing), tbl)
-            
-            desc_res = await _mcp_session.call_tool(
-                "describe_columns",
-                arguments={
-                    **common_args,
-                    "table": tbl,
-                    "columns": [c.split(".", 1)[1] for c in missing],
-                    "limit": data["limit"],
-                },
-                read_timeout_seconds=None,
-            )
-            desc_chunks = [msg.text for msg in desc_res.content]
-            desc_text = "".join(desc_chunks)
-            
-            try:
-                descriptions = json.loads(desc_text)
-            except Exception as e:
-                logger.error("sync_all_tables_with_progress: failed to parse descriptions JSON for %s: %s", tbl, e)
-                descriptions = []
-
-            # Sub-stage 3c: Sync to Confluence
-            progress_data["stage_details"] = f"Syncing {len(descriptions)} descriptions to Confluence for table '{tbl}'"
-            logger.debug("sync_all_tables_with_progress: syncing descriptions to Confluence for table %s", tbl)
-            
-            sync_res = await _mcp_session.call_tool(
-                "sync_confluence_table_delta",
-                arguments={
-                    "space": data["space"],
-                    "title": data["title"],
-                    "data": descriptions
-                },
-                read_timeout_seconds=timedelta(seconds=300),
-            )
-            
-            sync_info = {"delta": []}
-            if sync_res.content:
-                try:
-                    sync_info = json.loads(sync_res.content[0].text)
-                except Exception as e:
-                    logger.error("sync_all_tables_with_progress: failed to parse sync JSON for %s: %s", tbl, e)
-
-            synced_columns = sync_info.get("delta", [])
-            logger.info("sync_all_tables_with_progress: synced %d columns for table %s", len(synced_columns), tbl)
-
-            result = {"table": tbl, "newColumns": synced_columns, "error": None, "stage": "completed"}
-            results.append(result)
-            progress_data["tables_processed"].append(result)
-            progress_data["summary"]["successful_tables"] += 1
-            progress_data["summary"]["total_synced_columns"] += len(synced_columns)
-
-        # --- Stage 4: Finalization (100%) ---
-        total_synced_columns = sum(len(r["newColumns"]) for r in results)
-        successful_tables = len([r for r in results if r["error"] is None])
-        failed_tables = len([r for r in results if r["error"] is not None])
-        
-        end_time = time.time()
-        duration = end_time - progress_data["start_time"]
-
-        final_progress = {
-            "status": "completed",
-            "stage": "completed",
-            "current_table": None,
-            "current_table_index": len(tables),
-            "total_tables": len(tables),
-            "progress_percentage": 100,
-            "stage_details": f"Sync completed! Processed {len(tables)} tables in {duration:.1f}s",
-            "tables_processed": progress_data["tables_processed"],
-            "tables_pending": [],
-            "summary": {
-                "total_tables": len(tables),
-                "successful_tables": successful_tables,
-                "failed_tables": failed_tables,
-                "total_synced_columns": total_synced_columns
-            },
-            "results": results,
-            "start_time": progress_data["start_time"],
-            "end_time": end_time,
-            "duration": duration
-        }
-
-        logger.info(
-            "sync_all_tables_with_progress: completed - %d tables processed, %d successful, %d failed, %d total columns synced in %.1fs",
-            len(tables), successful_tables, failed_tables, total_synced_columns, duration
-        )
-
-        return JSONResponse({
-            "status": "success",
-            "data": final_progress
-        })
-                
-    except Exception as e:
-        logger.error("sync_all_tables_with_progress: error occurred: %s", str(e), exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "error": f"Table sync failed: {str(e)}"
-            }
-        )
-
 
 @router.get("/endpoints")
 async def get_api_endpoints():

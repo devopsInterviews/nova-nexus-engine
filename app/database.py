@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 class User(Base):
+    """
+    SQLAlchemy model for the 'users' table.
+
+    Represents a user in the system with authentication details and relationships
+    to their database connections and saved tests.
+    """
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
     username = Column(String(80), unique=True, nullable=False)
@@ -25,12 +31,19 @@ class User(Base):
     tests = relationship("Test", back_populates="user", cascade="all, delete-orphan")
 
     def set_password(self, password):
+        """Hashes the provided password and stores it."""
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
+        """Verifies the provided password against the stored hash."""
         return check_password_hash(self.password_hash, password)
 
 class DBConnection(Base):
+    """
+    SQLAlchemy model for the 'db_connections' table.
+
+    Represents a saved database connection profile belonging to a user.
+    """
     __tablename__ = 'db_connections'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
@@ -44,6 +57,11 @@ class DBConnection(Base):
     user = relationship("User", back_populates="db_connections")
 
 class Test(Base):
+    """
+    SQLAlchemy model for the 'tests' table.
+
+    Represents a saved test configuration belonging to a user.
+    """
     __tablename__ = 'tests'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
@@ -54,12 +72,31 @@ class Test(Base):
 
 
 def get_db_url():
+    """
+    Constructs the database connection URL from environment variables.
+
+    Returns:
+        str: The full PostgreSQL connection string.
+    """
     return f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@{os.getenv('POSTGRES_HOST')}/{os.getenv('POSTGRES_DB')}"
 
 engine = None
 SessionLocal = None
 
 def init_db():
+    """
+    Initializes the database connection, engine, and session.
+
+    This function performs the following steps:
+    1. Constructs the database URL.
+    2. Creates the SQLAlchemy engine.
+    3. Retries connecting to the database to ensure it's available.
+    4. Creates all tables defined in the models (if they don't exist).
+    5. Creates the sessionmaker `SessionLocal`.
+    6. Ensures the default 'admin' user exists.
+
+    This function is called once at application startup.
+    """
     global engine, SessionLocal
     db_url = get_db_url()
     engine = create_engine(db_url)
@@ -80,6 +117,8 @@ def init_db():
         logger.error("Could not connect to the database after multiple retries. Exiting.")
         exit(1)
 
+    # This is the line that creates the tables.
+    # It checks for the existence of tables and creates any that are missing.
     Base.metadata.create_all(engine)
     
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -102,6 +141,18 @@ def init_db():
         session.close()
 
 def get_db_session():
+    """
+    FastAPI dependency to provide a database session to API endpoints.
+
+    This function yields a new database session for each request and ensures
+    it is closed afterward.
+
+    Raises:
+        Exception: If the database is not initialized.
+
+    Yields:
+        Session: The SQLAlchemy database session.
+    """
     if SessionLocal is None:
         raise Exception("Database is not initialized. Call init_db() first.")
     db = SessionLocal()

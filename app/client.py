@@ -60,7 +60,9 @@ from app.routes.db_routes import router as db_router
 # Import and include MCP testing routes
 from app.routes.mcp_routes import router as mcp_router
 # Import and include auth routes
-from app.routes.auth_routes import auth_bp
+from app.routes.auth_routes import router as auth_router
+# Import and include user routes
+from app.routes.users_routes import router as users_router
 # Import and include test routes
 from app.routes.test_routes import router as test_router
 
@@ -69,7 +71,9 @@ app.include_router(db_router, prefix="/api")
 # Expose MCP testing routes under /api to match frontend expectations
 app.include_router(mcp_router, prefix="/api")
 # Expose auth routes under /api
-app.include_router(auth_bp, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+# Expose user routes under /api
+app.include_router(users_router, prefix="/api")
 # Expose test routes under /api
 app.include_router(test_router, prefix="/api")
 
