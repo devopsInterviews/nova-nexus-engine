@@ -1,93 +1,143 @@
-from flask import Blueprint, request, jsonify
-from werkzeug.security import check_password_hash
-from app.database import get_db_session, User
-import jwt
-import datetime
 import os
-from functools import wraps
+import datetime
+from typing import List
 
-auth_bp = Blueprint('auth_bp', __name__)
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from werkzeug.security import check_password_hash
+
+from app.database import User, get_db_session
+
+router = APIRouter(tags=["Authentication"])
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your_default_secret_key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-        if 'x-access-token' in request.headers:
-            token = request.headers['x-access-token']
+# Pydantic Models
+class Token(BaseModel):
+    """Pydantic model for the authentication token response."""
+    access_token: str
+    token_type: str
 
-        if not token:
-            return jsonify({'message': 'Token is missing!'}), 401
+class TokenData(BaseModel):
+    """Pydantic model for the data encoded in the token."""
+    username: str | None = None
 
-        try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            session = get_db_session()
-            current_user = session.query(User).filter_by(id=data['user_id']).first()
-            session.close()
-        except:
-            return jsonify({'message': 'Token is invalid!'}), 401
+class UserLogin(BaseModel):
+    """Pydantic model for the user login request."""
+    username: str
+    password: str
 
-        return f(current_user, *args, **kwargs)
-    return decorated
+class UserResponse(BaseModel):
+    """Pydantic model for user data returned by the API."""
+    id: int
+    username: str
+    creation_date: datetime.datetime | None
+    last_login: datetime.datetime | None
+    login_count: int
 
-@auth_bp.route('/login', methods=['POST'])
-def login():
-    auth = request.json
-    if not auth or not auth.get('username') or not auth.get('password'):
-        return jsonify({'message': 'Could not verify'}), 401
+    class Config:
+        orm_mode = True
 
-    session = get_db_session()
-    user = session.query(User).filter_by(username=auth['username']).first()
 
-    if not user:
-        session.close()
-        return jsonify({'message': 'User not found'}), 401
+async def get_current_user(request: Request, db: Session = Depends(get_db_session)) -> User:
+    """
+    FastAPI dependency to get the current authenticated user from a token.
 
-    if user.check_password(auth['password']):
-        user.last_login = datetime.datetime.utcnow()
-        user.login_count += 1
-        session.commit()
-        token = jwt.encode({
-            'user_id': user.id,
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-        }, SECRET_KEY, "HS256")
-        session.close()
-        return jsonify({'token': token})
+    It extracts the token from the 'x-access-token' or 'Authorization' header,
+    validates it, and retrieves the corresponding user from the database.
 
-    session.close()
-    return jsonify({'message': 'Could not verify'}), 401
+    This function is used as a dependency in all protected endpoints to ensure
+    the user is authenticated.
 
-@auth_bp.route('/users', methods=['GET'])
-@token_required
-def get_all_users(current_user):
-    if current_user.username != 'admin':
-        return jsonify({'message': 'Cannot perform that function!'})
+    Args:
+        request (Request): The incoming request object.
+        db (Session): The database session.
+
+    Raises:
+        HTTPException: If the token is missing, invalid, or the user is not found.
+
+    Returns:
+        User: The authenticated user object.
+    """
+    token = request.headers.get('x-access-token') or request.headers.get('Authorization', '').replace('Bearer ', '')
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
         
-    session = get_db_session()
-    users = session.query(User).all()
-    session.close()
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: int = payload.get("user_id")
+        if user_id is None:
+            raise credentials_exception
+    except jwt.PyJWTError:
+        raise credentials_exception
     
-    output = []
-    for user in users:
-        user_data = {}
-        user_data['id'] = user.id
-        user_data['username'] = user.username
-        user_data['creation_date'] = user.creation_date
-        user_data['last_login'] = user.last_login
-        user_data['login_count'] = user.login_count
-        output.append(user_data)
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise credentials_exception
+    return user
 
-    return jsonify({'users': output})
+@router.post("/login", response_model=Token)
+async def login_for_access_token(form_data: UserLogin, db: Session = Depends(get_db_session)):
+    """
+    Authenticates a user and returns a JWT access token.
 
-@auth_bp.route('/me', methods=['GET'])
-@token_required
-def get_current_user(current_user):
-    user_data = {
-        'id': current_user.id,
-        'username': current_user.username,
-        'creation_date': current_user.creation_date,
-        'last_login': current_user.last_login,
-        'login_count': current_user.login_count
-    }
-    return jsonify(user_data)
+    This is the primary endpoint for user login. It checks the provided
+    username and password, and if valid, generates and returns an access token.
+    It also updates the user's last login time and login count.
+
+    Args:
+        form_data (UserLogin): The username and password from the request body.
+        db (Session): The database session.
+
+    Returns:
+        Token: An object containing the access token and token type.
+    """
+    user = db.query(User).filter(User.username == form_data.username).first()
+    if not user or not user.check_password(form_data.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user.last_login = datetime.datetime.utcnow()
+    user.login_count += 1
+    db.commit()
+
+    access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"user_id": user.id, "sub": user.username}
+    expire = datetime.datetime.utcnow() + access_token_expires
+    to_encode.update({"exp": expire})
+    access_token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/me", response_model=UserResponse)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """
+    Returns the details of the currently authenticated user.
+
+    This endpoint is used by the frontend to verify that the user is logged in
+    and to get their user information.
+
+    Args:
+        current_user (User): The authenticated user, injected by `get_current_user`.
+
+    Returns:
+        UserResponse: The details of the current user.
+    """
+    return current_user
