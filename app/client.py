@@ -18,6 +18,7 @@ from contextlib import AsyncExitStack
 from datetime import timedelta
 from app.llm_client import LLMClient
 from app.prompts import *
+from app.database import init_db
 
 
 # Load environment variables
@@ -58,11 +59,19 @@ logger = logging.getLogger("uvicorn.error")
 from app.routes.db_routes import router as db_router
 # Import and include MCP testing routes
 from app.routes.mcp_routes import router as mcp_router
+# Import and include auth routes
+from app.routes.auth_routes import auth_bp
+# Import and include test routes
+from app.routes.test_routes import router as test_router
 
 # Expose database/API routes under /api to match UI calls
 app.include_router(db_router, prefix="/api")
 # Expose MCP testing routes under /api to match frontend expectations
 app.include_router(mcp_router, prefix="/api")
+# Expose auth routes under /api
+app.include_router(auth_bp, prefix="/api")
+# Expose test routes under /api
+app.include_router(test_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")
@@ -113,6 +122,9 @@ async def startup_event():
     )
     await _mcp_session.initialize()
     logger.info(f"MCP session initialized and connected to {MCP_SERVER_URL}")
+
+    # Initialize the database
+    init_db()
 
     llm_client = LLMClient()
     globals()["llm_client"] = llm_client

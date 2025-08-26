@@ -6,7 +6,8 @@ import {
   Database,
   Cpu,
   Zap,
-  CheckSquare
+  CheckSquare,
+  Users
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,6 +53,11 @@ const navigationItems = [
     title: "Settings",
     url: "/settings",
     icon: Settings,
+  },
+  {
+    title: "Users",
+    url: "/users",
+    icon: Users,
   },
 ];
 

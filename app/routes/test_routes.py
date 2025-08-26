@@ -1,0 +1,134 @@
+import logging
+import json
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from app.database import get_db_session, Test, User
+from app.routes.auth_routes import get_current_user
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["Tests"])
+
+class TestParameter(BaseModel):
+    name: str
+    value: str
+
+class TestData(BaseModel):
+    endpoint_path: str
+    method: str
+    parameters: List[TestParameter]
+    request_type: str
+
+class CreateTestRequest(BaseModel):
+    name: str
+    endpoint_path: str
+    method: str
+    parameters: List[TestParameter]
+    request_type: str
+
+class TestResponse(BaseModel):
+    id: int
+    name: str
+    endpoint_path: str
+    method: str
+    parameters: List[TestParameter]
+    request_type: str
+    created_at: str
+
+    class Config:
+        orm_mode = True
+
+@router.post("/tests", response_model=TestResponse)
+async def save_test(
+    test_in: CreateTestRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Saves a new test configuration for the authenticated user.
+    """
+    logger.info(f"User {current_user.username} is saving a new test: {test_in.name}")
+    try:
+        test_data_json = json.dumps({
+            "endpoint_path": test_in.endpoint_path,
+            "method": test_in.method,
+            "parameters": [p.dict() for p in test_in.parameters],
+            "request_type": test_in.request_type,
+        })
+
+        new_test = Test(
+            user_id=current_user.id,
+            test_name=test_in.name,
+            test_data=test_data_json
+        )
+        db.add(new_test)
+        db.commit()
+        db.refresh(new_test)
+        
+        test_data = json.loads(new_test.test_data)
+        response = TestResponse(
+            id=new_test.id,
+            name=new_test.test_name,
+            created_at=new_test.creation_date.isoformat(),
+            **test_data
+        )
+        logger.info(f"Test '{new_test.test_name}' saved successfully with ID {new_test.id}")
+        return response
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error saving test for user {current_user.username}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error while saving the test.")
+
+@router.get("/tests", response_model=List[TestResponse])
+async def get_saved_tests(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retrieves all saved tests for the authenticated user.
+    """
+    logger.info(f"Fetching saved tests for user {current_user.username}")
+    try:
+        tests = db.query(Test).filter(Test.user_id == current_user.id).order_by(Test.creation_date.desc()).all()
+        response = []
+        for test in tests:
+            test_data = json.loads(test.test_data)
+            response.append(TestResponse(
+                id=test.id,
+                name=test.test_name,
+                created_at=test.creation_date.isoformat(),
+                **test_data
+            ))
+        logger.info(f"Found {len(response)} tests for user {current_user.username}")
+        return response
+    except Exception as e:
+        logger.error(f"Error fetching tests for user {current_user.username}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error while fetching tests.")
+
+@router.delete("/tests/{test_id}", status_code=204)
+async def delete_saved_test(
+    test_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deletes a specific test for the authenticated user.
+    """
+    logger.info(f"User {current_user.username} attempting to delete test with ID {test_id}")
+    try:
+        test = db.query(Test).filter(Test.id == test_id, Test.user_id == current_user.id).first()
+        if not test:
+            logger.warning(f"Test with ID {test_id} not found for user {current_user.username}")
+            raise HTTPException(status_code=404, detail="Test not found or you do not have permission to delete it.")
+        
+        db.delete(test)
+        db.commit()
+        logger.info(f"Test with ID {test_id} deleted successfully for user {current_user.username}")
+        return
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting test {test_id} for user {current_user.username}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error while deleting the test.")
