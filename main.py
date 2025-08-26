@@ -146,6 +146,53 @@ def setup_logging():
     
     return logger
 
+def initialize_application():
+    """
+    Initialize the application with database and system checks.
+    
+    Returns:
+        bool: True if initialization successful, False otherwise
+    """
+    logger = logging.getLogger("app")
+    
+    try:
+        logger.info("Performing application initialization checks...")
+        
+        # Import database functions
+        from app.database import check_database_connection, initialize_database, get_database_info
+        
+        # Check database connection
+        logger.info("Checking database connection...")
+        db_info = get_database_info()
+        logger.info(f"Database URL: {db_info.get('url', 'Unknown')}")
+        logger.info(f"Database Name: {db_info.get('database', 'Unknown')}")
+        
+        if not check_database_connection():
+            logger.error("❌ Database connection failed!")
+            logger.error("Please check your database configuration:")
+            logger.error(f"  - HOST: {os.getenv('DATABASE_HOST', 'localhost')}")
+            logger.error(f"  - PORT: {os.getenv('DATABASE_PORT', '5432')}")
+            logger.error(f"  - DATABASE: {os.getenv('DATABASE_NAME', 'mcp_client')}")
+            logger.error(f"  - USER: {os.getenv('DATABASE_USER', 'mcp_user')}")
+            logger.error("Make sure PostgreSQL is running and credentials are correct.")
+            return False
+        
+        logger.info("✅ Database connection successful!")
+        if db_info.get('version'):
+            logger.info(f"Database Version: {db_info['version']}")
+        
+        # Initialize database (create tables, default admin user)
+        logger.info("Initializing database schema and default data...")
+        initialize_database()
+        logger.info("✅ Database initialization completed successfully!")
+        
+        logger.info("🚀 Application initialization completed successfully!")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Application initialization failed: {str(e)}", exc_info=True)
+        return False
+
 if __name__ == "__main__":
     """
     Main application entry point
@@ -160,6 +207,11 @@ if __name__ == "__main__":
     try:
         logger.info("Initializing MCP Client FastAPI application")
         
+        # Initialize application (database, etc.)
+        if not initialize_application():
+            logger.error("Application initialization failed. Exiting.")
+            sys.exit(1)
+        
         # Server configuration
         server_config = {
             "app": "app.client:app",
@@ -171,8 +223,9 @@ if __name__ == "__main__":
         }
         
         logger.info(f"Starting server with configuration: {server_config}")
-        logger.info("Server will be available at http://%s:%s", CLIENT_HOST, CLIENT_PORT)
-        logger.info("API documentation available at http://%s:%s/docs", CLIENT_HOST, CLIENT_PORT)
+        logger.info("🌐 Server will be available at http://%s:%s", CLIENT_HOST, CLIENT_PORT)
+        logger.info("📚 API documentation available at http://%s:%s/docs", CLIENT_HOST, CLIENT_PORT)
+        logger.info("=" * 80)
         
         # Start the server
         # Note: In production, replace with:

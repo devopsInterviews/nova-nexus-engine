@@ -72,6 +72,51 @@ app.include_router(auth_router, prefix="/api")
 # Expose test configuration routes under /api
 app.include_router(test_router, prefix="/api")
 
+# Startup event handler for database initialization
+@app.on_event("startup")
+async def startup_event():
+    """
+    FastAPI startup event handler.
+    
+    Initializes database connection and sets up application requirements.
+    This runs when the app starts, regardless of how it's launched.
+    """
+    logger.info("🚀 FastAPI startup event triggered")
+    
+    try:
+        from app.database import check_database_connection, initialize_database, get_database_info
+        
+        # Check database connection
+        logger.info("Verifying database connection...")
+        db_info = get_database_info()
+        
+        # Log database configuration (with masked password)
+        masked_url = db_info.get('url', 'Unknown')
+        logger.info(f"Database URL: {masked_url}")
+        logger.info(f"Database: {db_info.get('database', 'Unknown')}")
+        
+        if db_info['status'] == 'connected':
+            logger.info("✅ Database connection verified successfully")
+            if db_info.get('version'):
+                logger.info(f"PostgreSQL Version: {db_info['version']}")
+        else:
+            logger.error("❌ Database connection failed!")
+            logger.error(f"Error: {db_info.get('error', 'Unknown error')}")
+            raise Exception(f"Database connection failed: {db_info.get('error')}")
+        
+        # Initialize database schema and default data
+        logger.info("Initializing database schema and default data...")
+        initialize_database()
+        logger.info("✅ Database initialization completed")
+        
+        logger.info("🎉 Application startup completed successfully!")
+        
+    except Exception as e:
+        logger.error(f"❌ Startup failed: {str(e)}", exc_info=True)
+        # In production, you might want to exit the application here
+        # For now, we'll log the error and continue
+        raise
+
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -256,10 +301,44 @@ async def jenkins_anomaly_endpoint(request: Request):
 @app.get("/health")
 async def health_check():
     """
-    General API health check endpoint
+    Comprehensive health check endpoint including database connectivity.
+    
+    Returns application and database health status for monitoring.
     """
+    from app.database import get_db_health, get_database_info
+    from datetime import datetime
+    
     logger.info("Health check called")
-    return {"status": "ok", "service": "mcp-client"}
+    
+    # Get database health status
+    db_health = get_db_health()
+    db_info = get_database_info()
+    
+    # Determine overall status
+    overall_status = "healthy" if db_info['status'] == 'connected' else "unhealthy"
+    
+    health_data = {
+        "status": overall_status,
+        "service": "mcp-client",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "database": {
+            "status": db_info['status'],
+            "database": db_info.get('database', 'Unknown'),
+            "version": db_info.get('version', 'Unknown')
+        }
+    }
+    
+    # Add connection pool info if available
+    if 'database' in db_health and 'connection_pool' in db_health['database']:
+        health_data['database']['connection_pool'] = db_health['database']['connection_pool']
+    
+    # Add error info if database is down
+    if db_info['status'] != 'connected':
+        health_data['database']['error'] = db_info.get('error', 'Unknown error')
+        logger.warning(f"Health check detected database issue: {health_data['database']['error']}")
+    
+    return health_data
 
 
 @app.get("/tools", summary="List MCP server tools")
