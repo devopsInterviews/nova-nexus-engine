@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff, User, Lock, Zap, AlertCircle, CheckCircle, Bot, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ParticleBackground } from '@/components/effects/ParticleBackground';
@@ -406,7 +407,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                     <div className="w-8 h-6 bg-gradient-to-b from-slate-600 to-slate-700 mx-auto mb-2 rounded border border-slate-500" />
                     
                     {/* Body */}
-                    <div className="w-32 h-40 bg-gradient-to-b from-slate-600 to-slate-800 rounded-2xl border-2 border-slate-500 shadow-xl relative">
+                    <div className="w-32 h-40 bg-gradient-to-b from-slate-600 to-slate-800 rounded-2xl border-2 border-slate-500 shadow-xl">
                       {/* Body decorations */}
                       <div className="flex justify-center space-x-2 mt-3">
                         <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />

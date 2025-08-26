@@ -38,7 +38,7 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-const API_BASE_URL = '/api/auth';
+const API_BASE_URL = '/api';
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
