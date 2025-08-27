@@ -10,6 +10,8 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/auth-context";
+import { useTheme } from "next-themes";
+import { Moon, Sun } from "lucide-react";
 
 export function AppHeader() {
   const { user, logout } = useAuth();
@@ -39,6 +41,12 @@ export function AppHeader() {
         : names[0][0].toUpperCase();
     }
     return user.username.substring(0, 2).toUpperCase();
+  };
+
+  const { theme, setTheme } = useTheme();
+  const toggleTheme = () => {
+    if (theme === 'light') setTheme('dark');
+    else setTheme('light');
   };
 
   return (
@@ -72,6 +80,10 @@ export function AppHeader() {
 
         {/* Right Section */}
         <div className="flex items-center gap-3">
+          {/* Theme Toggle */}
+          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
+            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          </Button>
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -227,8 +227,9 @@ const UsersPage: React.FC = () => {
   return (
     <div className="p-4">
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="permissions">Permissions</TabsTrigger>
           <TabsTrigger value="tables">Database Tables</TabsTrigger>
         </TabsList>
         
@@ -332,6 +333,46 @@ const UsersPage: React.FC = () => {
           </Table>
         </CardContent>
       </Card>
+      </TabsContent>
+
+      <TabsContent value="permissions">
+        <Card>
+          <CardHeader>
+            <CardTitle>User Permissions (UI Only)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">Assign which users can view each application tab. (Not yet enforced server-side)</p>
+            <div className="overflow-auto border rounded-md">
+              <table className="w-full text-sm">
+                <thead className="bg-muted">
+                  <tr>
+                    <th className="text-left px-3 py-2">Tab</th>
+                    {users.map(u => (
+                      <th key={u.id} className="text-left px-3 py-2 whitespace-nowrap">{u.username}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {['Home','DevOps','BI','Analytics','Tests','Users','Settings'].map(tab => (
+                    <tr key={tab} className="even:bg-muted/40">
+                      <td className="font-medium px-3 py-1">{tab}</td>
+                      {users.map(u => (
+                        <td key={u.id} className="px-3 py-1">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            defaultChecked={true}
+                            onChange={() => {/* future: persist selection */}}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </TabsContent>
 
       <TabsContent value="tables">

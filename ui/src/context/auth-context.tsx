@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Initialize auth state from localStorage and verify token
+  // Initialize auth state from localStorage and verify token with debounce to avoid race on rapid refresh
   useEffect(() => {
     let cancelled = false;
     const initializeAuth = async () => {
@@ -92,7 +92,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      const verifyWithRetry = async () => {
+  const verifyWithRetry = async () => {
         const maxAttempts = 3;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
@@ -111,6 +111,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setToken(savedToken);
               setUser(userData);
               localStorage.setItem('auth_user', JSON.stringify(userData));
+      localStorage.setItem('auth_last_verified', Date.now().toString());
             }
             return true;
           } catch (err) {
@@ -132,7 +133,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
       try { await verifyWithRetry(); } finally { if (!cancelled) setIsInitializing(false); }
     };
-    initializeAuth();
+    // slight delay to allow any parallel login redirect before verifying
+    setTimeout(initializeAuth, 40);
     return () => { cancelled = true; };
   }, []);
 
