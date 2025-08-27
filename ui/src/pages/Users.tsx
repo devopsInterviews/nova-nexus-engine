@@ -72,6 +72,7 @@ const UsersPage: React.FC = () => {
   const [tables, setTables] = useState<string[]>([]);
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState<string | null>(null);
+  const [useInternalDb, setUseInternalDb] = useState(true);
 
   const fetchUsers = async () => {
     try {
@@ -80,15 +81,13 @@ const UsersPage: React.FC = () => {
       const response = await fetchApi('/api/users');
       
       if (response.status === 'success' && response.data) {
-        // Handle different response formats
-        if (Array.isArray(response.data)) {
-          setUsers(response.data);
-        } else if (response.data.users && Array.isArray(response.data.users)) {
-          setUsers(response.data.users);
-        } else {
-          console.warn('Unexpected users data format:', response.data);
-          setUsers([]);
+        // Unwrap possible nesting: {status:'success', data:{users:[...]}}
+        const raw = response.data as any;
+        const usersArray = Array.isArray(raw) ? raw : Array.isArray(raw.users) ? raw.users : Array.isArray(raw.data?.users) ? raw.data.users : [];
+        if (!usersArray.length) {
+          console.warn('Unexpected users data format:', raw);
         }
+        setUsers(usersArray);
         setError('');
       } else {
         setError(response.error || 'Failed to fetch users');
@@ -181,21 +180,29 @@ const UsersPage: React.FC = () => {
 
   // Function to fetch database tables
   const fetchTables = async () => {
-    if (!currentConnection) {
-      setTablesError('No database connection available');
-      return;
-    }
-
     try {
       setTablesLoading(true);
       setTablesError(null);
-      
-      const response = await dbService.listTables(currentConnection);
-      
-      if (response.status === 'success' && response.data) {
-        setTables(response.data);
+      if (useInternalDb) {
+        // Internal DB tables endpoint (assumes same main DB as users). Fallback to list-tables with default profile if none.
+        const resp = await fetchApi('/api/internal/list-tables');
+        if (resp.status === 'success' && resp.data) {
+          const raw = resp.data as any;
+            setTables(Array.isArray(raw) ? raw : raw.tables || raw.data || []);
+        } else {
+          setTablesError(resp.error || 'Failed to fetch internal tables');
+        }
       } else {
-        setTablesError(response.error || 'Failed to fetch tables');
+        if (!currentConnection) {
+          setTablesError('No database connection selected');
+        } else {
+          const response = await dbService.listTables(currentConnection);
+          if (response.status === 'success' && response.data) {
+            setTables(response.data);
+          } else {
+            setTablesError(response.error || 'Failed to fetch tables');
+          }
+        }
       }
     } catch (err) {
       setTablesError('An error occurred while fetching tables.');
@@ -346,7 +353,7 @@ const UsersPage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <span>Database Tables</span>
-              {currentConnection && (
+              {!useInternalDb && currentConnection && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
                   Connected to {currentConnection.name}
                 </span>
@@ -354,7 +361,15 @@ const UsersPage: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {!currentConnection ? (
+            <div className="flex items-center gap-4 mb-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" checked={useInternalDb} onChange={()=>setUseInternalDb(true)} /> Internal DB
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" checked={!useInternalDb} onChange={()=>setUseInternalDb(false)} /> BI Connection
+              </label>
+            </div>
+            {(!currentConnection && !useInternalDb) ? (
               <Alert>
                 <AlertDescription>
                   No database connection available. Please connect to a database in the BI section first.
@@ -363,7 +378,7 @@ const UsersPage: React.FC = () => {
             ) : (
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <Button onClick={fetchTables} disabled={tablesLoading || !currentConnection}>
+                  <Button onClick={fetchTables} disabled={tablesLoading || (!currentConnection && !useInternalDb)}>
                     {tablesLoading ? 'Loading...' : 'Refresh Tables'}
                   </Button>
                   {tables.length > 0 && (
@@ -405,7 +420,7 @@ const UsersPage: React.FC = () => {
                       ))}
                     </TableBody>
                   </Table>
-                ) : !tablesLoading && currentConnection && (
+                ) : !tablesLoading && (currentConnection || useInternalDb) && (
                   <div className="text-center py-8 text-muted-foreground">
                     No tables found. Click "Refresh Tables" to load tables from the connected database.
                   </div>

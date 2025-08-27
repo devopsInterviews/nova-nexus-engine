@@ -83,7 +83,7 @@ const RobotEye: React.FC<RobotEyeProps> = ({ isWatching, isBlinking, eyesClosedF
 
 interface FloatingInputProps {
   id: string;
-  type: string;
+  type: string; // actual input type passed (can be text when revealing password)
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
@@ -93,6 +93,7 @@ interface FloatingInputProps {
   showPassword?: boolean;
   onTogglePassword?: () => void;
   disabled?: boolean;
+  isPasswordField?: boolean; // persist eye button presence
 }
 
 const FloatingInput: React.FC<FloatingInputProps> = ({
@@ -106,7 +107,8 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
   onBlur,
   showPassword,
   onTogglePassword,
-  disabled = false
+  disabled = false,
+  isPasswordField = false
 }) => {
   return (
     <motion.div className="relative group">
@@ -126,7 +128,7 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
           className="pl-12 pr-14 h-14 text-lg glass border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 relative z-0"
           autoComplete={type === 'password' ? 'current-password' : 'username'}
         />
-        {type === 'password' && onTogglePassword && (
+  {isPasswordField && onTogglePassword && (
           <Button
             type="button"
             variant="ghost"
@@ -429,6 +431,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 showPassword={showPassword}
                 onTogglePassword={() => setShowPassword(!showPassword)}
                 disabled={loading}
+                isPasswordField
               />
 
               <motion.div>

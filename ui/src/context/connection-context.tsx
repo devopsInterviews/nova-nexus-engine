@@ -16,7 +16,18 @@ export const ConnectionProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       const response = await dbService.getSavedConnections();
       if (response.status === 'success' && response.data) {
-        setSavedConnections(response.data);
+        // Normalize database_type casing and ensure required fields present
+        const normalized = response.data.map(c => ({
+          ...c,
+          database_type: String((c as any).database_type || (c as any).db_type || '').toLowerCase(),
+          host: (c as any).host || (c as any).db_host,
+          port: (c as any).port || (c as any).db_port,
+          user: (c as any).user || (c as any).db_user,
+          password: (c as any).password || (c as any).db_password || '***',
+          database: (c as any).database || (c as any).db_name,
+          name: (c as any).name || (c as any).connection_name,
+        }));
+        setSavedConnections(normalized as any);
       }
     } catch (error) {
       console.error('Failed to refresh connections:', error);
