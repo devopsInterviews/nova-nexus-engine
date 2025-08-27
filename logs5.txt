@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "/app/app/routes/db_routes.py", line 258, in save_connection
+    connection_id = _persist_saved_connections(current_user.id, data, db)
+  File "/app/app/routes/db_routes.py", line 70, in _persist_saved_connections
+    new_conn = DBConnection(
+        user_id=user_id,
+    ...<6 lines>...
+        database=conn_data['database']
+    )
+  File "<string>", line 4, in __init__
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/orm/state.py", line 571, in _initialize_instance
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/orm/state.py", line 569, in _initialize_instance
+    manager.original_init(*mixed[1:], **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/orm/decl_base.py", line 2179, in _declarative_constructor
+    raise TypeError(
+        "%r is an invalid keyword argument for %s" % (k, cls_.__name__)
+    )
+TypeError: 'database_type' is an invalid keyword argument for DBConnection
