@@ -3,61 +3,137 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusCard } from "@/components/ui/status-card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, TrendingUp, Users, Activity, Server, Zap, Eye } from "lucide-react";
+import { useEffect, useState } from "react";
+import { analyticsService } from "@/lib/api-service";
+
+interface Metric {
+  title: string;
+  value: string;
+  description: string;
+  icon: React.ComponentType<any>;
+  status: 'success' | 'warning' | 'error' | 'info';
+  trend: 'up' | 'down' | 'stable';
+  trendValue: string;
+}
+
+interface TopPage {
+  path: string;
+  views: string;
+  change: string;
+}
+
+interface ErrorType {
+  type: string;
+  count: number;
+  percentage: number;
+}
 
 export default function Analytics() {
-  const metrics = [
-    {
-      title: "Total Requests",
-      value: "2.4M",
-      description: "Last 24 hours",
-      icon: Activity,
-      status: "success" as const,
-      trend: "up" as const,
-      trendValue: "+12%",
-    },
-    {
-      title: "Active Sessions",
-      value: "1,847",
-      description: "Current active users",
-      icon: Users,
-      status: "info" as const,
-      trend: "up" as const,
-      trendValue: "+5%",
-    },
-    {
-      title: "Response Time",
-      value: "124ms",
-      description: "95th percentile",
-      icon: Zap,
-      status: "warning" as const,
-      trend: "up" as const,
-      trendValue: "+8ms",
-    },
-    {
-      title: "Error Rate",
-      value: "0.02%",
-      description: "Last hour",
-      icon: Server,
-      status: "success" as const,
-      trend: "down" as const,
-      trendValue: "-0.01%",
-    },
-  ];
+  const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [topPages, setTopPages] = useState<TopPage[]>([]);
+  const [errorsByType, setErrorsByType] = useState<ErrorType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const topPages = [
-    { path: "/dashboard", views: "45.2k", change: "+12%" },
-    { path: "/api/users", views: "32.1k", change: "+8%" },
-    { path: "/login", views: "28.9k", change: "-3%" },
-    { path: "/api/orders", views: "21.7k", change: "+15%" },
-    { path: "/settings", views: "18.4k", change: "+5%" },
-  ];
+  // Icon mapping
+  const iconMap = {
+    'Total Requests': Activity,
+    'Active Sessions': Users,
+    'Response Time': Zap,
+    'Error Rate': Server,
+  };
 
-  const errorsByType = [
-    { type: "500 Internal Server Error", count: 23, percentage: 45 },
-    { type: "404 Not Found", count: 18, percentage: 35 },
-    { type: "401 Unauthorized", count: 7, percentage: 14 },
-    { type: "503 Service Unavailable", count: 3, percentage: 6 },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch all analytics data concurrently
+        const [metricsResponse, topPagesResponse, errorsResponse] = await Promise.all([
+          analyticsService.getKeyMetrics(),
+          analyticsService.getTopPages(5, 24),
+          analyticsService.getErrorAnalysis(24),
+        ]);
+
+        // Set metrics data
+        if (metricsResponse.status === 'success' && metricsResponse.data) {
+          const metricsWithIcons = metricsResponse.data.metrics.map(metric => ({
+            ...metric,
+            icon: iconMap[metric.title as keyof typeof iconMap] || Activity
+          }));
+          setMetrics(metricsWithIcons);
+        }
+
+        // Set top pages data
+        if (topPagesResponse.status === 'success' && topPagesResponse.data) {
+          setTopPages(topPagesResponse.data.topPages);
+        }
+
+        // Set errors data
+        if (errorsResponse.status === 'success' && errorsResponse.data) {
+          setErrorsByType(errorsResponse.data.errorsByType);
+        }
+
+      } catch (error) {
+        console.error('Failed to fetch analytics data:', error);
+        // Set fallback data
+        setMetrics([
+          {
+            title: "Total Requests",
+            value: "0",
+            description: "Last 24 hours",
+            icon: Activity,
+            status: "info",
+            trend: "stable",
+            trendValue: "0%",
+          },
+          {
+            title: "Active Sessions",
+            value: "1",
+            description: "Current active users",
+            icon: Users,
+            status: "info",
+            trend: "stable",
+            trendValue: "0%",
+          },
+          {
+            title: "Response Time",
+            value: "N/A",
+            description: "95th percentile",
+            icon: Zap,
+            status: "info",
+            trend: "stable",
+            trendValue: "0ms",
+          },
+          {
+            title: "Error Rate",
+            value: "0.00%",
+            description: "Last hour",
+            icon: Server,
+            status: "success",
+            trend: "stable",
+            trendValue: "0.00%",
+          },
+        ]);
+        setTopPages([
+          { path: "/", views: "1", change: "+100%" },
+        ]);
+        setErrorsByType([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+
+    // Log page view
+    analyticsService.logPageView({
+      path: '/analytics',
+      title: 'Analytics Dashboard',
+      loadTime: performance.now()
+    });
+
+    // Set up auto-refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <motion.div 

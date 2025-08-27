@@ -413,6 +413,77 @@ export const dbService = {
   },
 };
 
+// Analytics API services
+export const analyticsService = {
+  // Get system overview for homepage
+  getSystemOverview: async (): Promise<ApiResponse<{
+    stats: Array<{
+      title: string;
+      value: string;
+      description: string;
+      status: 'success' | 'warning' | 'error' | 'info';
+      trend: 'up' | 'down' | 'stable';
+      trendValue: string;
+    }>;
+    recentActivity: Array<{
+      action: string;
+      status: string;
+      time: string;
+      type: 'success' | 'warning' | 'error';
+    }>;
+  }>> => {
+    return fetchApi('/api/analytics/system-overview');
+  },
+
+  // Get key metrics for analytics dashboard
+  getKeyMetrics: async (): Promise<ApiResponse<{
+    metrics: Array<{
+      title: string;
+      value: string;
+      description: string;
+      status: 'success' | 'warning' | 'error' | 'info';
+      trend: 'up' | 'down' | 'stable';
+      trendValue: string;
+    }>;
+  }>> => {
+    return fetchApi('/api/analytics/key-metrics');
+  },
+
+  // Get top pages analytics
+  getTopPages: async (limit: number = 10, hours: number = 24): Promise<ApiResponse<{
+    topPages: Array<{
+      path: string;
+      views: string;
+      change: string;
+    }>;
+  }>> => {
+    return fetchApi(`/api/analytics/top-pages?limit=${limit}&hours=${hours}`);
+  },
+
+  // Get error analysis
+  getErrorAnalysis: async (hours: number = 24): Promise<ApiResponse<{
+    errorsByType: Array<{
+      type: string;
+      count: number;
+      percentage: number;
+    }>;
+  }>> => {
+    return fetchApi(`/api/analytics/error-analysis?hours=${hours}`);
+  },
+
+  // Log page view
+  logPageView: async (data: {
+    path: string;
+    title?: string;
+    loadTime?: number;
+  }): Promise<ApiResponse<{ message: string }>> => {
+    return fetchApi('/api/analytics/log-page-view', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
 // Context for storing connection info across tabs
 export interface ConnectionContext {
   currentConnection: DbConnection | null;
@@ -425,4 +496,5 @@ export interface ConnectionContext {
 // Export the API service
 export default {
   db: dbService,
+  analytics: analyticsService,
 };

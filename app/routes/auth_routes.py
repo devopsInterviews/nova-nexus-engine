@@ -1,6 +1,6 @@
 import os
 import datetime
-from typing import List
+from typing import List, Optional
 
 from jose import JWTError, jwt
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -88,6 +88,39 @@ async def get_current_user(request: Request, db: Session = Depends(get_db_sessio
     if user is None:
         raise credentials_exception
     return user
+
+
+async def get_current_user_optional(db: Session, request: Request) -> Optional[User]:
+    """
+    Helper function to get current user without raising exceptions.
+    Used for optional authentication scenarios like analytics logging.
+    
+    Args:
+        db: Database session
+        request: FastAPI request object
+        
+    Returns:
+        User or None: The authenticated user if valid token exists, None otherwise
+    """
+    try:
+        # Try to get authorization header
+        token = request.headers.get('x-access-token') or request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return None
+        
+        # Decode JWT token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: int = payload.get("user_id")
+        if user_id is None:
+            return None
+        
+        # Get user from database
+        user = db.query(User).filter(User.id == user_id).first()
+        return user
+        
+    except Exception:
+        # Any error means no valid user
+        return None
 
 @router.post("/login", response_model=Token)
 async def login_for_access_token(form_data: UserLogin, db: Session = Depends(get_db_session)):

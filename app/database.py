@@ -1,79 +1,21 @@
 import os
 import time
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import logging
 
+# Import all models from the models module to ensure they are registered with SQLAlchemy
+from app.models import (
+    Base, User, DatabaseConnection, TestConfiguration, UserActivity, 
+    TestExecution, DatabaseSession, SystemMetrics, RequestLog, 
+    McpServerStatus, PageView
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-Base = declarative_base()
-
-class User(Base):
-    """
-    SQLAlchemy model for the 'users' table.
-
-    Represents a user in the system with authentication details and relationships
-    to their database connections and saved tests.
-    """
-    __tablename__ = 'users'
-    id = Column(Integer, primary_key=True)
-    username = Column(String(80), unique=True, nullable=False)
-    password_hash = Column(String(256))
-    email = Column(String(120), unique=True, nullable=True)
-    full_name = Column(String(100), nullable=True)
-    is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean, default=False)
-    creation_date = Column(DateTime, default=datetime.datetime.utcnow)
-    last_login = Column(DateTime)
-    login_count = Column(Integer, default=0)
-    preferences = Column(JSON, default=dict)
-    db_connections = relationship("DBConnection", back_populates="user", cascade="all, delete-orphan")
-    tests = relationship("Test", back_populates="user", cascade="all, delete-orphan")
-
-    def set_password(self, password):
-        """Hashes the provided password and stores it."""
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        """Verifies the provided password against the stored hash."""
-        return check_password_hash(self.password_hash, password)
-
-class DBConnection(Base):
-    """
-    SQLAlchemy model for the 'db_connections' table.
-
-    Represents a saved database connection profile belonging to a user.
-    """
-    __tablename__ = 'db_connections'
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    connection_name = Column(String(100), nullable=False)
-    db_type = Column(String(50), nullable=False)
-    db_host = Column(String(100), nullable=False)
-    db_port = Column(Integer, nullable=False)
-    db_user = Column(String(100), nullable=False)
-    db_password = Column(String(100), nullable=False)
-    db_name = Column(String(100), nullable=False)
-    user = relationship("User", back_populates="db_connections")
-
-class Test(Base):
-    """
-    SQLAlchemy model for the 'tests' table.
-
-    Represents a saved test configuration belonging to a user.
-    """
-    __tablename__ = 'tests'
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    test_name = Column(String(100), nullable=False)
-    test_data = Column(Text, nullable=False)
-    creation_date = Column(DateTime, default=datetime.datetime.utcnow)
-    user = relationship("User", back_populates="tests")
 
 
 def get_db_url():
