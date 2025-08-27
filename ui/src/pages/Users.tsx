@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -11,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/auth-context';
 import { useConnectionContext } from '@/context/connection-context';
 import { dbService } from '@/lib/api-service';
+import TableDataPreview from '@/components/admin/TableDataPreview';
 
 interface User {
   id: number;
@@ -27,7 +27,7 @@ interface User {
 
 interface UserDialogState {
   open: boolean;
-  type: 'password' | 'delete' | null;
+  type: 'password' | 'delete' | 'create' | 'viewTable' | null;
   user: User | null;
 }
 
@@ -62,7 +62,9 @@ const UsersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState<UserDialogState>({ open: false, type: null, user: null });
   const [newPassword, setNewPassword] = useState('');
+  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', full_name: '' });
   const [actionLoading, setActionLoading] = useState(false);
+  const [filter, setFilter] = useState('');
   const { user: currentUser } = useAuth();
   const { currentConnection } = useConnectionContext();
 
@@ -155,6 +157,28 @@ const UsersPage: React.FC = () => {
     }
   };
 
+  const handleCreateUser = async () => {
+    if (!newUser.username || !newUser.password) return;
+    try {
+      setActionLoading(true);
+      const response = await fetchApi('/api/users', {
+        method: 'POST',
+        body: JSON.stringify(newUser),
+      });
+      if (response.status === 'success') {
+        setDialog({ open: false, type: null, user: null });
+        setNewUser({ username: '', email: '', password: '', full_name: '' });
+        await fetchUsers();
+      } else {
+        setError(response.error || 'Failed to create user');
+      }
+    } catch (err) {
+      setError('An error occurred while creating user.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Function to fetch database tables
   const fetchTables = async () => {
     if (!currentConnection) {
@@ -181,7 +205,7 @@ const UsersPage: React.FC = () => {
     }
   };
 
-  const openDialog = (type: 'password' | 'delete', user: User) => {
+  const openDialog = (type: UserDialogState['type'], user: User | null) => {
     setDialog({ open: true, type, user });
     setError('');
   };
@@ -233,6 +257,17 @@ const UsersPage: React.FC = () => {
             </Alert>
           )}
           
+          <div className="flex justify-between mb-4">
+            <Input
+              placeholder="Filter users..."
+              className="max-w-xs h-8"
+              value={filter}
+              onChange={(e)=>setFilter(e.target.value)}
+            />
+            {currentUser?.is_admin && (
+              <Button size="sm" onClick={() => openDialog('create', null)}>➕ Create User</Button>
+            )}
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -248,7 +283,9 @@ const UsersPage: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users && users.length > 0 ? users.map((user) => (
+              {users && users.length > 0 ? users
+                .filter(u => !filter || u.username.toLowerCase().includes(filter.toLowerCase()) || (u.email||'').toLowerCase().includes(filter.toLowerCase()))
+                .map((user) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-mono">{user.id}</TableCell>
                   <TableCell className="font-medium">{user.username}</TableCell>
@@ -278,7 +315,7 @@ const UsersPage: React.FC = () => {
                       >
                         🔑 Change
                       </Button>
-                      {!user.is_admin && (
+                      {!user.is_admin && currentUser?.is_admin && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -326,7 +363,7 @@ const UsersPage: React.FC = () => {
             ) : (
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <Button onClick={fetchTables} disabled={tablesLoading}>
+                  <Button onClick={fetchTables} disabled={tablesLoading || !currentConnection}>
                     {tablesLoading ? 'Loading...' : 'Refresh Tables'}
                   </Button>
                   {tables.length > 0 && (
@@ -358,9 +395,9 @@ const UsersPage: React.FC = () => {
                     <TableBody>
                       {tables.map((table, index) => (
                         <TableRow key={index}>
-                          <TableCell className="font-medium">{table}</TableCell>
+                          <TableCell className="font-medium cursor-pointer" onClick={() => openDialog('viewTable', { id: 0, username: table, email: '', is_active: true, is_admin: false, login_count: 0, preferences: {} })}>{table}</TableCell>
                           <TableCell>
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" onClick={() => openDialog('viewTable', { id: 0, username: table, email: '', is_active: true, is_admin: false, login_count: 0, preferences: {} })}>
                               View Data
                             </Button>
                           </TableCell>
@@ -379,6 +416,37 @@ const UsersPage: React.FC = () => {
         </Card>
       </TabsContent>
       </Tabs>
+
+      {/* Create User Dialog */}
+      <Dialog open={dialog.open && dialog.type === 'create'} onOpenChange={closeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create User</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Username</Label>
+              <Input value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Email</Label>
+              <Input value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Full Name</Label>
+              <Input value={newUser.full_name} onChange={e => setNewUser({ ...newUser, full_name: e.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Password</Label>
+              <Input type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
+            <Button onClick={handleCreateUser} disabled={!newUser.username || !newUser.password || (newUser.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newUser.email)) || actionLoading}>{actionLoading ? 'Creating...' : 'Create'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Password Change Dialog */}
       <Dialog open={dialog.open && dialog.type === 'password'} onOpenChange={closeDialog}>
@@ -415,7 +483,7 @@ const UsersPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete User Dialog */}
+  {/* Delete User Dialog */}
       <Dialog open={dialog.open && dialog.type === 'delete'} onOpenChange={closeDialog}>
         <DialogContent>
           <DialogHeader>
@@ -436,6 +504,21 @@ const UsersPage: React.FC = () => {
             >
               {actionLoading ? 'Deleting...' : 'Delete User'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Table Data Dialog */}
+    <Dialog open={dialog.open && dialog.type === 'viewTable'} onOpenChange={closeDialog}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Table: {dialog.user?.username}</DialogTitle>
+            <DialogDescription>First rows of the selected table.</DialogDescription>
+          </DialogHeader>
+      {/* Table rows preview with pagination */}
+      <TableDataPreview tableName={dialog.user?.username || ''} connectionActive={!!currentConnection} />
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
