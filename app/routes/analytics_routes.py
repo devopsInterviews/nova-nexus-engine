@@ -16,7 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, desc, text
 from sqlalchemy.orm import Session
 
-from app.database import get_db_session, User
+from app.database import get_db_session
+from app.models import User
 from app.routes.auth_routes import get_current_user
 from app.models import SystemMetrics, RequestLog, McpServerStatus, PageView, UserActivity
 

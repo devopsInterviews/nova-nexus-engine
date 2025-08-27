@@ -8,6 +8,7 @@ import datetime
 import logging
 
 # Import all models from the models module to ensure they are registered with SQLAlchemy
+# This ensures that Base.metadata.create_all() will create all tables
 from app.models import (
     Base, User, DatabaseConnection, TestConfiguration, UserActivity, 
     TestExecution, DatabaseSession, SystemMetrics, RequestLog, 

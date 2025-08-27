@@ -12,7 +12,8 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 
 from app.prompts import BI_ANALYTICS_PROMPT
-from app.database import get_db_session, DBConnection, User
+from app.database import get_db_session
+from app.models import DatabaseConnection as DBConnection, User
 from app.routes.auth_routes import get_current_user
 
 # Create router with tags for API documentation
