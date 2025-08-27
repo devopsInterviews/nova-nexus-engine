@@ -157,23 +157,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
   const [activeField, setActiveField] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
-  const [robotHasBody, setRobotHasBody] = useState(false);
   
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Handle inactivity robot body animation (30 seconds)
-  const resetInactivityTimer = () => {
-    if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-    }
-    
-    setRobotHasBody(false);
-    
-    inactivityTimer.current = setTimeout(() => {
-      setRobotHasBody(true);
-    }, 30000); // 30 seconds of inactivity
-  };
 
   // Handle robot eye tracking based on password cursor position
   const updateEyeDirection = () => {
@@ -198,30 +183,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
   useEffect(() => {
     updateEyeDirection();
   }, [password, activeField]);
-
-  // Mouse and keyboard activity listeners
-  useEffect(() => {
-    const handleActivity = () => {
-      resetInactivityTimer();
-    };
-
-    document.addEventListener('mousedown', handleActivity);
-    document.addEventListener('mousemove', handleActivity);
-    document.addEventListener('keydown', handleActivity);
-    
-    // Start the timer initially
-    resetInactivityTimer();
-
-    return () => {
-      document.removeEventListener('mousedown', handleActivity);
-      document.removeEventListener('mousemove', handleActivity);
-      document.removeEventListener('keydown', handleActivity);
-      
-      if (inactivityTimer.current) {
-        clearTimeout(inactivityTimer.current);
-      }
-    };
-  }, []);
 
   // Random blinking effect
   useEffect(() => {
@@ -255,7 +216,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
 
   const handleFieldFocus = (field: string) => {
     setActiveField(field);
-    resetInactivityTimer();
   };
 
   const handleFieldBlur = () => {
@@ -336,11 +296,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
             {/* Robot Head */}
             <motion.div
               className="mx-auto mb-8 relative"
-              animate={robotHasBody ? {
-                scale: [1, 1.1, 1],
-                y: [0, -10, 0]
-              } : {}}
-              transition={{ duration: 2, repeat: robotHasBody ? Infinity : 0 }}
             >
               {/* Robot Head Container */}
               <div className="relative w-48 h-40 bg-gradient-to-b from-slate-600 to-slate-800 rounded-3xl border-2 border-slate-500 shadow-xl">
@@ -392,35 +347,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-3 h-12 bg-gradient-to-b from-slate-700 to-slate-900 rounded-r-lg" />
               </div>
 
-              {/* Robot Body - Animated when inactive */}
-              <AnimatePresence>
-                {robotHasBody && (
-                  <motion.div
-                    className="absolute top-40 left-1/2 transform -translate-x-1/2"
-                    initial={{ opacity: 0, scaleY: 0 }}
-                    animate={{ opacity: 1, scaleY: 1 }}
-                    exit={{ opacity: 0, scaleY: 0 }}
-                    transition={{ duration: 1 }}
-                  >
-                    {/* Neck */}
-                    <div className="w-8 h-6 bg-gradient-to-b from-slate-600 to-slate-700 mx-auto mb-2 rounded border border-slate-500" />
-                    
-                    {/* Body */}
-                    <div className="w-32 h-40 bg-gradient-to-b from-slate-600 to-slate-800 rounded-2xl border-2 border-slate-500 shadow-xl relative">
-                      {/* Body decorations */}
-                      <div className="flex justify-center space-x-2 mt-3">
-                        <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
-                        <div className="w-3 h-3 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0.5s' }} />
-                        <div className="w-3 h-3 bg-primary rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
-                      </div>
-                      
-                      {/* Arms */}
-                      <div className="absolute top-8 -left-6 w-6 h-16 bg-gradient-to-b from-slate-600 to-slate-800 rounded-full border border-slate-500" />
-                      <div className="absolute top-8 -right-6 w-6 h-16 bg-gradient-to-b from-slate-600 to-slate-800 rounded-full border border-slate-500" />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
 
             <motion.div
@@ -529,20 +455,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                   )}
                 </Button>
               </motion.div>
+
+              {/* Contact Information */}
+              <motion.div
+                className="text-center text-sm text-muted-foreground mt-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.2 }}
+              >
+                <p>If you want access to the system please contact the DevOps team.</p>
+              </motion.div>
             </form>
           </CardContent>
         </Card>
-      </motion.div>
-
-      {/* Contact Information - Centered */}
-      <motion.div
-        className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-center text-sm text-muted-foreground bg-surface/60 backdrop-blur-sm rounded-lg px-6 py-3 border border-border/30 max-w-md"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1.5 }}
-      >
-        <p className="mb-1 font-medium">Need technical support?</p>
-        <p>Contact DevOps Team: devops@mcpcontrol.dev</p>
       </motion.div>
     </div>
   );

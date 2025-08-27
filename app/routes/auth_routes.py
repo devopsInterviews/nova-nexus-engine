@@ -2,11 +2,10 @@ import os
 import datetime
 from typing import List
 
-import jwt
+from jose import JWTError, jwt
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from werkzeug.security import check_password_hash
 
 from app.database import User, get_db_session
 
@@ -82,7 +81,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db_sessio
         user_id: int = payload.get("user_id")
         if user_id is None:
             raise credentials_exception
-    except jwt.PyJWTError:
+    except JWTError:
         raise credentials_exception
     
     user = db.query(User).filter(User.id == user_id).first()
