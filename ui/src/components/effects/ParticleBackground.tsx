@@ -153,22 +153,6 @@ export function ParticleBackground() {
           ease: "linear"
         }}
       />
-
-      {/* Lightning effect */}
-      <motion.div
-        className="absolute inset-0"
-        animate={{
-          opacity: [0, 0, 0, 0.8, 0, 0, 0, 0.6, 0],
-        }}
-        transition={{
-          duration: 15,
-          repeat: Infinity,
-          times: [0, 0.1, 0.2, 0.21, 0.22, 0.4, 0.6, 0.61, 1]
-        }}
-      >
-        <div className="absolute top-0 left-1/4 w-1 h-full bg-gradient-to-b from-primary/80 via-accent/60 to-transparent blur-sm" />
-        <div className="absolute top-0 right-1/3 w-1 h-full bg-gradient-to-b from-secondary/80 via-primary/60 to-transparent blur-sm" />
-      </motion.div>
     </div>
   );
 }
