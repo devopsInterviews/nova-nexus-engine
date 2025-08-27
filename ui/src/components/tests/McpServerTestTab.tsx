@@ -30,16 +30,20 @@ interface McpTool {
 }
 
 interface ToolParameter {
-  key: string;
+  name: string;  // Changed from key to name to match backend
   value: string;
 }
 
 interface SavedTest {
-  id: string;
+  id: number;  // Changed from string to number to match DB
   name: string;
   server_id: string;
   tool_name: string;
   parameters: ToolParameter[];
+  test_category: string;
+  endpoint_path: string;
+  method: string;
+  request_type: string;
   created_at: string;
 }
 
@@ -54,18 +58,92 @@ export const McpServerTestTab = () => {
   const [savedTests, setSavedTests] = useState<SavedTest[]>([]);
   const [testName, setTestName] = useState<string>("");
   const [filterText, setFilterText] = useState("");
+  const [authToken, setAuthToken] = useState<string | null>(null);
 
-  // Load saved tests from localStorage
+  // Load auth token and fetch saved tests
   useEffect(() => {
-    const saved = localStorage.getItem("mcp-server-tests");
-    if (saved) {
-      try {
-        setSavedTests(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load saved tests:", e);
-      }
+    const token = localStorage.getItem('auth_token');
+    setAuthToken(token);
+    if (token) {
+      fetchSavedTests(token);
+      // Migrate old localStorage tests to database
+      migrateLocalStorageTests(token);
     }
   }, []);
+
+  // Migrate existing localStorage tests to database (one-time migration)
+  const migrateLocalStorageTests = async (token: string) => {
+    const oldTests = localStorage.getItem("mcp-server-tests");
+    if (!oldTests) return;
+
+    try {
+      const parsedTests = JSON.parse(oldTests);
+      console.log(`Migrating ${parsedTests.length} MCP server tests from localStorage to database...`);
+      
+      for (const oldTest of parsedTests) {
+        // Convert old format to new format
+        const testToSave = {
+          name: oldTest.name,
+          endpoint_path: `/servers/${oldTest.server_id}/tools/${oldTest.tool_name}/execute`,
+          method: "POST",
+          parameters: oldTest.parameters.map((p: any) => ({
+            name: p.key || p.name,  // Handle both old and new formats
+            value: p.value
+          })),
+          request_type: "body",
+          test_category: "server",
+          server_id: oldTest.server_id,
+          tool_name: oldTest.tool_name,
+        };
+
+        try {
+          const response = await fetch('/api/tests', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(testToSave),
+          });
+
+          if (!response.ok) {
+            console.error(`Failed to migrate test ${oldTest.name}:`, await response.text());
+          }
+        } catch (error) {
+          console.error(`Error migrating test ${oldTest.name}:`, error);
+        }
+      }
+
+      // Remove old localStorage data after successful migration
+      localStorage.removeItem("mcp-server-tests");
+      console.log("Migration completed and localStorage cleared");
+      
+      // Refresh the saved tests list
+      fetchSavedTests(token);
+    } catch (e) {
+      console.error("Failed to migrate localStorage tests:", e);
+    }
+  };
+
+  // Load saved tests from the backend API
+  const fetchSavedTests = async (token: string) => {
+    if (!token) return;
+    try {
+      const response = await fetch("/api/tests?test_category=server", {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSavedTests(data);
+      } else {
+        console.error("Failed to fetch saved tests:", response.statusText);
+      }
+    } catch (e) {
+      console.error("Failed to load saved tests:", e);
+    }
+  };
 
   // Fetch available MCP servers on component mount
   useEffect(() => {
@@ -91,7 +169,7 @@ export const McpServerTestTab = () => {
         const initialParams: ToolParameter[] = tool.parameters
           .filter(p => p.required)
           .map(p => ({
-            key: p.name,
+            name: p.name,  // Changed from key to name
             value: p.default || ""
           }));
         setToolParameters(initialParams);
@@ -145,10 +223,10 @@ export const McpServerTestTab = () => {
   };
 
   const addParameter = () => {
-    setToolParameters([...toolParameters, { key: "", value: "" }]);
+    setToolParameters([...toolParameters, { name: "", value: "" }]);  // Changed from key to name
   };
 
-  const updateParameter = (index: number, field: 'key' | 'value', value: string) => {
+  const updateParameter = (index: number, field: 'name' | 'value', value: string) => {  // Changed from key to name
     const updated = [...toolParameters];
     updated[index][field] = value;
     setToolParameters(updated);
@@ -169,8 +247,8 @@ export const McpServerTestTab = () => {
       // Convert parameters to object
       const parameterObject: { [key: string]: string } = {};
       toolParameters.forEach(param => {
-        if (param.key && param.value) {
-          parameterObject[param.key] = param.value;
+        if (param.name && param.value) {  // Changed from key to name
+          parameterObject[param.name] = param.value;
         }
       });
 
@@ -198,24 +276,42 @@ export const McpServerTestTab = () => {
     }
   };
 
-  const saveTest = () => {
-    if (!testName || !selectedServer || !selectedTool) {
+  const saveTest = async () => {
+    if (!testName || !selectedServer || !selectedTool || !authToken) {
       return;
     }
 
-    const newTest: SavedTest = {
-      id: Date.now().toString(),
+    const testToSave = {
       name: testName,
+      endpoint_path: `/servers/${selectedServer}/tools/${selectedTool}/execute`,  // Mock endpoint path
+      method: "POST",
+      parameters: toolParameters,
+      request_type: "body",
+      test_category: "server",
       server_id: selectedServer,
       tool_name: selectedTool,
-      parameters: [...toolParameters],
-      created_at: new Date().toISOString()
     };
 
-    const updated = [...savedTests, newTest];
-    setSavedTests(updated);
-    localStorage.setItem("mcp-server-tests", JSON.stringify(updated));
-    setTestName("");
+    try {
+      const response = await fetch('/api/tests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(testToSave),
+      });
+
+      if (response.ok) {
+        const newTest = await response.json();
+        setSavedTests([...savedTests, newTest]);
+        setTestName("");
+      } else {
+        console.error("Failed to save test:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error saving test:", error);
+    }
   };
 
   const loadTest = async (test: SavedTest) => {
@@ -244,10 +340,25 @@ export const McpServerTestTab = () => {
     setToolParameters([...test.parameters]);
   };
 
-  const deleteTest = (testId: string) => {
-    const updated = savedTests.filter(t => t.id !== testId);
-    setSavedTests(updated);
-    localStorage.setItem("mcp-server-tests", JSON.stringify(updated));
+  const deleteTest = async (testId: number) => {
+    if (!authToken) return;
+    try {
+      const response = await fetch(`/api/tests/${testId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const updatedTests = savedTests.filter(t => t.id !== testId);
+        setSavedTests(updatedTests);
+      } else {
+        console.error("Failed to delete test:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error deleting test:", error);
+    }
   };
 
   const selectedToolInfo = tools.find(t => t.name === selectedTool);
@@ -387,8 +498,8 @@ export const McpServerTestTab = () => {
                     <input
                       type="text"
                       placeholder="Parameter name"
-                      value={param.key}
-                      onChange={(e) => updateParameter(index, 'key', e.target.value)}
+                      value={param.name}  // Changed from key to name
+                      onChange={(e) => updateParameter(index, 'name', e.target.value)}  // Changed from key to name
                       className="flex-1 p-2 border rounded"
                     />
                     <input
