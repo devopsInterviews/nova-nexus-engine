@@ -73,6 +73,7 @@ class User(Base):
             "is_active": self.is_active,
             "is_admin": self.is_admin,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "creation_date": self.created_at.isoformat() if self.created_at else None,  # Alias for compatibility
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "login_count": self.login_count,
