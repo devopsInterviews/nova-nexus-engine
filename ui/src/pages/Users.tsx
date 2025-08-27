@@ -258,9 +258,7 @@ const UsersPage: React.FC = () => {
               value={filter}
               onChange={(e)=>setFilter(e.target.value)}
             />
-            {currentUser?.is_admin && (
-              <Button size="sm" onClick={() => openDialog('create', null)}>➕ Create User</Button>
-            )}
+            <Button size="sm" onClick={() => openDialog('create', null)}>➕ Create User</Button>
           </div>
           <Table>
             <TableHeader>
@@ -309,7 +307,7 @@ const UsersPage: React.FC = () => {
                       >
                         🔑 Change
                       </Button>
-                      {!user.is_admin && currentUser?.is_admin && (
+                      {!user.is_admin && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -342,35 +340,7 @@ const UsersPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">Assign which users can view each application tab. (Not yet enforced server-side)</p>
-            <div className="overflow-auto border rounded-md">
-              <table className="w-full text-sm">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="text-left px-3 py-2">Tab</th>
-                    {users.map(u => (
-                      <th key={u.id} className="text-left px-3 py-2 whitespace-nowrap">{u.username}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {['Home','DevOps','BI','Analytics','Tests','Users','Settings'].map(tab => (
-                    <tr key={tab} className="even:bg-muted/40">
-                      <td className="font-medium px-3 py-1">{tab}</td>
-                      {users.map(u => (
-                        <td key={u.id} className="px-3 py-1">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4"
-                            defaultChecked={true}
-                            onChange={() => {/* future: persist selection */}}
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PermissionsMatrix users={users} currentUser={currentUser} />
           </CardContent>
         </Card>
       </TabsContent>
@@ -556,3 +526,114 @@ const UsersPage: React.FC = () => {
 };
 
 export default UsersPage;
+
+// In‑file lightweight permissions component (UI only)
+interface PermissionsMatrixProps { users: User[]; currentUser: User | null }
+const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ users, currentUser }) => {
+  const tabs = ['Home','DevOps','BI','Analytics','Tests','Users','Settings'];
+  // Initialize all tabs with every user allowed (persist locally)
+  const initial = () => {
+    const stored = localStorage.getItem('ui_tab_permissions');
+    if (stored) {
+      try { return JSON.parse(stored); } catch { /* ignore */ }
+    }
+    const all: Record<string,string[]> = {};
+    tabs.forEach(t => { all[t] = users.map(u=>u.username); });
+    return all;
+  };
+  const [perms, setPerms] = useState<Record<string,string[]>>(initial);
+  useEffect(()=>{ localStorage.setItem('ui_tab_permissions', JSON.stringify(perms)); }, [perms]);
+
+  // Ensure admin always present
+  useEffect(()=>{
+    if (users.length === 0) return;
+    const admin = users.find(u=>u.is_admin);
+    if (!admin) return;
+    setPerms(p=>{
+      const updated = { ...p };
+      tabs.forEach(t => {
+        const list = new Set(updated[t] || []);
+        list.add(admin.username);
+        updated[t] = Array.from(list);
+      });
+      return updated;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users]);
+
+  const toggleUser = (tab: string, username: string) => {
+    const admin = users.find(u=>u.is_admin)?.username;
+    if (username === admin) return; // immutable
+    setPerms(prev => {
+      const current = new Set(prev[tab] || []);
+      if (current.has(username)) current.delete(username); else current.add(username);
+      return { ...prev, [tab]: Array.from(current) };
+    });
+  };
+
+  const addAll = (tab: string) => {
+    setPerms(prev => ({ ...prev, [tab]: users.map(u=>u.username) }));
+  };
+  const clearAll = (tab: string) => {
+    const admin = users.find(u=>u.is_admin)?.username;
+    setPerms(prev => ({ ...prev, [tab]: admin ? [admin] : [] }));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs text-muted-foreground">Changes are stored locally only. Admin cannot be removed.</div>
+      <div className="overflow-auto border rounded-md">
+        <table className="w-full text-sm">
+          <thead className="bg-muted">
+            <tr>
+              <th className="px-3 py-2 text-left">Tab</th>
+              <th className="px-3 py-2 text-left">Authorized Users</th>
+              <th className="px-3 py-2 text-left">Add User</th>
+              <th className="px-3 py-2 text-left">Bulk</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tabs.map(tab => {
+              const authorized = perms[tab] || [];
+              return (
+                <tr key={tab} className="even:bg-muted/40 align-top">
+                  <td className="px-3 py-2 font-medium whitespace-nowrap">{tab}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      {authorized.map(u => (
+                        <span key={u} className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 text-xs">
+                          {u}
+                          {!(users.find(x=>x.username===u)?.is_admin) && (
+                            <button onClick={()=>toggleUser(tab,u)} className="text-red-500 hover:text-red-700" aria-label={`Remove ${u}`}>×</button>
+                          )}
+                        </span>
+                      ))}
+                      {authorized.length===0 && <span className="text-xs text-muted-foreground">No users</span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 w-64">
+                    <select
+                      className="w-full border rounded h-8 bg-background"
+                      onChange={e=>{ const val=e.target.value; if(val){ toggleUser(tab,val); e.target.selectedIndex=0; } }}
+                    >
+                      <option value="">Select user...</option>
+                      {users.filter(u=>!(perms[tab]||[]).includes(u.username)).map(u=> (
+                        <option key={u.id} value={u.username}>{u.username}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <div className="flex gap-2">
+                      <button className="text-xs underline" onClick={()=>addAll(tab)}>Add All</button>
+                      <button className="text-xs underline" onClick={()=>clearAll(tab)}>Clear</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};

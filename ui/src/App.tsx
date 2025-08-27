@@ -20,11 +20,13 @@ import { AuthProvider, useAuth } from "@/context/auth-context";
 const queryClient = new QueryClient();
 
 const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
-  const { user, token } = useAuth();
-  
-  // Only allow access if we have both a valid token AND user data from backend
-  // The token alone is not enough - user data must be fetched from backend
-  return (user && token) ? children : <Navigate to="/login" replace />;
+  const { user, token, initializing } = useAuth();
+  if (initializing) {
+    return <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">Restoring session...</div>;
+  }
+  if (user && token) return children;
+  console.debug('PrivateRoute redirecting to /login', { hasUser: !!user, hasToken: !!token, initializing });
+  return <Navigate to="/login" replace />;
 };
 
 const LoginWrapper = () => {
