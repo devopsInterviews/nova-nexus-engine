@@ -110,7 +110,13 @@ async function fetchApi<T>(
 // Helper to build payload: if we have a saved profile id and no clear-text password, send only connection_id
 function buildPayload(conn: DbConnection, extra?: Record<string, any>) {
   const looksMasked = typeof conn.password === 'string' && conn.password.includes('*');
-  if (conn.id && (looksMasked || !conn.password)) {
+  
+  // For operations that need connection fields (like suggest-columns), always include connection details
+  // Only use connection_id for simple operations when password is masked or missing
+  const extraKeys = Object.keys(extra || {});
+  const needsConnectionFields = extraKeys.includes('user_prompt') || extraKeys.includes('analytics_prompt');
+  
+  if (conn.id && (looksMasked || !conn.password) && !needsConnectionFields) {
     return { connection_id: conn.id, ...(extra || {}) };
   }
   return { ...conn, ...(extra || {}) };

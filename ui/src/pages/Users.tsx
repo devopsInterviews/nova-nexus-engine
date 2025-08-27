@@ -7,7 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/auth-context';
+import { useConnectionContext } from '@/context/connection-context';
+import { dbService } from '@/lib/api-service';
 
 interface User {
   id: number;
@@ -61,20 +64,37 @@ const UsersPage: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const { user: currentUser } = useAuth();
+  const { currentConnection } = useConnectionContext();
+
+  // Database tables state
+  const [tables, setTables] = useState<string[]>([]);
+  const [tablesLoading, setTablesLoading] = useState(false);
+  const [tablesError, setTablesError] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError('');
       const response = await fetchApi('/api/users');
       
       if (response.status === 'success' && response.data) {
-        setUsers(response.data.users);
+        // Handle different response formats
+        if (Array.isArray(response.data)) {
+          setUsers(response.data);
+        } else if (response.data.users && Array.isArray(response.data.users)) {
+          setUsers(response.data.users);
+        } else {
+          console.warn('Unexpected users data format:', response.data);
+          setUsers([]);
+        }
         setError('');
       } else {
         setError(response.error || 'Failed to fetch users');
+        setUsers([]);
       }
     } catch (err) {
       setError('An error occurred while fetching users.');
+      setUsers([]);
       console.error('Fetch users error:', err);
     } finally {
       setLoading(false);
@@ -135,6 +155,32 @@ const UsersPage: React.FC = () => {
     }
   };
 
+  // Function to fetch database tables
+  const fetchTables = async () => {
+    if (!currentConnection) {
+      setTablesError('No database connection available');
+      return;
+    }
+
+    try {
+      setTablesLoading(true);
+      setTablesError(null);
+      
+      const response = await dbService.listTables(currentConnection);
+      
+      if (response.status === 'success' && response.data) {
+        setTables(response.data);
+      } else {
+        setTablesError(response.error || 'Failed to fetch tables');
+      }
+    } catch (err) {
+      setTablesError('An error occurred while fetching tables.');
+      console.error('Fetch tables error:', err);
+    } finally {
+      setTablesLoading(false);
+    }
+  };
+
   const openDialog = (type: 'password' | 'delete', user: User) => {
     setDialog({ open: true, type, user });
     setError('');
@@ -163,15 +209,22 @@ const UsersPage: React.FC = () => {
 
   return (
     <div className="p-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span>User Management</span>
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-              {users.length} total
-            </span>
-          </CardTitle>
-        </CardHeader>
+      <Tabs defaultValue="users" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="tables">Database Tables</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="users">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span>User Management</span>
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                  {users?.length || 0} total
+                </span>
+              </CardTitle>
+            </CardHeader>
         <CardContent>
           {error && (
             <Alert variant="destructive" className="mb-4">
@@ -195,11 +248,11 @@ const UsersPage: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {users && users.length > 0 ? users.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-mono">{user.id}</TableCell>
                   <TableCell className="font-medium">{user.username}</TableCell>
-                  <TableCell>{user.email}</TableCell>
+                  <TableCell>{user.email || '-'}</TableCell>
                   <TableCell>{user.full_name || '-'}</TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
@@ -214,7 +267,7 @@ const UsersPage: React.FC = () => {
                   <TableCell>
                     {user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}
                   </TableCell>
-                  <TableCell>{user.login_count}</TableCell>
+                  <TableCell>{user.login_count || 0}</TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <Button
@@ -238,11 +291,94 @@ const UsersPage: React.FC = () => {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-8">
+                    {loading ? 'Loading users...' : 'No users found'}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+      </TabsContent>
+
+      <TabsContent value="tables">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <span>Database Tables</span>
+              {currentConnection && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                  Connected to {currentConnection.name}
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!currentConnection ? (
+              <Alert>
+                <AlertDescription>
+                  No database connection available. Please connect to a database in the BI section first.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <Button onClick={fetchTables} disabled={tablesLoading}>
+                    {tablesLoading ? 'Loading...' : 'Refresh Tables'}
+                  </Button>
+                  {tables.length > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      {tables.length} tables found
+                    </span>
+                  )}
+                </div>
+
+                {tablesError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{tablesError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {tablesLoading ? (
+                  <div className="flex items-center justify-center p-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    <span className="ml-2">Loading tables...</span>
+                  </div>
+                ) : tables.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Table Name</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tables.map((table, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-medium">{table}</TableCell>
+                          <TableCell>
+                            <Button variant="outline" size="sm">
+                              View Data
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : !tablesLoading && currentConnection && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No tables found. Click "Refresh Tables" to load tables from the connected database.
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+      </Tabs>
 
       {/* Password Change Dialog */}
       <Dialog open={dialog.open && dialog.type === 'password'} onOpenChange={closeDialog}>
