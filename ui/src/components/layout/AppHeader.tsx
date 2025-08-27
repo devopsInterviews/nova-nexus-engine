@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/auth-context";
-import { useTheme } from "next-themes";
+import { useEffect, useState } from 'react';
 import { Moon, Sun } from "lucide-react";
 
 export function AppHeader() {
@@ -43,10 +43,32 @@ export function AppHeader() {
     return user.username.substring(0, 2).toUpperCase();
   };
 
-  const { theme, setTheme } = useTheme();
+  const [themeMode, setThemeMode] = useState<'light'|'dark'>(()=> (localStorage.getItem('theme') as 'light'|'dark') || 'light');
+  useEffect(()=>{
+    const saved = localStorage.getItem('theme') as 'light'|'dark'|null;
+    if (saved === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      setThemeMode('dark');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+      setThemeMode('light');
+    }
+  }, []);
   const toggleTheme = () => {
-    if (theme === 'light') setTheme('dark');
-    else setTheme('light');
+    setThemeMode(prev => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      if (next === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.add('light');
+        document.documentElement.classList.remove('dark');
+      }
+      localStorage.setItem('theme', next);
+      return next;
+    });
   };
 
   return (
@@ -82,7 +104,7 @@ export function AppHeader() {
         <div className="flex items-center gap-3">
           {/* Theme Toggle */}
           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            {themeMode === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
           </Button>
           {/* User Menu */}
           <DropdownMenu>

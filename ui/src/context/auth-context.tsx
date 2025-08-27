@@ -21,6 +21,7 @@ interface AuthContextType {
   register: (userData: RegisterData) => Promise<void>;
   updateProfile: (userData: Partial<User>) => Promise<void>;
   isLoading: boolean;
+  initializing: boolean; // expose raw init state
   error: string | null;
   clearError: () => void;
 }
@@ -292,6 +293,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     updateProfile,
     isLoading: isLoading || isInitializing,
+  initializing: isInitializing,
     error,
     clearError,
   };
