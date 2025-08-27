@@ -351,3 +351,237 @@ class DatabaseSession(Base):
 
 
 # Additional utility models can be added here as needed
+
+class SystemMetrics(Base):
+    """
+    System metrics tracking for real-time monitoring.
+    
+    Stores system performance metrics like uptime, response times, active connections, etc.
+    """
+    __tablename__ = "system_metrics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Metric identification
+    metric_name = Column(String(100), nullable=False)  # 'uptime', 'response_time', 'active_users', etc.
+    metric_type = Column(String(50), nullable=False)   # 'gauge', 'counter', 'histogram'
+    
+    # Metric values
+    value = Column(String(100), nullable=False)        # The metric value (as string for flexibility)
+    numeric_value = Column(Integer, nullable=True)     # Numeric representation when applicable
+    
+    # Context and metadata
+    source = Column(String(100), nullable=True)        # Where metric came from
+    tags = Column(JSON, default=dict, nullable=False)  # Additional tags/labels
+    
+    # Timestamps
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_metric_name_timestamp', 'metric_name', 'timestamp'),
+        Index('idx_metric_type', 'metric_type'),
+        Index('idx_timestamp', 'timestamp'),
+    )
+    
+    def __repr__(self):
+        return f"<SystemMetrics(metric_name='{self.metric_name}', value='{self.value}')>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert metric to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "metric_name": self.metric_name,
+            "metric_type": self.metric_type,
+            "value": self.value,
+            "numeric_value": self.numeric_value,
+            "source": self.source,
+            "tags": self.tags,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None
+        }
+
+
+class RequestLog(Base):
+    """
+    API request logging for analytics and monitoring.
+    
+    Tracks all incoming requests for performance analysis and usage statistics.
+    """
+    __tablename__ = "request_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Request details
+    method = Column(String(10), nullable=False)        # GET, POST, etc.
+    path = Column(String(500), nullable=False)         # Request path
+    status_code = Column(Integer, nullable=False)      # HTTP response code
+    
+    # Performance metrics
+    response_time_ms = Column(Integer, nullable=True)  # Response time in milliseconds
+    request_size = Column(Integer, nullable=True)      # Request size in bytes
+    response_size = Column(Integer, nullable=True)     # Response size in bytes
+    
+    # Client information
+    ip_address = Column(String(45), nullable=True)     # Client IP
+    user_agent = Column(Text, nullable=True)           # User agent string
+    referer = Column(String(500), nullable=True)       # HTTP referer
+    
+    # User context (if authenticated)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Error information
+    error_message = Column(Text, nullable=True)        # Error details if status >= 400
+    
+    # Timestamps
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("User")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_timestamp', 'timestamp'),
+        Index('idx_path_timestamp', 'path', 'timestamp'),
+        Index('idx_status_timestamp', 'status_code', 'timestamp'),
+        Index('idx_user_timestamp', 'user_id', 'timestamp'),
+    )
+    
+    def __repr__(self):
+        return f"<RequestLog(method='{self.method}', path='{self.path}', status={self.status_code})>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert request log to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "method": self.method,
+            "path": self.path,
+            "status_code": self.status_code,
+            "response_time_ms": self.response_time_ms,
+            "request_size": self.request_size,
+            "response_size": self.response_size,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "referer": self.referer,
+            "user_id": self.user_id,
+            "error_message": self.error_message,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None
+        }
+
+
+class McpServerStatus(Base):
+    """
+    MCP server status tracking.
+    
+    Monitors the health and performance of connected MCP servers.
+    """
+    __tablename__ = "mcp_server_status"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Server identification
+    server_name = Column(String(100), nullable=False)  # MCP server name/identifier
+    server_url = Column(String(500), nullable=False)   # Server URL
+    
+    # Status information
+    status = Column(String(50), nullable=False)        # 'active', 'inactive', 'error'
+    response_time_ms = Column(Integer, nullable=True)  # Last response time
+    
+    # Health check details
+    last_check = Column(DateTime(timezone=True), nullable=True)
+    last_successful_check = Column(DateTime(timezone=True), nullable=True)
+    error_count = Column(Integer, default=0, nullable=False)
+    error_message = Column(Text, nullable=True)
+    
+    # Performance metrics
+    total_requests = Column(Integer, default=0, nullable=False)
+    successful_requests = Column(Integer, default=0, nullable=False)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_server_name', 'server_name'),
+        Index('idx_status', 'status'),
+        Index('idx_last_check', 'last_check'),
+    )
+    
+    def __repr__(self):
+        return f"<McpServerStatus(server_name='{self.server_name}', status='{self.status}')>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert server status to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "server_name": self.server_name,
+            "server_url": self.server_url,
+            "status": self.status,
+            "response_time_ms": self.response_time_ms,
+            "last_check": self.last_check.isoformat() if self.last_check else None,
+            "last_successful_check": self.last_successful_check.isoformat() if self.last_successful_check else None,
+            "error_count": self.error_count,
+            "error_message": self.error_message,
+            "total_requests": self.total_requests,
+            "successful_requests": self.successful_requests,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class PageView(Base):
+    """
+    Page view tracking for analytics.
+    
+    Tracks page visits and user navigation patterns.
+    """
+    __tablename__ = "page_views"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Page details
+    path = Column(String(500), nullable=False)         # Page path/route
+    title = Column(String(200), nullable=True)         # Page title
+    
+    # User context
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    session_id = Column(String(255), nullable=True)    # Session identifier
+    
+    # Client information
+    ip_address = Column(String(45), nullable=True)     # Client IP
+    user_agent = Column(Text, nullable=True)           # User agent string
+    referer = Column(String(500), nullable=True)       # Previous page
+    
+    # Performance metrics
+    load_time_ms = Column(Integer, nullable=True)      # Page load time
+    
+    # Timestamps
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("User")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_path_timestamp', 'path', 'timestamp'),
+        Index('idx_user_timestamp', 'user_id', 'timestamp'),
+        Index('idx_timestamp', 'timestamp'),
+    )
+    
+    def __repr__(self):
+        return f"<PageView(path='{self.path}', user_id={self.user_id})>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert page view to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "path": self.path,
+            "title": self.title,
+            "user_id": self.user_id,
+            "session_id": self.session_id,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "referer": self.referer,
+            "load_time_ms": self.load_time_ms,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None
+        }

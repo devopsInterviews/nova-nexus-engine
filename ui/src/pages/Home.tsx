@@ -5,56 +5,112 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusCard } from "@/components/ui/status-card";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { analyticsService } from "@/lib/api-service";
+
+interface Stat {
+  title: string;
+  value: string;
+  description: string;
+  icon: React.ComponentType<any>;
+  status: 'success' | 'warning' | 'error' | 'info';
+  trend: 'up' | 'down' | 'stable';
+  trendValue: string;
+}
+
+interface Activity {
+  action: string;
+  status: string;
+  time: string;
+  type: 'success' | 'warning' | 'error';
+}
 
 export default function Home() {
   const navigate = useNavigate();
+  const [stats, setStats] = useState<Stat[]>([]);
+  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const stats = [
-    {
-      title: "System Uptime",
-      value: "99.9%",
-      description: "Last 30 days",
-      icon: Activity,
-      status: "success" as const,
-      trend: "stable" as const,
-      trendValue: "0.1%",
-    },
-    {
-      title: "Active Servers",
-      value: "847",
-      description: "Connected MCP servers",
-      icon: Server,
-      status: "success" as const,
-      trend: "up" as const,
-      trendValue: "+12",
-    },
-    {
-      title: "Response Time",
-      value: "47ms",
-      description: "Average latency",
-      icon: Clock,
-      status: "success" as const,
-      trend: "down" as const,
-      trendValue: "-3ms",
-    },
-    {
-      title: "Active Users",
-      value: "1,234",
-      description: "Across all systems",
-      icon: Users,
-      status: "info" as const,
-      trend: "up" as const,
-      trendValue: "+89",
-    },
-  ];
+  // Icon mapping
+  const iconMap = {
+    'System Uptime': Activity,
+    'Active Servers': Server,
+    'Response Time': Clock,
+    'Active Users': Users,
+  };
 
-  const recentActivity = [
-    { action: "Jenkins Pipeline", status: "Completed", time: "2 min ago", type: "success" },
-    { action: "Database Backup", status: "Running", time: "5 min ago", type: "warning" },
-    { action: "Log Analysis", status: "Completed", time: "12 min ago", type: "success" },
-    { action: "Security Scan", status: "Failed", time: "18 min ago", type: "error" },
-    { action: "API Health Check", status: "Completed", time: "25 min ago", type: "success" },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await analyticsService.getSystemOverview();
+        if (response.status === 'success' && response.data) {
+          // Map the data to include icons
+          const statsWithIcons = response.data.stats.map(stat => ({
+            ...stat,
+            icon: iconMap[stat.title as keyof typeof iconMap] || Activity
+          }));
+          
+          setStats(statsWithIcons);
+          setRecentActivity(response.data.recentActivity);
+        }
+      } catch (error) {
+        console.error('Failed to fetch system overview:', error);
+        // Keep default stats as fallback
+        setStats([
+          {
+            title: "System Uptime",
+            value: "99.9%",
+            description: "Last 30 days",
+            icon: Activity,
+            status: "success",
+            trend: "stable",
+            trendValue: "0.1%",
+          },
+          {
+            title: "Active Servers",
+            value: "0",
+            description: "Connected MCP servers",
+            icon: Server,
+            status: "warning",
+            trend: "stable",
+            trendValue: "0",
+          },
+          {
+            title: "Response Time",
+            value: "N/A",
+            description: "Average latency",
+            icon: Clock,
+            status: "info",
+            trend: "stable",
+            trendValue: "0ms",
+          },
+          {
+            title: "Active Users",
+            value: "1",
+            description: "Last 24 hours",
+            icon: Users,
+            status: "info",
+            trend: "stable",
+            trendValue: "0",
+          },
+        ]);
+        setRecentActivity([
+          { action: "System initialized", status: "Completed", time: "just now", type: "success" },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+
+    // Log page view
+    analyticsService.logPageView({
+      path: '/',
+      title: 'Home',
+      loadTime: performance.now()
+    });
+  }, []);
 
   const statusTypeColors = {
     success: "bg-success/10 text-success border-success/20",

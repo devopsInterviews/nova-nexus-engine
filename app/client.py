@@ -19,6 +19,8 @@ from datetime import timedelta
 from app.llm_client import LLMClient
 from app.prompts import *
 from app.database import init_db
+from app.middleware.analytics import setup_analytics_middleware
+from app.services.analytics_service import analytics_service
 
 
 # Load environment variables
@@ -53,6 +55,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Setup analytics middleware for request logging
+setup_analytics_middleware(app)
+
 logger = logging.getLogger("uvicorn.error")
 
 # Import and include database routes
@@ -68,6 +73,8 @@ from app.routes.test_routes import router as test_router
 from app.routes.internal_data_routes import router as internal_data_router
 # Import and include permissions routes
 from app.routes.permissions_routes import router as permissions_router
+# Import and include analytics routes
+from app.routes.analytics_routes import router as analytics_router
 
 # Expose database/API routes under /api to match UI calls
 app.include_router(db_router, prefix="/api")
@@ -82,6 +89,8 @@ app.include_router(test_router, prefix="/api")
 app.include_router(internal_data_router, prefix="/api")
 # Expose permissions routes under /api
 app.include_router(permissions_router, prefix="/api")
+# Expose analytics routes under /api
+app.include_router(analytics_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")
@@ -136,6 +145,24 @@ async def startup_event():
     # Initialize the database
     init_db()
 
+    # Seed demo data for development
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        # Check if we need to seed demo data (if no request logs exist)
+        from app.models import RequestLog
+        existing_logs = db.query(RequestLog).first()
+        if not existing_logs:
+            logger.info("Seeding demo analytics data...")
+            analytics_service.seed_demo_data(db)
+    except Exception as e:
+        logger.warning(f"Could not seed demo data: {e}")
+    finally:
+        db.close()
+
+    # Start analytics monitoring
+    await analytics_service.start_monitoring()
+
     llm_client = LLMClient()
     globals()["llm_client"] = llm_client
     logger.info("LLMClient initialized and ready.")
@@ -145,6 +172,9 @@ async def startup_event():
 async def shutdown_event():
     logger.info("shutdown_event: enter")
     try:
+        # Stop analytics monitoring
+        await analytics_service.stop_monitoring()
+        
         await _exit_stack.aclose()
     except Exception as e:
         logger.error("shutdown_event: error during aclose(): %s", e, exc_info=True)
