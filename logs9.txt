@@ -1,0 +1,20 @@
+INFO:     POST /api/login
+ERROR:app.middleware.analytics:Failed to create database session for logging: 'NoneType' object is not callable
+INFO:     POST /api/login -> 200
+INFO:     x.x.x.x:62827 - "POST /api/login HTTP/1.1" 200 OK
+INFO:     GET /api/me
+ERROR:app.middleware.analytics:Request failed: 1 validation errors:
+  {'type': 'missing', 'loc': ('response', 'creation_date'), 'msg': 'Field required', 'input': <User(id=1, username='admin', email='admin@company.com')>}
+ERROR:app.middleware.analytics:Failed to create database session for logging: 'NoneType' object is not callable
+INFO:     GET /api/me -> 500
+INFO:     x.x.x.x:62827 - "GET /api/me HTTP/1.1" 500 Internal Server Error
+INFO:     GET /health
+INFO:     Health check called
+ERROR:app.middleware.analytics:Failed to create database session for logging: 'NoneType' object is not callable
+INFO:     GET /health -> 200
+INFO:     x.x.x.x:37300 - "GET /health HTTP/1.1" 200 OK
+INFO:     GET /health
+INFO:     Health check called
+ERROR:app.middleware.analytics:Failed to create database session for logging: 'NoneType' object is not callable
+INFO:     GET /health -> 200
+INFO:     x.x.x.x:37766 - "GET /health HTTP/1.1" 200 OK
