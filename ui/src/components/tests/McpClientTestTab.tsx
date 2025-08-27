@@ -46,14 +46,64 @@ export const McpClientTestTab = () => {
     setAuthToken(token);
     if (token) {
       fetchSavedTests(token);
+      // Migrate old localStorage tests to database
+      migrateLocalStorageTests(token);
     }
   }, []);
 
-  // Load saved tests from the backend
+  // Migrate existing localStorage tests to database (one-time migration)
+  const migrateLocalStorageTests = async (token: string) => {
+    const oldTests = localStorage.getItem("saved-endpoint-tests");
+    if (!oldTests) return;
+
+    try {
+      const parsedTests = JSON.parse(oldTests);
+      console.log(`Migrating ${parsedTests.length} MCP client tests from localStorage to database...`);
+      
+      for (const oldTest of parsedTests) {
+        const testToSave = {
+          name: oldTest.name,
+          endpoint_path: oldTest.endpoint_path,
+          method: oldTest.method,
+          parameters: oldTest.parameters,
+          request_type: oldTest.request_type,
+          test_category: "client",
+        };
+
+        try {
+          const response = await fetch('/api/tests', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(testToSave),
+          });
+
+          if (!response.ok) {
+            console.error(`Failed to migrate test ${oldTest.name}:`, await response.text());
+          }
+        } catch (error) {
+          console.error(`Error migrating test ${oldTest.name}:`, error);
+        }
+      }
+
+      // Remove old localStorage data after successful migration
+      localStorage.removeItem("saved-endpoint-tests");
+      console.log("Migration completed and localStorage cleared");
+      
+      // Refresh the saved tests list
+      fetchSavedTests(token);
+    } catch (e) {
+      console.error("Failed to migrate localStorage tests:", e);
+    }
+  };
+
+  // Load saved tests from the backend (only client tests)
   const fetchSavedTests = async (token: string) => {
     if (!token) return;
     try {
-      const response = await fetch("/api/tests", {
+      const response = await fetch("/api/tests?test_category=client", {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -294,6 +344,7 @@ export const McpClientTestTab = () => {
       method: selectedEndpoint.split(' ')[0],
       parameters: requestParameters,
       request_type: requestType,
+      test_category: "client",  // Ensure client tests are marked as client category
     };
 
     try {

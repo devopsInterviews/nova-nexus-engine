@@ -57,12 +57,12 @@ def _load_saved_connections(user_id: int, db: Session) -> List[Dict[str, Any]]:
         conn_list.append({
             "id": conn.id,
             "name": conn.connection_name,
-            "db_type": conn.db_type,
-            "db_host": conn.db_host,
-            "db_port": conn.db_port,
-            "db_user": conn.db_user,
-            "db_password": conn.db_password,
-            "db_name": conn.db_name,
+            "host": conn.db_host,  # Map db_host to host
+            "port": conn.db_port,  # Map db_port to port
+            "user": conn.db_user,  # Map db_user to user
+            "password": conn.db_password,  # Map db_password to password
+            "database": conn.db_name,  # Map db_name to database
+            "database_type": conn.db_type,  # Map db_type to database_type
         })
     return conn_list
 
