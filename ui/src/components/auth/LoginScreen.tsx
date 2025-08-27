@@ -224,7 +224,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
     setActiveField(null);
   };
 
-  const eyesClosedForPassword = activeField === 'password' && !showPassword && password.length > 0;
+  const eyesClosedForPassword = activeField === 'password' && !showPassword && password.length > 0; // unchanged logic reaffirmed
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-background via-surface to-surface-elevated">

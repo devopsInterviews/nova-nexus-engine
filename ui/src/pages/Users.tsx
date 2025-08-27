@@ -72,7 +72,7 @@ const UsersPage: React.FC = () => {
   const [tables, setTables] = useState<string[]>([]);
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState<string | null>(null);
-  const [useInternalDb, setUseInternalDb] = useState(true);
+  // Internal DB only (BI toggle removed per requirements)
 
   const fetchUsers = async () => {
     try {
@@ -183,26 +183,12 @@ const UsersPage: React.FC = () => {
     try {
       setTablesLoading(true);
       setTablesError(null);
-      if (useInternalDb) {
-        // Internal DB tables endpoint (assumes same main DB as users). Fallback to list-tables with default profile if none.
-        const resp = await fetchApi('/api/internal/list-tables');
-        if (resp.status === 'success' && resp.data) {
-          const raw = resp.data as any;
-            setTables(Array.isArray(raw) ? raw : raw.tables || raw.data || []);
-        } else {
-          setTablesError(resp.error || 'Failed to fetch internal tables');
-        }
+      const resp = await fetchApi('/api/internal/list-tables');
+      if (resp.status === 'success' && resp.data) {
+        const raw = resp.data as any;
+        setTables(Array.isArray(raw) ? raw : raw.tables || raw.data || []);
       } else {
-        if (!currentConnection) {
-          setTablesError('No database connection selected');
-        } else {
-          const response = await dbService.listTables(currentConnection);
-          if (response.status === 'success' && response.data) {
-            setTables(response.data);
-          } else {
-            setTablesError(response.error || 'Failed to fetch tables');
-          }
-        }
+        setTablesError(resp.error || 'Failed to fetch internal tables');
       }
     } catch (err) {
       setTablesError('An error occurred while fetching tables.');
@@ -352,81 +338,60 @@ const UsersPage: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <span>Database Tables</span>
-              {!useInternalDb && currentConnection && (
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
-                  Connected to {currentConnection.name}
-                </span>
-              )}
+              <span>Internal Database Tables</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4 mb-4">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="radio" checked={useInternalDb} onChange={()=>setUseInternalDb(true)} /> Internal DB
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="radio" checked={!useInternalDb} onChange={()=>setUseInternalDb(false)} /> BI Connection
-              </label>
-            </div>
-            {(!currentConnection && !useInternalDb) ? (
-              <Alert>
-                <AlertDescription>
-                  No database connection available. Please connect to a database in the BI section first.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <Button onClick={fetchTables} disabled={tablesLoading || (!currentConnection && !useInternalDb)}>
-                    {tablesLoading ? 'Loading...' : 'Refresh Tables'}
-                  </Button>
-                  {tables.length > 0 && (
-                    <span className="text-sm text-muted-foreground">
-                      {tables.length} tables found
-                    </span>
-                  )}
-                </div>
-
-                {tablesError && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{tablesError}</AlertDescription>
-                  </Alert>
-                )}
-
-                {tablesLoading ? (
-                  <div className="flex items-center justify-center p-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                    <span className="ml-2">Loading tables...</span>
-                  </div>
-                ) : tables.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Table Name</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tables.map((table, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium cursor-pointer" onClick={() => openDialog('viewTable', { id: 0, username: table, email: '', is_active: true, is_admin: false, login_count: 0, preferences: {} })}>{table}</TableCell>
-                          <TableCell>
-                            <Button variant="outline" size="sm" onClick={() => openDialog('viewTable', { id: 0, username: table, email: '', is_active: true, is_admin: false, login_count: 0, preferences: {} })}>
-                              View Data
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : !tablesLoading && (currentConnection || useInternalDb) && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No tables found. Click "Refresh Tables" to load tables from the connected database.
-                  </div>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <Button onClick={fetchTables} disabled={tablesLoading}>
+                  {tablesLoading ? 'Loading...' : 'Refresh Tables'}
+                </Button>
+                {tables.length > 0 && (
+                  <span className="text-sm text-muted-foreground">
+                    {tables.length} tables found
+                  </span>
                 )}
               </div>
-            )}
+
+              {tablesError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{tablesError}</AlertDescription>
+                </Alert>
+              )}
+
+              {tablesLoading ? (
+                <div className="flex items-center justify-center p-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <span className="ml-2">Loading tables...</span>
+                </div>
+              ) : tables.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Table Name</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tables.map((table, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium cursor-pointer" onClick={() => openDialog('viewTable', { id: 0, username: table, email: '', is_active: true, is_admin: false, login_count: 0, preferences: {} })}>{table}</TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm" onClick={() => openDialog('viewTable', { id: 0, username: table, email: '', is_active: true, is_admin: false, login_count: 0, preferences: {} })}>
+                            View Data
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : !tablesLoading && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No tables found. Click "Refresh Tables" to load tables from the internal database.
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </TabsContent>
@@ -531,7 +496,7 @@ const UsersPage: React.FC = () => {
             <DialogDescription>First rows of the selected table.</DialogDescription>
           </DialogHeader>
       {/* Table rows preview with pagination */}
-      <TableDataPreview tableName={dialog.user?.username || ''} connectionActive={!!currentConnection} />
+  <TableDataPreview tableName={dialog.user?.username || ''} connectionActive={!!currentConnection} internalMode={true} />
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>Close</Button>
           </DialogFooter>

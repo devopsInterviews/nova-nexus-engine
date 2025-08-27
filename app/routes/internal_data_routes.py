@@ -29,20 +29,34 @@ async def list_internal_tables(
 async def get_internal_table_rows(
     table_name: str,
     limit: int = 100,
+    offset: int = 0,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
-    """Return first N rows from a given internal DB table using raw SQL (safe limited select)."""
-    if not table_name.isidentifier():  # simple safety check
+    """Return rows from a given internal DB table with pagination (limit + offset).
+
+    Parameters:
+        table_name: target table (identifier only for safety)
+        limit: max rows to return (1..500)
+        offset: starting offset (>=0)
+    Response:
+        { status: 'success', data: { columns: [...], rows: [...], total_rows: int }}
+    """
+    if not table_name.isidentifier():  # simple safety check against injection
         raise HTTPException(status_code=400, detail="Invalid table name")
     limit = max(1, min(limit, 500))
+    offset = max(0, offset)
     try:
-        # Use parameterized text for limit not directly supported; ensure sanitized integer above
-        query = text(f'SELECT * FROM "{table_name}" LIMIT {limit}')
-        result = db.execute(query)
+        # Total count (may be expensive on huge tables but acceptable for admin preview)
+        count_query = text(f'SELECT COUNT(*) AS cnt FROM "{table_name}"')
+        total_rows = db.execute(count_query).scalar()  # type: ignore
+
+        # Fetch window
+        data_query = text(f'SELECT * FROM "{table_name}" LIMIT {limit} OFFSET {offset}')
+        result = db.execute(data_query)
         rows = [dict(r._mapping) for r in result]
         columns = list(rows[0].keys()) if rows else []
-        return {"status":"success","data": {"columns": columns, "rows": rows, "total_rows": len(rows)}}
+        return {"status":"success","data": {"columns": columns, "rows": rows, "total_rows": total_rows}}
     except Exception as e:
         logger.error(f"Internal get rows failed for {table_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch rows")
