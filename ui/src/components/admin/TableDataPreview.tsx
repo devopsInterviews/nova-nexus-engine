@@ -4,10 +4,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Props {
   tableName: string;
-  connectionActive: boolean; // external BI connection active
+  connectionActive: boolean; // for BI connection path
+  internalMode?: boolean; // if true use internal DB endpoints
   pageSize?: number;
   maxHeightClass?: string; // allow parent override
-  internalMode?: boolean; // use internal DB endpoints
 }
 
 interface TableRowsResponse {
@@ -17,26 +17,16 @@ interface TableRowsResponse {
 }
 
 // Generic fetch wrapper (localized) – relies on global token
-async function fetchRows(table: string, limit: number, offset: number, internalMode: boolean): Promise<TableRowsResponse> {
+async function fetchRows(table: string, limit: number, offset: number): Promise<TableRowsResponse> {
   const token = localStorage.getItem('auth_token');
-  let res: Response;
-  if (internalMode) {
-    const params = new URLSearchParams({ table, limit: String(limit) });
-    res = await fetch(`/api/internal/get-table-rows?${params.toString()}`, {
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      }
-    });
-  } else {
-    res = await fetch('/api/get-table-rows', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ table, limit, offset }),
-    });
-  }
+  const res = await fetch('/api/get-table-rows', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ table, limit, offset }),
+  });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || data.error || 'Failed');
   const payload = data.data || data; // unwrap if wrapped
@@ -47,7 +37,7 @@ async function fetchRows(table: string, limit: number, offset: number, internalM
   };
 }
 
-export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive, pageSize = 50, maxHeightClass = 'max-h-96', internalMode = false }) => {
+export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive, internalMode = false, pageSize = 50, maxHeightClass = 'max-h-96' }) => {
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<any[]>([]);
   const [page, setPage] = useState(0); // zero-based
@@ -57,14 +47,32 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
 
   const load = async () => {
     if (!tableName) return;
-    if (!internalMode && !connectionActive) return; // require BI connection when not internal
     setLoading(true); setError(null);
     try {
-      const offset = page * pageSize;
-      const resp = await fetchRows(tableName, pageSize, offset, internalMode);
-      setColumns(resp.columns);
-      setRows(resp.rows);
-      if (typeof resp.total_rows === 'number') setTotalRows(resp.total_rows);
+      if (internalMode) {
+        // Internal DB path now supports offset
+        const token = localStorage.getItem('auth_token');
+        const offset = page * pageSize;
+        const resp = await fetch(`/api/internal/table/${encodeURIComponent(tableName)}?limit=${pageSize}&offset=${offset}`, {
+          headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || data.error || 'Failed');
+        const payload = data.data || data;
+        setColumns(payload.columns || []);
+        setRows(payload.rows || []);
+        setTotalRows(typeof payload.total_rows === 'number' ? payload.total_rows : (payload.rows?.length || 0));
+      } else {
+        if (!connectionActive) {
+          setError('No active BI connection');
+        } else {
+          const offset = page * pageSize;
+            const resp = await fetchRows(tableName, pageSize, offset);
+            setColumns(resp.columns);
+            setRows(resp.rows);
+            if (typeof resp.total_rows === 'number') setTotalRows(resp.total_rows);
+        }
+      }
     } catch (e: any) {
       setError(e.message || 'Error fetching rows');
       setRows([]);
@@ -89,7 +97,12 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>Reload</Button>
           <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={loading || page === 0}>Prev</Button>
-          <Button variant="outline" size="sm" onClick={() => setPage(p => (rows.length < pageSize ? p : p + 1))} disabled={loading || rows.length < pageSize}>Next</Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPage(p => (rows.length < pageSize ? p : p + 1))}
+            disabled={loading || rows.length < pageSize || (totalRows !== null && (page + 1) * pageSize >= totalRows)}
+          >Next</Button>
         </div>
       </div>
       {error && (

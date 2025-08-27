@@ -55,19 +55,15 @@ async function fetchApi<T>(
 
     // Handle 401 unauthorized - token is invalid
     if (response.status === 401) {
-      // Clear invalid auth state
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
-      
-      // Redirect to login if not already on login page
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+      const hadToken = !!token; // only force logout if a token actually existed
+      if (hadToken) {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
       }
-      
-      return {
-        status: 'error',
-        error: 'Authentication required. Please log in again.',
-      };
+      return { status: 'error', error: hadToken ? 'Authentication required. Please log in again.' : 'Unauthorized' };
     }
 
     // Try to parse the response as JSON
@@ -336,10 +332,12 @@ export const dbService = {
     const body = buildPayload(conn as DbConnection, { space, title, limit });
     
     try {
+      const authToken = localStorage.getItem('auth_token');
       const response = await fetch('/api/sync-all-tables-with-progress-stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify(body),
       });
