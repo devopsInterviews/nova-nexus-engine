@@ -69,6 +69,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const initializeAuth = async () => {
       const savedToken = localStorage.getItem('auth_token');
       const savedUser = localStorage.getItem('auth_user');
+      
       if (!savedToken) {
         setIsInitializing(false);
         return;
@@ -83,8 +84,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } catch { /* ignore parse error */ }
       }
 
-      // Skip server verify if clearly expired
+      // Check if token is expired before making server request
       if (isTokenExpired(savedToken)) {
+        console.log('Token expired, clearing auth state');
         localStorage.removeItem('auth_token');
         localStorage.removeItem('auth_user');
         setUser(null);
@@ -93,7 +95,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-  const verifyWithRetry = async () => {
+      // Check if we recently verified the token (within last 5 minutes)
+      const lastVerified = localStorage.getItem('auth_last_verified');
+      const now = Date.now();
+      if (lastVerified && (now - parseInt(lastVerified)) < 5 * 60 * 1000) {
+        // Token was recently verified, skip server check
+        setIsInitializing(false);
+        return;
+      }
+
+      const verifyWithRetry = async () => {
         const maxAttempts = 3;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
@@ -112,7 +123,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setToken(savedToken);
               setUser(userData);
               localStorage.setItem('auth_user', JSON.stringify(userData));
-      localStorage.setItem('auth_last_verified', Date.now().toString());
+              localStorage.setItem('auth_last_verified', Date.now().toString());
             }
             return true;
           } catch (err) {
@@ -121,6 +132,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 console.warn('Stored token invalid after retries, clearing auth state:', err);
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('auth_user');
+                localStorage.removeItem('auth_last_verified');
                 setToken(null);
                 setUser(null);
               }

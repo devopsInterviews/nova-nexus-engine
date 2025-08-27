@@ -66,6 +66,8 @@ from app.routes.users_routes import router as users_router
 # Import and include test routes
 from app.routes.test_routes import router as test_router
 from app.routes.internal_data_routes import router as internal_data_router
+# Import and include permissions routes
+from app.routes.permissions_routes import router as permissions_router
 
 # Expose database/API routes under /api to match UI calls
 app.include_router(db_router, prefix="/api")
@@ -78,6 +80,8 @@ app.include_router(users_router, prefix="/api")
 # Expose test routes under /api
 app.include_router(test_router, prefix="/api")
 app.include_router(internal_data_router, prefix="/api")
+# Expose permissions routes under /api
+app.include_router(permissions_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")

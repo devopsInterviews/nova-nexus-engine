@@ -1,6 +1,6 @@
 import os
 import time
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.exc import OperationalError
@@ -24,9 +24,14 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String(80), unique=True, nullable=False)
     password_hash = Column(String(256))
+    email = Column(String(120), unique=True, nullable=True)
+    full_name = Column(String(100), nullable=True)
+    is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
     creation_date = Column(DateTime, default=datetime.datetime.utcnow)
     last_login = Column(DateTime)
     login_count = Column(Integer, default=0)
+    preferences = Column(JSON, default=dict)
     db_connections = relationship("DBConnection", back_populates="user", cascade="all, delete-orphan")
     tests = relationship("Test", back_populates="user", cascade="all, delete-orphan")
 
@@ -130,12 +135,23 @@ def init_db():
         if not admin_user:
             logger.info("Admin user not found, creating one.")
             admin_password = os.getenv('ADMIN_PASSWORD', 'admin')
-            admin_user = User(username='admin')
+            admin_user = User(
+                username='admin',
+                email='admin@company.com',
+                full_name='System Administrator',
+                is_admin=True,
+                is_active=True
+            )
             admin_user.set_password(admin_password)
             session.add(admin_user)
             session.commit()
             logger.info("Admin user created.")
         else:
+            # Update existing admin user to have admin privileges
+            if not getattr(admin_user, 'is_admin', False):
+                admin_user.is_admin = True
+                session.commit()
+                logger.info("Admin user updated with admin privileges.")
             logger.info("Admin user already exists.")
     finally:
         session.close()
