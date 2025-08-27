@@ -45,55 +45,81 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // Lightweight JWT decode (no external lib) to check expiry
+  const isTokenExpired = (jwt?: string | null) => {
+    if (!jwt) return true;
+    const parts = jwt.split('.');
+    if (parts.length !== 3) return false; // if structure unexpected, attempt server verify instead of hard logout
+    try {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (!payload.exp) return false; // no exp claim, treat as non‑expiring
+      const now = Math.floor(Date.now() / 1000);
+      return payload.exp < now - 5; // small clock skew tolerance
+    } catch {
+      return false;
+    }
+  };
 
   // Initialize auth state from localStorage and verify token
   useEffect(() => {
+    let cancelled = false;
     const initializeAuth = async () => {
       const savedToken = localStorage.getItem('auth_token');
       const savedUser = localStorage.getItem('auth_user');
-      
       if (!savedToken) {
-        return; // No token, user needs to login
+        setIsInitializing(false);
+        return;
       }
 
-      try {
-        // Try to use saved user data first, then verify token
-        if (savedUser) {
+      // Pre-load saved user immediately for UX
+      if (savedUser) {
+        try {
           const parsedUser = JSON.parse(savedUser);
           setUser(parsedUser);
           setToken(savedToken);
-        }
+        } catch { /* ignore parse error */ }
+      }
 
-        // Verify token by fetching user data
+      // Skip server verify if clearly expired
+      if (isTokenExpired(savedToken)) {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+        setUser(null);
+        setToken(null);
+        setIsInitializing(false);
+        return;
+      }
+
+      try {
         const userResponse = await fetch(`${API_BASE_URL}/me`, {
           method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${savedToken}`,
-          },
+          headers: { 'Authorization': `Bearer ${savedToken}` },
         });
-
         if (!userResponse.ok) {
           throw new Error('Token verification failed');
         }
-
         const userData = await userResponse.json();
-        
-        // Token is valid, update user data if needed
-        setToken(savedToken);
-        setUser(userData);
-        localStorage.setItem('auth_user', JSON.stringify(userData));
-        
+        if (!cancelled) {
+          setToken(savedToken);
+          setUser(userData);
+          localStorage.setItem('auth_user', JSON.stringify(userData));
+        }
       } catch (err) {
-        console.warn('Stored token is invalid, clearing auth state:', err);
-        // Clear invalid token and user data
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('auth_user');
-        setToken(null);
-        setUser(null);
+        if (!cancelled) {
+          console.warn('Stored token invalid, clearing auth state:', err);
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          setToken(null);
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) setIsInitializing(false);
       }
     };
-
     initializeAuth();
+    return () => { cancelled = true; };
   }, []);
 
   const clearError = () => setError(null);
@@ -249,7 +275,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     register,
     updateProfile,
-    isLoading,
+    isLoading: isLoading || isInitializing,
     error,
     clearError,
   };

@@ -174,14 +174,16 @@ export function ConnectDBTab() {
 
   // Connect to a saved connection
   const connectToSaved = (connection: any) => {
+    // Normalize type casing to match defaults keys
+    const normalizedType = String(connection.database_type || '').toLowerCase();
     setCurrentConnection({
       id: connection.id,
       host: connection.host,
       port: connection.port,
       database: connection.database,
       user: connection.user,
-      password: connection.password,
-      database_type: connection.database_type,
+      password: connection.password || '***',
+      database_type: normalizedType,
       name: connection.name
     });
     
@@ -523,10 +525,8 @@ export function ConnectDBTab() {
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
-                        <span className="text-xl">
-                          {dbDefaults[connection.database_type as keyof typeof dbDefaults]?.icon || 
-                           dbDefaults[connection.database_type?.toLowerCase() as keyof typeof dbDefaults]?.icon || 
-                           '📊'}
+                        <span className="text-xl" title={connection.database_type}>
+                          {dbDefaults[String(connection.database_type).toLowerCase() as keyof typeof dbDefaults]?.icon || '📊'}
                         </span>
                         <div>
                           <div className="flex items-center gap-2">
@@ -540,10 +540,7 @@ export function ConnectDBTab() {
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {connection.database_type?.toUpperCase() || 'UNKNOWN'} • {connection.host}:{connection.port}/{connection.database}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            User: {connection.user || 'N/A'}
+                            {String(connection.database_type).toLowerCase()} • {connection.user || 'user'}@{connection.host}:{connection.port}/{connection.database}
                           </p>
                         </div>
                       </div>

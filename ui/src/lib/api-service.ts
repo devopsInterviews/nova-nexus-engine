@@ -109,17 +109,22 @@ async function fetchApi<T>(
 
 // Helper to build payload: if we have a saved profile id and no clear-text password, send only connection_id
 function buildPayload(conn: DbConnection, extra?: Record<string, any>) {
-  const looksMasked = typeof conn.password === 'string' && conn.password.includes('*');
-  
-  // For operations that need connection fields (like suggest-columns), always include connection details
-  // Only use connection_id for simple operations when password is masked or missing
-  const extraKeys = Object.keys(extra || {});
-  const needsConnectionFields = extraKeys.includes('user_prompt') || extraKeys.includes('analytics_prompt');
-  
-  if (conn.id && (looksMasked || !conn.password) && !needsConnectionFields) {
-    return { connection_id: conn.id, ...(extra || {}) };
+  // Always send core connection fields so backend never complains about missing host/port.
+  // If password looks masked, omit it but still include id so backend can rehydrate secret.
+  const looksMasked = typeof conn.password === 'string' && /\*{3,}/.test(conn.password);
+  const base: Record<string, any> = {
+    connection_id: conn.id,
+    host: conn.host,
+    port: conn.port,
+    user: conn.user,
+    database: conn.database,
+    database_type: conn.database_type,
+    name: conn.name,
+  };
+  if (!looksMasked && conn.password) {
+    base.password = conn.password;
   }
-  return { ...conn, ...(extra || {}) };
+  return { ...base, ...(extra || {}) };
 }
 
 // API services
@@ -173,6 +178,17 @@ export const dbService = {
     const { table, limit = 100, ...conn } = connection as any;
     const body = buildPayload(conn as DbConnection, { table, limit });
     return fetchApi<Array<{ column: string; description: string; data_type: string }>>('/api/describe-columns', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  // Get table rows (assumed endpoint) for viewing data
+  getTableRows: async (connection: DbConnection & { table: string; limit?: number }):
+    Promise<ApiResponse<{ columns: string[]; rows: any[] }>> => {
+    const { table, limit = 100, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { table, limit });
+    return fetchApi<{ columns: string[]; rows: any[] }>("/api/get-table-rows", {
       method: 'POST',
       body: JSON.stringify(body),
     });
