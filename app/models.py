@@ -329,9 +329,9 @@ class DatabaseSession(Base):
     
     # Indexes for performance
     __table_args__ = (
-        Index('idx_user_sessions', 'user_id', 'status'),
-        Index('idx_session_activity', 'last_activity'),
-        Index('idx_session_id', 'session_id'),
+        Index('idx_db_session_user_sessions', 'user_id', 'status'),
+        Index('idx_db_session_activity', 'last_activity'),
+        Index('idx_db_session_id', 'session_id'),
     )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -379,9 +379,9 @@ class SystemMetrics(Base):
     
     # Indexes for performance
     __table_args__ = (
-        Index('idx_metric_name_timestamp', 'metric_name', 'timestamp'),
-        Index('idx_metric_type', 'metric_type'),
-        Index('idx_timestamp', 'timestamp'),
+        Index('idx_system_metrics_name_timestamp', 'metric_name', 'timestamp'),
+        Index('idx_system_metrics_type', 'metric_type'),
+        Index('idx_system_metrics_timestamp', 'timestamp'),
     )
     
     def __repr__(self):
@@ -440,10 +440,10 @@ class RequestLog(Base):
     
     # Indexes for performance
     __table_args__ = (
-        Index('idx_timestamp', 'timestamp'),
-        Index('idx_path_timestamp', 'path', 'timestamp'),
-        Index('idx_status_timestamp', 'status_code', 'timestamp'),
-        Index('idx_user_timestamp', 'user_id', 'timestamp'),
+        Index('idx_request_logs_timestamp', 'timestamp'),
+        Index('idx_request_logs_path_timestamp', 'path', 'timestamp'),
+        Index('idx_request_logs_status_timestamp', 'status_code', 'timestamp'),
+        Index('idx_request_logs_user_timestamp', 'user_id', 'timestamp'),
     )
     
     def __repr__(self):
@@ -502,9 +502,9 @@ class McpServerStatus(Base):
     
     # Indexes for performance
     __table_args__ = (
-        Index('idx_server_name', 'server_name'),
-        Index('idx_status', 'status'),
-        Index('idx_last_check', 'last_check'),
+        Index('idx_mcp_server_name', 'server_name'),
+        Index('idx_mcp_server_status', 'status'),
+        Index('idx_mcp_server_last_check', 'last_check'),
     )
     
     def __repr__(self):
@@ -563,9 +563,9 @@ class PageView(Base):
     
     # Indexes for performance
     __table_args__ = (
-        Index('idx_path_timestamp', 'path', 'timestamp'),
-        Index('idx_user_timestamp', 'user_id', 'timestamp'),
-        Index('idx_timestamp', 'timestamp'),
+        Index('idx_page_views_path_timestamp', 'path', 'timestamp'),
+        Index('idx_page_views_user_timestamp', 'user_id', 'timestamp'),
+        Index('idx_page_views_timestamp', 'timestamp'),
     )
     
     def __repr__(self):
