@@ -13,7 +13,6 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from app.models import RequestLog, SystemMetrics
-from app.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +121,14 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
     def _log_request_async(self, **kwargs):
         """Log request data to database asynchronously."""
         try:
+            # Import SessionLocal dynamically to avoid import-time issues
+            from app.database import SessionLocal
+            
+            # Check if SessionLocal is properly initialized
+            if SessionLocal is None:
+                logger.warning("SessionLocal not initialized, skipping request logging")
+                return
+            
             # Create a new database session for logging
             db = SessionLocal()
             try:
