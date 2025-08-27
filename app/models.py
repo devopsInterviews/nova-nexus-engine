@@ -12,6 +12,7 @@ from sqlalchemy.sql import func
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import json
+from werkzeug.security import generate_password_hash, check_password_hash
 
 Base = declarative_base()
 
@@ -53,6 +54,14 @@ class User(Base):
     
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
+    
+    def set_password(self, password: str) -> None:
+        """Set the user's password by hashing it."""
+        self.hashed_password = generate_password_hash(password)
+    
+    def check_password(self, password: str) -> bool:
+        """Check if the provided password matches the user's hashed password."""
+        return check_password_hash(self.hashed_password, password)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert user to dictionary for API responses (excluding sensitive data)."""
