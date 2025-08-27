@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { DbConnection, ConnectionContext as ConnectionContextType, dbService } from '@/lib/api-service';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/context/auth-context';
 
 // Create the context
 const ConnectionContext = createContext<ConnectionContextType | undefined>(undefined);
@@ -10,10 +11,19 @@ export const ConnectionProvider: React.FC<{ children: ReactNode }> = ({ children
   const [currentConnection, setCurrentConnection] = useState<DbConnection | null>(null);
   const [savedConnections, setSavedConnections] = useState<DbConnection[]>([]);
   const { toast } = useToast();
+  const { user, token, initializing } = useAuth();
 
   // Function to refresh the connection list
   const refreshConnections = async () => {
+    // Only attempt to load connections if user is authenticated
+    if (!user || !token) {
+      console.log('ConnectionContext: Skipping connection load - user not authenticated');
+      setSavedConnections([]); // Clear connections if not authenticated
+      return;
+    }
+
     try {
+      console.log('ConnectionContext: Loading saved connections for user:', user.username);
       const response = await dbService.getSavedConnections();
       if (response.status === 'success' && response.data) {
         // Normalize database_type casing and ensure required fields present
@@ -28,6 +38,7 @@ export const ConnectionProvider: React.FC<{ children: ReactNode }> = ({ children
           name: (c as any).name || (c as any).connection_name,
         }));
         setSavedConnections(normalized as any);
+        console.log(`ConnectionContext: Loaded ${normalized.length} connections`);
       }
     } catch (error) {
       console.error('Failed to refresh connections:', error);
@@ -39,10 +50,14 @@ export const ConnectionProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
-  // Load saved connections on component mount
+  // Load saved connections when user authentication is ready
   useEffect(() => {
-    refreshConnections();
-  }, []);
+    if (!initializing) {
+      // Authentication is complete, now we can try to load connections
+      console.log('ConnectionContext: Authentication ready, loading connections...');
+      refreshConnections();
+    }
+  }, [user, token, initializing]); // React to changes in authentication state
 
   return (
     <ConnectionContext.Provider

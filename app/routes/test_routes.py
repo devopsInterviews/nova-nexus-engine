@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -27,8 +27,8 @@ class CreateTestRequest(BaseModel):
     parameters: List[TestParameter]
     request_type: str
     test_category: str = "client"  # "client" or "server"
-    server_id: str = None  # For MCP server tests
-    tool_name: str = None  # For MCP server tests
+    server_id: Optional[str] = None  # For MCP server tests
+    tool_name: Optional[str] = None  # For MCP server tests
 
 class TestResponse(BaseModel):
     id: int
@@ -38,8 +38,8 @@ class TestResponse(BaseModel):
     parameters: List[TestParameter]
     request_type: str
     test_category: str = "client"
-    server_id: str = None
-    tool_name: str = None
+    server_id: Optional[str] = None
+    tool_name: Optional[str] = None
     created_at: str
 
     class Config:
