@@ -8,6 +8,7 @@ interface Props {
   internalMode?: boolean; // if true use internal DB endpoints
   pageSize?: number;
   maxHeightClass?: string; // allow parent override
+  internalShowAll?: boolean; // if true (default) fetch large batch & hide pagination for internal
 }
 
 interface TableRowsResponse {
@@ -37,7 +38,7 @@ async function fetchRows(table: string, limit: number, offset: number): Promise<
   };
 }
 
-export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive, internalMode = false, pageSize = 50, maxHeightClass = 'max-h-96' }) => {
+export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive, internalMode = false, pageSize = 50, maxHeightClass = 'max-h-96', internalShowAll = true }) => {
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<any[]>([]);
   const [page, setPage] = useState(0); // zero-based
@@ -50,10 +51,11 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
     setLoading(true); setError(null);
     try {
       if (internalMode) {
-        // Internal DB path now supports offset
+        // Internal DB path: optionally fetch whole table (bounded) once
         const token = localStorage.getItem('auth_token');
-        const offset = page * pageSize;
-        const resp = await fetch(`/api/internal/table/${encodeURIComponent(tableName)}?limit=${pageSize}&offset=${offset}`, {
+        const effectiveLimit = internalShowAll ? 5000 : pageSize; // cap to avoid runaway memory
+        const offset = internalShowAll ? 0 : page * pageSize;
+        const resp = await fetch(`/api/internal/table/${encodeURIComponent(tableName)}?limit=${effectiveLimit}&offset=${offset}`, {
           headers: { 'Authorization': token ? `Bearer ${token}` : '' }
         });
         const data = await resp.json();
@@ -90,11 +92,13 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
   if (!tableName) return null;
   if (!internalMode && !connectionActive) return <div className="text-sm text-muted-foreground">No active connection.</div>;
 
+  const showPagination = !internalMode || !internalShowAll;
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-4">
         <div className="text-sm font-medium">Rows {(page * pageSize) + 1}-{(page * pageSize) + rows.length}{totalRows ? ` / ${totalRows}` : ''}</div>
-        <div className="flex items-center gap-2">
+  {showPagination && (
+  <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>Reload</Button>
           <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={loading || page === 0}>Prev</Button>
           <Button 
@@ -103,7 +107,7 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
             onClick={() => setPage(p => (rows.length < pageSize ? p : p + 1))}
             disabled={loading || rows.length < pageSize || (totalRows !== null && (page + 1) * pageSize >= totalRows)}
           >Next</Button>
-        </div>
+  </div>)}
       </div>
       {error && (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
@@ -114,7 +118,7 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
         <div className="text-sm text-muted-foreground">No rows.</div>
       ) : (
         <div className={`${maxHeightClass} overflow-auto border rounded-md`}> 
-          <table className="w-full text-sm">
+          <table className="text-sm min-w-full">
             <thead className="bg-muted sticky top-0">
               <tr>{columns.map(c => <th key={c} className="text-left px-2 py-1 font-medium whitespace-nowrap">{c}</th>)}</tr>
             </thead>

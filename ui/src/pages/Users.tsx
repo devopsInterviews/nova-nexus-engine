@@ -490,13 +490,21 @@ const UsersPage: React.FC = () => {
 
       {/* View Table Data Dialog */}
     <Dialog open={dialog.open && dialog.type === 'viewTable'} onOpenChange={closeDialog}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-[95vw] w-[95vw] h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Table: {dialog.user?.username}</DialogTitle>
-            <DialogDescription>First rows of the selected table.</DialogDescription>
+            <DialogDescription>Internal table preview (showing up to 5000 rows).</DialogDescription>
           </DialogHeader>
-      {/* Table rows preview with pagination */}
-  <TableDataPreview tableName={dialog.user?.username || ''} connectionActive={!!currentConnection} internalMode={true} />
+      <div className="flex-1 overflow-hidden">
+        <TableDataPreview 
+          tableName={dialog.user?.username || ''} 
+          connectionActive={!!currentConnection} 
+          internalMode={true}
+          internalShowAll={true}
+          pageSize={200}
+          maxHeightClass="h-full"
+        />
+      </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>Close</Button>
           </DialogFooter>

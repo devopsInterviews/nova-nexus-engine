@@ -53,17 +53,35 @@ async function fetchApi<T>(
       headers,
     });
 
-    // Handle 401 unauthorized - token is invalid
+    // Handle 401 unauthorized with safer logic: only clear if token truly invalid/expired
     if (response.status === 401) {
-      const hadToken = !!token; // only force logout if a token actually existed
+      const hadToken = !!token;
       if (hadToken) {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('auth_user');
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
+        // Decode JWT to inspect expiry; if not expired, do NOT force logout (transient backend issue / race)
+        let shouldLogout = true;
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+            const now = Math.floor(Date.now() / 1000);
+            if (payload.exp && payload.exp > now + 5) { // token still valid for >5s
+              shouldLogout = false;
+            }
+          }
+        } catch { /* ignore decode errors -> proceed to logout */ }
+        if (shouldLogout) {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+          return { status: 'error', error: 'Authentication required. Please log in again.' };
+        } else {
+          // Return error but keep session so UI can retry silently
+            return { status: 'error', error: 'Temporary authorization issue. Please retry.' };
         }
       }
-      return { status: 'error', error: hadToken ? 'Authentication required. Please log in again.' : 'Unauthorized' };
+      return { status: 'error', error: 'Unauthorized' };
     }
 
     // Try to parse the response as JSON
