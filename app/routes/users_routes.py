@@ -5,6 +5,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import User, get_db_session
 from app.routes.auth_routes import get_current_user
+import bcrypt
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Users"])
 
@@ -12,29 +17,38 @@ router = APIRouter(tags=["Users"])
 class UserResponse(BaseModel):
     id: int
     username: str
-    creation_date: datetime.datetime | None
-    last_login: datetime.datetime | None
-    login_count: int
+    email: str | None = None
+    full_name: str | None = None
+    is_active: bool = True
+    is_admin: bool = False
+    created_at: datetime.datetime | None = None
+    last_login: datetime.datetime | None = None
+    login_count: int = 0
+    preferences: dict = {}
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class PasswordChangeRequest(BaseModel):
+    new_password: str
 
 class UserCreate(BaseModel):
     username: str
     password: str
+    email: str | None = None
+    full_name: str | None = None
 
 class UserUpdate(BaseModel):
     username: str | None = None
     password: str | None = None
+    email: str | None = None
+    full_name: str | None = None
 
 
 def is_admin(current_user: User = Depends(get_current_user)):
     """
     Dependency function to check if the current user is an administrator.
-    Raises an HTTPException with status 403 if the user is not 'admin'.
-
-    This is used as a dependency in routes that should only be accessible
-    by an administrator, providing role-based access control.
+    Raises an HTTPException with status 403 if the user is not admin.
 
     Args:
         current_user (User): The user object, injected by `get_current_user`.
@@ -42,26 +56,98 @@ def is_admin(current_user: User = Depends(get_current_user)):
     Returns:
         User: The user object if they are an admin.
     """
-    if current_user.username != 'admin':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this resource")
+    # Check if user has is_admin attribute, fallback to username check for compatibility
+    if hasattr(current_user, 'is_admin'):
+        if not current_user.is_admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    elif current_user.username != 'admin':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
-@router.get("/users", response_model=List[UserResponse], dependencies=[Depends(is_admin)])
-async def get_all_users(db: Session = Depends(get_db_session)):
+@router.get("/users")
+async def get_all_users(db: Session = Depends(get_db_session), current_user: User = Depends(is_admin)):
     """
     Retrieves a list of all users from the database.
-
-    This endpoint is protected and can only be accessed by an admin user.
-    It is used in the 'Users' tab of the admin panel to display all registered users.
-
-    Args:
-        db (Session): The database session, injected by FastAPI.
-
-    Returns:
-        List[UserResponse]: A list of user objects.
+    Returns data in the format expected by the frontend.
     """
-    users = db.query(User).all()
-    return users
+    try:
+        users = db.query(User).all()
+        
+        # Format users for response
+        formatted_users = []
+        for user in users:
+            formatted_users.append({
+                "id": user.id,
+                "username": user.username,
+                "email": getattr(user, 'email', '') or '',
+                "full_name": getattr(user, 'full_name', None),
+                "is_active": getattr(user, 'is_active', True),
+                "is_admin": getattr(user, 'is_admin', user.username == 'admin'),
+                "created_at": getattr(user, 'created_at', user.creation_date if hasattr(user, 'creation_date') else None),
+                "last_login": user.last_login,
+                "login_count": user.login_count,
+                "preferences": getattr(user, 'preferences', {}) or {}
+            })
+        
+        return {
+            "status": "success",
+            "data": {
+                "users": formatted_users
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting users: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.put("/users/{user_id}/password")
+async def change_user_password(
+    user_id: int,
+    password_request: PasswordChangeRequest,
+    current_user: User = Depends(is_admin),
+    db: Session = Depends(get_db_session)
+):
+    """Change user password (admin only)"""
+    try:
+        # Find the user
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update password using the User model's method if available
+        if hasattr(user, 'set_password'):
+            user.set_password(password_request.new_password)
+        else:
+            # Fallback to direct bcrypt hashing
+            salt = bcrypt.gensalt()
+            hashed_password = bcrypt.hashpw(password_request.new_password.encode('utf-8'), salt)
+            user.hashed_password = hashed_password.decode('utf-8')
+        
+        db.commit()
+        
+        logger.info(f"Password changed for user {user.username} by admin {current_user.username}")
+        
+        return {
+            "status": "success",
+            "data": {
+                "message": f"Password changed successfully for user {user.username}"
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error changing password for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(is_admin)])
 async def create_user(user: UserCreate, db: Session = Depends(get_db_session)):
@@ -121,27 +207,49 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     db.refresh(db_user)
     return db_user
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(is_admin)])
-async def delete_user(user_id: int, db: Session = Depends(get_db_session)):
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int, 
+    current_user: User = Depends(is_admin),
+    db: Session = Depends(get_db_session)
+):
     """
     Deletes a user from the database.
-
-    This endpoint is protected and can only be accessed by an admin user.
-    It is used in the 'Users' tab to remove users. The admin user cannot be deleted.
-
-    Args:
-        user_id (int): The ID of the user to delete.
-        db (Session): The database session, injected by FastAPI.
-
-    Returns:
-        None
+    Cannot delete admin users or self.
     """
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if db_user.username == 'admin':
-        raise HTTPException(status_code=403, detail="Cannot delete admin user")
+    try:
+        db_user = db.query(User).filter(User.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
         
-    db.delete(db_user)
-    db.commit()
-    return None
+        # Prevent deletion of admin users
+        is_target_admin = getattr(db_user, 'is_admin', db_user.username == 'admin')
+        if is_target_admin:
+            raise HTTPException(status_code=403, detail="Cannot delete admin users")
+        
+        # Prevent self-deletion
+        if db_user.id == current_user.id:
+            raise HTTPException(status_code=403, detail="Cannot delete your own account")
+        
+        username = db_user.username
+        db.delete(db_user)
+        db.commit()
+        
+        logger.info(f"User {username} deleted by admin {current_user.username}")
+        
+        return {
+            "status": "success",
+            "data": {
+                "message": f"User {username} deleted successfully"
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user {user_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
