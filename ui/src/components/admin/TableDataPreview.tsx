@@ -4,9 +4,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Props {
   tableName: string;
-  connectionActive: boolean;
+  connectionActive: boolean; // external BI connection active
   pageSize?: number;
   maxHeightClass?: string; // allow parent override
+  internalMode?: boolean; // use internal DB endpoints
 }
 
 interface TableRowsResponse {
@@ -16,16 +17,26 @@ interface TableRowsResponse {
 }
 
 // Generic fetch wrapper (localized) – relies on global token
-async function fetchRows(table: string, limit: number, offset: number): Promise<TableRowsResponse> {
+async function fetchRows(table: string, limit: number, offset: number, internalMode: boolean): Promise<TableRowsResponse> {
   const token = localStorage.getItem('auth_token');
-  const res = await fetch('/api/get-table-rows', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ table, limit, offset }),
-  });
+  let res: Response;
+  if (internalMode) {
+    const params = new URLSearchParams({ table, limit: String(limit) });
+    res = await fetch(`/api/internal/get-table-rows?${params.toString()}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      }
+    });
+  } else {
+    res = await fetch('/api/get-table-rows', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ table, limit, offset }),
+    });
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || data.error || 'Failed');
   const payload = data.data || data; // unwrap if wrapped
@@ -36,7 +47,7 @@ async function fetchRows(table: string, limit: number, offset: number): Promise<
   };
 }
 
-export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive, pageSize = 50, maxHeightClass = 'max-h-96' }) => {
+export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive, pageSize = 50, maxHeightClass = 'max-h-96', internalMode = false }) => {
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<any[]>([]);
   const [page, setPage] = useState(0); // zero-based
@@ -45,11 +56,12 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
   const [totalRows, setTotalRows] = useState<number | null>(null);
 
   const load = async () => {
-    if (!tableName || !connectionActive) return;
+    if (!tableName) return;
+    if (!internalMode && !connectionActive) return; // require BI connection when not internal
     setLoading(true); setError(null);
     try {
       const offset = page * pageSize;
-      const resp = await fetchRows(tableName, pageSize, offset);
+      const resp = await fetchRows(tableName, pageSize, offset, internalMode);
       setColumns(resp.columns);
       setRows(resp.rows);
       if (typeof resp.total_rows === 'number') setTotalRows(resp.total_rows);
@@ -68,7 +80,7 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tableName, page]);
 
   if (!tableName) return null;
-  if (!connectionActive) return <div className="text-sm text-muted-foreground">No active connection.</div>;
+  if (!internalMode && !connectionActive) return <div className="text-sm text-muted-foreground">No active connection.</div>;
 
   return (
     <div className="space-y-3">

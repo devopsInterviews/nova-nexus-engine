@@ -479,6 +479,61 @@ async def describe_columns(
             }
         )
 
+@router.post("/get-table-rows")
+async def get_table_rows(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    """Return first N rows for a table. Mirrors logic of describe/list resolving saved profile."""
+    from app.client import _mcp_session  # local import to avoid circular dependency
+    try:
+        data = await request.json()
+        saved_connections = _load_saved_connections(current_user.id, db)
+        data = _resolve_connection_payload(data, saved_connections)
+        if "table" not in data:
+            return JSONResponse(status_code=400, content={"status":"error","error":"Missing required field: table"})
+        limit = int(data.get("limit", 100))
+        logger.info(f"Fetching up to {limit} rows from table {data['table']} ({data['database_type']})")
+        try:
+            result = await _mcp_session.call_tool(
+                "get_table_rows",  # expect MCP tool exposed
+                arguments={
+                    "host": data["host"],
+                    "port": data["port"],
+                    "user": data["user"],
+                    "password": data["password"],
+                    "database": data["database"],
+                    "database_type": data["database_type"],
+                    "table": data["table"],
+                    "limit": limit
+                }
+            )
+            rows_text = result.content[0].text if result.content else "{}"
+            payload = json.loads(rows_text) if rows_text.strip() else {"rows": []}
+            # Normalize
+            columns = payload.get("columns")
+            rows = payload.get("rows") or []
+            if not columns and rows:
+                # derive columns from first row
+                first = rows[0]
+                if isinstance(first, dict):
+                    columns = list(first.keys())
+            return JSONResponse({
+                "status": "success",
+                "data": {
+                    "columns": columns or [],
+                    "rows": rows,
+                    "total_rows": payload.get("total_rows")
+                }
+            })
+        except Exception as tool_error:
+            logger.error(f"get_table_rows tool error: {tool_error}")
+            return JSONResponse(status_code=500, content={"status":"error","error":f"Get rows failed: {tool_error}"})
+    except Exception as e:
+        logger.error(f"get_table_rows request failed: {e}")
+        return JSONResponse(status_code=500, content={"status":"error","error":f"Request processing failed: {e}"})
+
 @router.post("/suggest-columns")
 async def suggest_columns(
     request: Request,

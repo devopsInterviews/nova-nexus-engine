@@ -109,11 +109,8 @@ async function fetchApi<T>(
 
 // Helper to build payload: if we have a saved profile id and no clear-text password, send only connection_id
 function buildPayload(conn: DbConnection, extra?: Record<string, any>) {
-  // Always send core connection fields so backend never complains about missing host/port.
-  // If password looks masked, omit it but still include id so backend can rehydrate secret.
   const looksMasked = typeof conn.password === 'string' && /\*{3,}/.test(conn.password);
   const base: Record<string, any> = {
-    connection_id: conn.id,
     host: conn.host,
     port: conn.port,
     user: conn.user,
@@ -121,9 +118,14 @@ function buildPayload(conn: DbConnection, extra?: Record<string, any>) {
     database_type: conn.database_type,
     name: conn.name,
   };
-  if (!looksMasked && conn.password) {
-    base.password = conn.password;
-  }
+  if (conn.id) base.connection_id = conn.id;
+  if (!looksMasked && conn.password) base.password = conn.password;
+  // Fallback validations
+  ["host","port","user","database","database_type"].forEach(k => {
+    if (base[k] === undefined || base[k] === null) {
+      console.warn(`buildPayload missing field ${k} for connection`, conn);
+    }
+  });
   return { ...base, ...(extra || {}) };
 }
 
