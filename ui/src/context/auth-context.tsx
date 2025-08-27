@@ -92,31 +92,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      try {
-        const userResponse = await fetch(`${API_BASE_URL}/me`, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${savedToken}` },
-        });
-        if (!userResponse.ok) {
-          throw new Error('Token verification failed');
+      const verifyWithRetry = async () => {
+        const maxAttempts = 3;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            const userResponse = await fetch(`${API_BASE_URL}/me`, {
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${savedToken}` },
+            });
+            if (userResponse.status === 401) {
+              throw new Error('Unauthorized');
+            }
+            if (!userResponse.ok) {
+              throw new Error('Token verification failed');
+            }
+            const userData = await userResponse.json();
+            if (!cancelled) {
+              setToken(savedToken);
+              setUser(userData);
+              localStorage.setItem('auth_user', JSON.stringify(userData));
+            }
+            return true;
+          } catch (err) {
+            if (attempt === maxAttempts) {
+              if (!cancelled) {
+                console.warn('Stored token invalid after retries, clearing auth state:', err);
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_user');
+                setToken(null);
+                setUser(null);
+              }
+              return false;
+            }
+            // exponential backoff (50ms, 150ms)
+            await new Promise(r => setTimeout(r, attempt * 100 + 50));
+          }
         }
-        const userData = await userResponse.json();
-        if (!cancelled) {
-          setToken(savedToken);
-          setUser(userData);
-          localStorage.setItem('auth_user', JSON.stringify(userData));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.warn('Stored token invalid, clearing auth state:', err);
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('auth_user');
-          setToken(null);
-          setUser(null);
-        }
-      } finally {
-        if (!cancelled) setIsInitializing(false);
-      }
+        return false;
+      };
+      try { await verifyWithRetry(); } finally { if (!cancelled) setIsInitializing(false); }
     };
     initializeAuth();
     return () => { cancelled = true; };

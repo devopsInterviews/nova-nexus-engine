@@ -41,7 +41,8 @@ export const McpClientTestTab = () => {
   const [authToken, setAuthToken] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
+    // Use consistent key 'auth_token'; keep backward compatibility with old 'authToken'
+    const token = localStorage.getItem('auth_token') || localStorage.getItem('authToken');
     setAuthToken(token);
     if (token) {
       fetchSavedTests(token);
@@ -281,7 +282,11 @@ export const McpClientTestTab = () => {
   };
 
   const saveTest = async () => {
-    if (!selectedEndpoint || !authToken) return;
+    if (!selectedEndpoint) return;
+    if (!authToken) {
+      console.warn('Save skipped: missing auth token');
+      return;
+    }
 
     const testToSave = {
       name: testName || `${selectedEndpoint} - ${new Date().toISOString()}`,
