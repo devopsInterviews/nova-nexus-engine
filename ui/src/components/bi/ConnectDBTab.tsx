@@ -152,6 +152,7 @@ export function ConnectDBTab() {
           ...formData,
           name: ""
         });
+        setShowPassword(false); // Reset password visibility
       } else {
         toast({
           variant: "destructive",
@@ -523,12 +524,14 @@ export function ConnectDBTab() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <span className="text-xl">
-                          {dbDefaults[connection.database_type as keyof typeof dbDefaults]?.icon || '📊'}
+                          {dbDefaults[connection.database_type as keyof typeof dbDefaults]?.icon || 
+                           dbDefaults[connection.database_type?.toLowerCase() as keyof typeof dbDefaults]?.icon || 
+                           '📊'}
                         </span>
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium group-hover:text-primary transition-colors">
-                              {connection.name}
+                              {connection.name || 'Unnamed Connection'}
                             </h4>
                             {isConnectionActive(connection) && (
                               <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800 border-green-200">
@@ -537,7 +540,10 @@ export function ConnectDBTab() {
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {connection.host}:{connection.port}/{connection.database}
+                            {connection.database_type?.toUpperCase() || 'UNKNOWN'} • {connection.host}:{connection.port}/{connection.database}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            User: {connection.user || 'N/A'}
                           </p>
                         </div>
                       </div>

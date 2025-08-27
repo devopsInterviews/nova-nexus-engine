@@ -50,12 +50,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const initializeAuth = async () => {
       const savedToken = localStorage.getItem('auth_token');
+      const savedUser = localStorage.getItem('auth_user');
       
       if (!savedToken) {
         return; // No token, user needs to login
       }
 
       try {
+        // Try to use saved user data first, then verify token
+        if (savedUser) {
+          const parsedUser = JSON.parse(savedUser);
+          setUser(parsedUser);
+          setToken(savedToken);
+        }
+
         // Verify token by fetching user data
         const userResponse = await fetch(`${API_BASE_URL}/me`, {
           method: 'GET',
@@ -70,9 +78,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         const userData = await userResponse.json();
         
-        // Token is valid, set auth state
+        // Token is valid, update user data if needed
         setToken(savedToken);
         setUser(userData);
+        localStorage.setItem('auth_user', JSON.stringify(userData));
         
       } catch (err) {
         console.warn('Stored token is invalid, clearing auth state:', err);
