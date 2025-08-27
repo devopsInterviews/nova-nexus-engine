@@ -59,11 +59,6 @@ const navigationItems = [
     url: "/settings",
     icon: Settings,
   },
-  {
-    title: "Users",
-    url: "/users",
-    icon: Users,
-  },
 ];
 
 export function AppSidebar() {

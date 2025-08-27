@@ -70,12 +70,12 @@ def _persist_saved_connections(user_id: int, conn_data: Dict[str, Any], db: Sess
     new_conn = DBConnection(
         user_id=user_id,
         connection_name=conn_data['name'],
-        database_type=conn_data['database_type'],
-        host=conn_data['host'],
-        port=conn_data['port'],
-        user=conn_data['user'],
-        password=conn_data['password'],
-        database=conn_data['database']
+        db_type=conn_data['database_type'],
+        db_host=conn_data['host'],
+        db_port=conn_data['port'],
+        db_user=conn_data['user'],
+        db_password=conn_data['password'],
+        db_name=conn_data['database']
     )
     db.add(new_conn)
     db.commit()

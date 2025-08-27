@@ -140,3 +140,33 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
         UserResponse: The details of the current user.
     """
     return current_user
+
+@router.post("/logout")
+async def logout(current_user: User = Depends(get_current_user)):
+    """
+    Logout endpoint - mainly for consistency.
+    The actual logout is handled client-side by removing the token.
+    """
+    return {"status": "success", "message": "Logged out successfully"}
+
+@router.get("/profile")
+async def get_profile(current_user: User = Depends(get_current_user)):
+    """
+    Get current user profile information.
+    """
+    return {
+        "status": "success",
+        "data": {
+            "user": {
+                "id": current_user.id,
+                "username": current_user.username,
+                "email": getattr(current_user, 'email', '') or '',
+                "full_name": getattr(current_user, 'full_name', None),
+                "is_active": getattr(current_user, 'is_active', True),
+                "is_admin": getattr(current_user, 'is_admin', current_user.username == 'admin'),
+                "last_login": current_user.last_login,
+                "login_count": current_user.login_count,
+                "preferences": getattr(current_user, 'preferences', {}) or {}
+            }
+        }
+    }
