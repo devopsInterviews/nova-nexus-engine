@@ -3,7 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.database import User, get_db_session
+from app.database import get_db_session
+from app.models import User
 from app.routes.auth_routes import get_current_user
 import bcrypt
 import logging

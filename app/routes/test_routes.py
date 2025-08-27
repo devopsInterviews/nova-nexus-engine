@@ -4,7 +4,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.database import get_db_session, Test, User
+from app.database import get_db_session
+from app.models import TestConfiguration as Test, User
 from app.routes.auth_routes import get_current_user
 
 logger = logging.getLogger(__name__)
