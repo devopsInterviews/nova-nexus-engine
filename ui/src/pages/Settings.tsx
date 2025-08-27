@@ -4,20 +4,47 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Settings2, Palette, Keyboard, Info, Moon, Sun, Monitor } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Settings() {
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>("light");
   const [density, setDensity] = useState("comfortable");
   const [animations, setAnimations] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [autoSave, setAutoSave] = useState(true);
 
+  // Initialize theme from localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | 'auto' | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  // Apply theme changes
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'auto') => {
+    setTheme(newTheme);
+    
+    if (newTheme === 'auto') {
+      // Use system preference
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const actualTheme = systemPrefersDark ? 'dark' : 'light';
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(actualTheme);
+      localStorage.setItem('theme', 'auto');
+    } else {
+      // Use selected theme
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(newTheme);
+      localStorage.setItem('theme', newTheme);
+    }
+  };
+
   const themeOptions = [
     { value: "light", label: "Light", icon: Sun },
     { value: "dark", label: "Dark", icon: Moon },
     { value: "auto", label: "Auto", icon: Monitor },
-  ];
+  ] as const;
 
   const densityOptions = [
     { value: "compact", label: "Compact" },
@@ -78,7 +105,7 @@ export default function Settings() {
                           ? "border-primary bg-primary/10 shadow-glow"
                           : "border-border bg-surface-elevated hover:border-primary/50"
                       }`}
-                      onClick={() => setTheme(option.value)}
+                      onClick={() => handleThemeChange(option.value)}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >

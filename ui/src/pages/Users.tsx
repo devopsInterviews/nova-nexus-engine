@@ -527,22 +527,85 @@ const UsersPage: React.FC = () => {
 
 export default UsersPage;
 
-// In‑file lightweight permissions component (UI only)
+// In‑file lightweight permissions component (UI + Backend integrated)
 interface PermissionsMatrixProps { users: User[]; currentUser: User | null }
 const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ users, currentUser }) => {
   const tabs = ['Home','DevOps','BI','Analytics','Tests','Users','Settings'];
-  // Initialize all tabs with every user allowed (persist locally)
+  // Initialize with users mapped to their IDs for backend compatibility
   const initial = () => {
     const stored = localStorage.getItem('ui_tab_permissions');
     if (stored) {
-      try { return JSON.parse(stored); } catch { /* ignore */ }
+      try { 
+        const parsed = JSON.parse(stored);
+        // Convert usernames to user IDs for backend compatibility
+        const converted: Record<string,number[]> = {};
+        tabs.forEach(tab => {
+          if (parsed[tab]) {
+            converted[tab] = parsed[tab].map((username: string) => {
+              const user = users.find(u => u.username === username);
+              return user ? user.id : null;
+            }).filter(Boolean);
+          } else {
+            converted[tab] = users.map(u => u.id);
+          }
+        });
+        return converted;
+      } catch { /* ignore */ }
     }
-    const all: Record<string,string[]> = {};
-    tabs.forEach(t => { all[t] = users.map(u=>u.username); });
+    const all: Record<string,number[]> = {};
+    tabs.forEach(t => { all[t] = users.map(u=>u.id); });
     return all;
   };
-  const [perms, setPerms] = useState<Record<string,string[]>>(initial);
-  useEffect(()=>{ localStorage.setItem('ui_tab_permissions', JSON.stringify(perms)); }, [perms]);
+  const [perms, setPerms] = useState<Record<string,number[]>>(initial);
+  const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  // Save to both localStorage and backend
+  useEffect(() => {
+    // Save to localStorage (convert IDs back to usernames)
+    const usernamePerms: Record<string,string[]> = {};
+    tabs.forEach(tab => {
+      usernamePerms[tab] = (perms[tab] || []).map(id => {
+        const user = users.find(u => u.id === id);
+        return user?.username;
+      }).filter(Boolean);
+    });
+    localStorage.setItem('ui_tab_permissions', JSON.stringify(usernamePerms));
+
+    // Save to backend
+    const saveToBackend = async () => {
+      if (users.length === 0) return;
+      
+      setSaving(true);
+      try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('/api/permissions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            permissions: tabs.map(tab => ({
+              tab_name: tab,
+              user_ids: perms[tab] || []
+            }))
+          }),
+        });
+
+        if (response.ok) {
+          setLastSaved(new Date());
+        }
+      } catch (error) {
+        console.error('Failed to save permissions to backend:', error);
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const timeoutId = setTimeout(saveToBackend, 1000); // Debounce saves
+    return () => clearTimeout(timeoutId);
+  }, [perms, users, tabs]);
 
   // Ensure admin always present
   useEffect(()=>{
@@ -553,7 +616,7 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ users, currentUse
       const updated = { ...p };
       tabs.forEach(t => {
         const list = new Set(updated[t] || []);
-        list.add(admin.username);
+        list.add(admin.id);
         updated[t] = Array.from(list);
       });
       return updated;
@@ -561,27 +624,40 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ users, currentUse
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [users]);
 
-  const toggleUser = (tab: string, username: string) => {
-    const admin = users.find(u=>u.is_admin)?.username;
-    if (username === admin) return; // immutable
+  const toggleUser = (tab: string, userId: number) => {
+    const admin = users.find(u=>u.is_admin);
+    if (admin && userId === admin.id) return; // immutable
     setPerms(prev => {
       const current = new Set(prev[tab] || []);
-      if (current.has(username)) current.delete(username); else current.add(username);
+      if (current.has(userId)) current.delete(userId); else current.add(userId);
       return { ...prev, [tab]: Array.from(current) };
     });
   };
 
   const addAll = (tab: string) => {
-    setPerms(prev => ({ ...prev, [tab]: users.map(u=>u.username) }));
+    setPerms(prev => ({ ...prev, [tab]: users.map(u=>u.id) }));
   };
   const clearAll = (tab: string) => {
-    const admin = users.find(u=>u.is_admin)?.username;
-    setPerms(prev => ({ ...prev, [tab]: admin ? [admin] : [] }));
+    const admin = users.find(u=>u.is_admin);
+    setPerms(prev => ({ ...prev, [tab]: admin ? [admin.id] : [] }));
+  };
+
+  const getUsernameById = (id: number) => {
+    const user = users.find(u => u.id === id);
+    return user?.username || `User ${id}`;
   };
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-muted-foreground">Changes are stored locally only. Admin cannot be removed.</div>
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">
+          Changes are stored locally and synced to server. Admin cannot be removed.
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {saving && <span>💾 Saving...</span>}
+          {lastSaved && !saving && <span>✅ Saved {lastSaved.toLocaleTimeString()}</span>}
+        </div>
+      </div>
       <div className="overflow-auto border rounded-md">
         <table className="w-full text-sm">
           <thead className="bg-muted">
@@ -600,25 +676,29 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ users, currentUse
                   <td className="px-3 py-2 font-medium whitespace-nowrap">{tab}</td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-2">
-                      {authorized.map(u => (
-                        <span key={u} className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 text-xs">
-                          {u}
-                          {!(users.find(x=>x.username===u)?.is_admin) && (
-                            <button onClick={()=>toggleUser(tab,u)} className="text-red-500 hover:text-red-700" aria-label={`Remove ${u}`}>×</button>
-                          )}
-                        </span>
-                      ))}
+                      {authorized.map(userId => {
+                        const user = users.find(u => u.id === userId);
+                        if (!user) return null;
+                        return (
+                          <span key={userId} className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 text-xs">
+                            {user.username}
+                            {!user.is_admin && (
+                              <button onClick={()=>toggleUser(tab,userId)} className="text-red-500 hover:text-red-700" aria-label={`Remove ${user.username}`}>×</button>
+                            )}
+                          </span>
+                        );
+                      })}
                       {authorized.length===0 && <span className="text-xs text-muted-foreground">No users</span>}
                     </div>
                   </td>
                   <td className="px-3 py-2 w-64">
                     <select
                       className="w-full border rounded h-8 bg-background"
-                      onChange={e=>{ const val=e.target.value; if(val){ toggleUser(tab,val); e.target.selectedIndex=0; } }}
+                      onChange={e=>{ const val=e.target.value; if(val){ toggleUser(tab,parseInt(val)); e.target.selectedIndex=0; } }}
                     >
                       <option value="">Select user...</option>
-                      {users.filter(u=>!(perms[tab]||[]).includes(u.username)).map(u=> (
-                        <option key={u.id} value={u.username}>{u.username}</option>
+                      {users.filter(u=>!(perms[tab]||[]).includes(u.id)).map(u=> (
+                        <option key={u.id} value={u.id}>{u.username}</option>
                       ))}
                     </select>
                   </td>

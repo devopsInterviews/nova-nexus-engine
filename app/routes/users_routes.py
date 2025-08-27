@@ -164,14 +164,34 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db_session)):
     Returns:
         UserResponse: The newly created user object.
     """
+    # Check if username already exists
     db_user = db.query(User).filter(User.username == user.username).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Username already registered")
-    new_user = User(username=user.username)
+    
+    # Check if email already exists (if provided)
+    if user.email:
+        existing_email = db.query(User).filter(User.email == user.email).first()
+        if existing_email:
+            raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Create new user
+    new_user = User(
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=True,
+        is_admin=False,
+        preferences={}
+    )
     new_user.set_password(user.password)
+    
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    logger.info(f"New user created: {new_user.username}")
+    
     return new_user
 
 @router.put("/users/{user_id}", response_model=UserResponse, dependencies=[Depends(is_admin)])
@@ -194,17 +214,32 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if user_update.username:
+    # Check username uniqueness if being changed
+    if user_update.username and user_update.username != db_user.username:
         existing_user = db.query(User).filter(User.username == user_update.username).first()
         if existing_user and existing_user.id != user_id:
             raise HTTPException(status_code=400, detail="Username already registered")
         db_user.username = user_update.username
+    
+    # Check email uniqueness if being changed
+    if user_update.email and user_update.email != getattr(db_user, 'email', None):
+        existing_email = db.query(User).filter(User.email == user_update.email).first()
+        if existing_email and existing_email.id != user_id:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        db_user.email = user_update.email
+    
+    # Update other fields
+    if user_update.full_name is not None:
+        db_user.full_name = user_update.full_name
         
     if user_update.password:
         db_user.set_password(user_update.password)
         
     db.commit()
     db.refresh(db_user)
+    
+    logger.info(f"User {db_user.username} updated")
+    
     return db_user
 
 @router.delete("/users/{user_id}")

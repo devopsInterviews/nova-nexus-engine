@@ -13,7 +13,7 @@ router = APIRouter(tags=["Authentication"])
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your_default_secret_key")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 120  # 2 hours (as requested)
 
 # Pydantic Models
 class Token(BaseModel):

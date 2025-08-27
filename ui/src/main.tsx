@@ -9,6 +9,16 @@ const initializeTheme = () => {
   if (savedTheme === 'dark') {
     document.documentElement.classList.add('dark');
     document.documentElement.classList.remove('light');
+  } else if (savedTheme === 'auto') {
+    // Use system preference for auto mode
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (systemPrefersDark) {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+    }
   } else {
     // Default to light mode
     document.documentElement.classList.add('light');
