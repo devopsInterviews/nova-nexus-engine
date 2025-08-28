@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusCard } from "@/components/ui/status-card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { BarChart3, TrendingUp, Users, Activity, Server, Zap, Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { analyticsService } from "@/lib/api-service";
@@ -151,6 +152,54 @@ export default function Analytics() {
         <p className="text-muted-foreground">
           Real-time monitoring and insights across all systems
         </p>
+        
+        {/* Temporary Debug Section */}
+        <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+          <h3 className="text-lg font-semibold mb-2">Debug Activities</h3>
+          <div className="flex gap-2 mb-2">
+            <Button 
+              onClick={async () => {
+                try {
+                  const response = await fetch('/api/analytics/trigger-test-activity', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                      'Content-Type': 'application/json'
+                    }
+                  });
+                  const data = await response.json();
+                  console.log('Test activity result:', data);
+                  alert(data.message || 'Test activity triggered');
+                } catch (error) {
+                  console.error('Error triggering test activity:', error);
+                  alert('Error: ' + error);
+                }
+              }}
+            >
+              Create Test Activity
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const response = await fetch('/api/analytics/debug-activities', {
+                    headers: {
+                      'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                  });
+                  const data = await response.json();
+                  console.log('Debug activities:', data);
+                  alert(`Found ${data.total_activities} activities. Check console for details.`);
+                } catch (error) {
+                  console.error('Error getting debug activities:', error);
+                  alert('Error: ' + error);
+                }
+              }}
+            >
+              Check Activities
+            </Button>
+          </div>
+        </div>
       </motion.div>
 
       {/* Key Metrics */}

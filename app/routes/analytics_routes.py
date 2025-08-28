@@ -56,10 +56,18 @@ async def get_system_overview(
         
         uptime_percentage = (successful_requests / total_requests * 100) if total_requests > 0 else 100.0
         
-        # Get active MCP servers count
-        active_servers = db.query(func.count(McpServerStatus.id)).filter(
-            McpServerStatus.status == 'active'
-        ).scalar() or 0
+        # Get active MCP servers count (check if session is active like Tests tab does)
+        active_servers = 0
+        try:
+            from app.client import _mcp_session
+            if _mcp_session:
+                active_servers = 1  # We have one primary MCP server connection
+                logger.debug("Found 1 active MCP server session")
+            else:
+                logger.debug("No active MCP server session found")
+        except Exception as mcp_error:
+            logger.warning(f"Failed to check MCP session: {mcp_error}")
+            active_servers = 0
         
         # Calculate average response time (last 24 hours)
         yesterday = datetime.utcnow() - timedelta(days=1)
@@ -581,7 +589,7 @@ async def trigger_test_activity(
         user_activity = UserActivity(
             user_id=current_user.id,
             activity_type='testing',
-            action='Test activity triggered',
+            action='Test activity triggered manually',
             status='success',
             ip_address='127.0.0.1',
             timestamp=datetime.utcnow()
@@ -589,12 +597,54 @@ async def trigger_test_activity(
         db.add(user_activity)
         db.commit()
         
-        return {"status": "success", "message": "Test activity created"}
+        # Also check how many activities exist
+        activity_count = db.query(func.count(UserActivity.id)).scalar()
+        
+        return {
+            "status": "success", 
+            "message": f"Test activity created. Total activities in DB: {activity_count}"
+        }
         
     except Exception as e:
         logger.error(f"Failed to create test activity: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create test activity")
+        raise HTTPException(status_code=500, detail=f"Failed to create test activity: {str(e)}")
+
+
+@router.get("/debug-activities")
+async def debug_activities(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Debug endpoint to check user activities.
+    """
+    try:
+        # Get all recent activities
+        activities = db.query(UserActivity).order_by(
+            desc(UserActivity.timestamp)
+        ).limit(20).all()
+        
+        activity_data = []
+        for activity in activities:
+            activity_data.append({
+                "id": activity.id,
+                "user_id": activity.user_id,
+                "activity_type": activity.activity_type,
+                "action": activity.action,
+                "status": activity.status,
+                "timestamp": activity.timestamp.isoformat() if activity.timestamp else None
+            })
+        
+        return {
+            "status": "success",
+            "total_activities": len(activity_data),
+            "activities": activity_data
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get debug activities: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get activities: {str(e)}")
 
 
 # Helper functions
