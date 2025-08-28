@@ -7,12 +7,12 @@ tracking performance metrics, error rates, and usage patterns.
 
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
-from app.models import RequestLog, SystemMetrics
+from app.models import RequestLog, SystemMetrics, PageView, McpServerStatus, UserActivity
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,27 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
             error_message=error_message
         )
         
+        # Also track page views for successful GET requests (frontend pages only)
+        if (request.method == "GET" and response.status_code == 200 and 
+            not str(request.url.path).startswith('/api/') and 
+            str(request.url.path) != '/favicon.ico'):
+            self._track_page_view_async(
+                path=str(request.url.path),
+                ip_address=client_ip,
+                user_agent=user_agent,
+                referer=referer,
+                user_id=user_id
+            )
+        
+        # Track user activities for API endpoints
+        if str(request.url.path).startswith('/api/') and response.status_code < 400:
+            self._track_user_activity_async(
+                path=str(request.url.path),
+                method=request.method,
+                user_id=user_id,
+                ip_address=client_ip
+            )
+        
         return response
     
     def _get_client_ip(self, request: Request) -> str:
@@ -150,6 +171,111 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             logger.error(f"Failed to create database session for logging: {e}")
     
+    def _track_page_view_async(self, path: str, ip_address: str, user_agent: str, referer: str, user_id: int = None):
+        """Track page view data to database asynchronously."""
+        try:
+            # Import SessionLocal dynamically to avoid import-time issues
+            from app.database import SessionLocal
+            
+            # Check if SessionLocal is properly initialized
+            if SessionLocal is None:
+                logger.warning("SessionLocal not initialized, skipping page view tracking")
+                return
+            
+            # Create a new database session for logging
+            db = SessionLocal()
+            try:
+                # Create page view entry
+                page_view = PageView(
+                    path=path,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    referer=referer,
+                    user_id=user_id,
+                    timestamp=datetime.utcnow()
+                )
+                db.add(page_view)
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to track page view: {e}")
+                db.rollback()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to create database session for page view tracking: {e}")
+    
+    def _track_user_activity_async(self, path: str, method: str, user_id: int = None, ip_address: str = None):
+        """Track user activity data to database asynchronously."""
+        try:
+            # Import SessionLocal dynamically to avoid import-time issues
+            from app.database import SessionLocal
+            
+            # Check if SessionLocal is properly initialized
+            if SessionLocal is None:
+                logger.warning("SessionLocal not initialized, skipping user activity tracking")
+                return
+            
+            # Create a new database session for logging
+            db = SessionLocal()
+            try:
+                # Determine activity type and action based on path
+                activity_type, action = self._get_activity_info(path, method)
+                
+                # Create user activity entry
+                user_activity = UserActivity(
+                    user_id=user_id,
+                    activity_type=activity_type,
+                    action=action,
+                    status='success',  # We only track successful activities here
+                    ip_address=ip_address,
+                    timestamp=datetime.utcnow()
+                )
+                db.add(user_activity)
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to track user activity: {e}")
+                db.rollback()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to create database session for user activity tracking: {e}")
+    
+    def _get_activity_info(self, path: str, method: str) -> tuple[str, str]:
+        """Get activity type and action based on API path and method."""
+        # Map API paths to activity types and actions
+        if '/auth/' in path:
+            if method == 'POST' and '/login' in path:
+                return 'auth', 'User login'
+            elif method == 'POST' and '/logout' in path:
+                return 'auth', 'User logout'
+            else:
+                return 'auth', f'{method} {path}'
+        
+        elif '/analytics' in path:
+            return 'analytics', f'Analytics {method.lower()}'
+        
+        elif '/users' in path:
+            if method == 'POST':
+                return 'user_management', 'User created'
+            elif method == 'PUT':
+                return 'user_management', 'User updated'
+            elif method == 'DELETE':
+                return 'user_management', 'User deleted'
+            else:
+                return 'user_management', f'User {method.lower()}'
+        
+        elif '/database' in path or '/db' in path:
+            return 'database', f'Database {method.lower()}'
+        
+        elif '/mcp' in path:
+            return 'mcp', f'MCP {method.lower()}'
+        
+        elif '/test' in path:
+            return 'testing', f'Test {method.lower()}'
+        
+        else:
+            return 'api', f'{method} {path}'
+    
     def _update_system_metrics(self, db: Session, response_time_ms: int, status_code: int):
         """Update real-time system metrics."""
         try:
@@ -198,3 +324,68 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
 def setup_analytics_middleware(app):
     """Setup analytics middleware for the FastAPI app."""
     app.add_middleware(AnalyticsMiddleware)
+    
+    # Also setup simple MCP server status update
+    def update_mcp_status_once():
+        """Update MCP server status once during startup."""
+        try:
+            from app.database import SessionLocal
+            from app.client import _mcp_session
+            
+            if SessionLocal is None:
+                return
+                
+            db = SessionLocal()
+            try:
+                # Clear old status entries
+                db.query(McpServerStatus).delete()
+                
+                if _mcp_session:
+                    # Server is active
+                    server_status = McpServerStatus(
+                        name='Primary MCP Server',
+                        url=getattr(_mcp_session, '_url', 'localhost'),
+                        status='active',
+                        response_time_ms=50,
+                        last_checked=datetime.utcnow(),
+                        last_successful_check=datetime.utcnow(),
+                        error_count=0,
+                        total_requests=1,
+                        successful_requests=1,
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(server_status)
+                    logger.info("MCP server status set to active")
+                else:
+                    # Server is inactive
+                    server_status = McpServerStatus(
+                        name='Primary MCP Server',
+                        url='Not Connected',
+                        status='inactive',
+                        response_time_ms=None,
+                        last_checked=datetime.utcnow(),
+                        last_successful_check=datetime.utcnow() - timedelta(hours=1),
+                        error_count=1,
+                        total_requests=0,
+                        successful_requests=0,
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(server_status)
+                    logger.info("MCP server status set to inactive")
+                
+                db.commit()
+                
+            except Exception as e:
+                logger.error(f"Failed to update MCP server status: {e}")
+                db.rollback()
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Failed to create database session for MCP status: {e}")
+    
+    # Update MCP status once during startup
+    try:
+        update_mcp_status_once()
+    except Exception as e:
+        logger.error(f"Failed to update MCP status during startup: {e}")

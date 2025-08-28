@@ -506,14 +506,14 @@ const UsersPage: React.FC = () => {
             <DialogTitle>Table: {dialog.user?.username}</DialogTitle>
             <DialogDescription>Internal table preview with pagination (100 rows per page).</DialogDescription>
           </DialogHeader>
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-auto">
         <TableDataPreview 
           tableName={dialog.user?.username || ''} 
           connectionActive={!!currentConnection} 
           internalMode={true}
           internalShowAll={false}
           pageSize={100}
-          maxHeightClass="h-full"
+          maxHeightClass=""
         />
       </div>
           <DialogFooter>

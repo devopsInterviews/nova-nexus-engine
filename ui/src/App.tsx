@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
+import { PageViewTracker } from "./components/analytics/PageViewTracker";
 import Home from "./pages/Home";
 import DevOps from "./pages/DevOps";
 import BI from "./pages/BI";
@@ -65,6 +66,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <PageViewTracker />
             <Routes>
               <Route path="/login" element={<LoginWrapper />} />
               <Route 

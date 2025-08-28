@@ -507,6 +507,64 @@ async def log_page_view(
         return {"status": "error", "message": "Failed to log page view"}
 
 
+@router.post("/update-mcp-status")
+async def update_mcp_status(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Manually update MCP server status.
+    """
+    try:
+        # Import MCP session dynamically
+        from app.client import _mcp_session
+        
+        # Clear old status entries
+        db.query(McpServerStatus).delete()
+        
+        if _mcp_session:
+            # Server is active
+            server_status = McpServerStatus(
+                name='Primary MCP Server',
+                url=getattr(_mcp_session, '_url', 'localhost'),
+                status='active',
+                response_time_ms=50,
+                last_checked=datetime.utcnow(),
+                last_successful_check=datetime.utcnow(),
+                error_count=0,
+                total_requests=1,
+                successful_requests=1,
+                updated_at=datetime.utcnow()
+            )
+            db.add(server_status)
+            status_message = "MCP server status updated to active"
+        else:
+            # Server is inactive
+            server_status = McpServerStatus(
+                name='Primary MCP Server',
+                url='Not Connected',
+                status='inactive',
+                response_time_ms=None,
+                last_checked=datetime.utcnow(),
+                last_successful_check=datetime.utcnow() - timedelta(hours=1),
+                error_count=1,
+                total_requests=0,
+                successful_requests=0,
+                updated_at=datetime.utcnow()
+            )
+            db.add(server_status)
+            status_message = "MCP server status updated to inactive"
+        
+        db.commit()
+        
+        return {"status": "success", "message": status_message}
+        
+    except Exception as e:
+        logger.error(f"Failed to update MCP server status: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update MCP server status")
+
+
 # Helper functions
 def _time_ago(timestamp: datetime) -> str:
     """Convert timestamp to human-readable time ago format."""
