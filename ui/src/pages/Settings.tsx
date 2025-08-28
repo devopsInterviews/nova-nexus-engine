@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Settings2, Palette, Keyboard, Info, Moon, Sun, Monitor } from "lucide-react";
+import { Settings2, Palette, Keyboard, Info, Moon, Sun, Monitor, Bug } from "lucide-react";
 import { useState, useEffect } from "react";
+import { analyticsService } from "@/lib/api-service";
 
 export default function Settings() {
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>("light");
@@ -212,6 +213,63 @@ export default function Settings() {
         </Card>
       </motion.div>
 
+      {/* Debug Analytics */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.7 }}
+      >
+        <Card className="glass border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bug className="w-5 h-5 text-orange-500" />
+              Debug Analytics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Test analytics functionality and troubleshoot data collection issues.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Button 
+                  variant="outline" 
+                  onClick={async () => {
+                    try {
+                      const result = await analyticsService.updateMcpStatus();
+                      alert(result.data?.message || 'MCP status updated');
+                    } catch (error) {
+                      alert('Failed to update MCP status: ' + error);
+                    }
+                  }}
+                >
+                  Update MCP Status
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  onClick={async () => {
+                    try {
+                      const result = await analyticsService.triggerTestActivity();
+                      alert(result.data?.message || 'Test activity created');
+                    } catch (error) {
+                      alert('Failed to create test activity: ' + error);
+                    }
+                  }}
+                >
+                  Create Test Activity
+                </Button>
+              </div>
+
+              <div className="text-xs text-muted-foreground p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                <strong>Debug Info:</strong> Use these buttons to manually trigger analytics events and verify data collection is working properly.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* About */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -230,37 +288,31 @@ export default function Settings() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="text-center p-4 rounded-lg glass border-border/50">
                   <h4 className="font-medium mb-1">Version</h4>
-                  <p className="text-2xl font-bold text-primary">2.1.0</p>
+                  <p className="text-2xl font-bold text-primary">v1.0.0</p>
                   <p className="text-sm text-muted-foreground">Quantum Release</p>
                 </div>
                 
                 <div className="text-center p-4 rounded-lg glass border-border/50">
-                  <h4 className="font-medium mb-1">Build</h4>
-                  <p className="text-2xl font-bold text-secondary">#4729</p>
-                  <p className="text-sm text-muted-foreground">Production</p>
-                </div>
-                
-                <div className="text-center p-4 rounded-lg glass border-border/50">
                   <h4 className="font-medium mb-1">Updated</h4>
-                  <p className="text-2xl font-bold text-accent">Jan 15</p>
-                  <p className="text-sm text-muted-foreground">2024</p>
+                  <p className="text-2xl font-bold text-accent">Aug 28</p>
+                  <p className="text-sm text-muted-foreground">2025</p>
                 </div>
               </div>
 
               <div className="p-4 rounded-lg glass border-primary/20 bg-primary/5">
-                <h4 className="font-medium mb-2 text-primary">🚀 What's New in v2.1.0</h4>
+                <h4 className="font-medium mb-2 text-primary">🚀 What's New in v1.0.0</h4>
                 <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>• Enhanced AI-powered column suggestions</li>
-                  <li>• Real-time collaboration features</li>
-                  <li>• Advanced query optimization</li>
-                  <li>• Improved security monitoring</li>
-                  <li>• New cyberpunk UI theme</li>
+                  <li>• Enhanced AI-powered BI tools</li>
+                  <li>• Real-time analytics features</li>
+                  <li>• Advanced MCP server & client support including tests</li>
+                  <li>• Improved security using users control</li>
+                  <li>• New UI theme</li>
                 </ul>
               </div>
 
               <div className="text-center">
                 <p className="text-sm text-muted-foreground mb-3">
-                  Built with ❤️ by the MCP Team
+                  Built with ❤️ by the DevOps Team
                 </p>
                 <div className="flex justify-center gap-2">
                   <Button variant="outline" size="sm">

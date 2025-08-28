@@ -252,29 +252,47 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
                 return 'auth', f'{method} {path}'
         
         elif '/analytics' in path:
-            return 'analytics', f'Analytics {method.lower()}'
+            if '/log-page-view' in path:
+                return 'analytics', 'Page view logged'
+            elif '/update-mcp-status' in path:
+                return 'mcp', 'MCP status updated'
+            else:
+                return 'analytics', f'Analytics {method.lower()}'
         
         elif '/users' in path:
-            if method == 'POST':
+            if method == 'POST' and not path.endswith('/password'):
                 return 'user_management', 'User created'
-            elif method == 'PUT':
-                return 'user_management', 'User updated'
+            elif method == 'PUT' and '/password' in path:
+                return 'user_management', 'Password changed'
             elif method == 'DELETE':
                 return 'user_management', 'User deleted'
             else:
-                return 'user_management', f'User {method.lower()}'
+                return 'user_management', f'User management {method.lower()}'
         
         elif '/database' in path or '/db' in path:
-            return 'database', f'Database {method.lower()}'
+            if '/query' in path:
+                return 'database', 'SQL query executed'
+            elif '/analytics-query' in path:
+                return 'bi', 'Analytics query generated'
+            elif '/test' in path:
+                return 'database', 'Database connection tested'
+            else:
+                return 'database', f'Database {method.lower()}'
         
         elif '/mcp' in path:
-            return 'mcp', f'MCP {method.lower()}'
+            if '/test' in path:
+                return 'mcp', 'MCP server tested'
+            else:
+                return 'mcp', f'MCP {method.lower()}'
         
         elif '/test' in path:
             return 'testing', f'Test {method.lower()}'
         
+        elif '/bi' in path:
+            return 'bi', f'BI {method.lower()}'
+        
         else:
-            return 'api', f'{method} {path}'
+            return 'api', f'{method} {path.replace("/api/", "")}'
     
     def _update_system_metrics(self, db: Session, response_time_ms: int, status_code: int):
         """Update real-time system metrics."""
@@ -330,7 +348,7 @@ def setup_analytics_middleware(app):
         """Update MCP server status once during startup."""
         try:
             from app.database import SessionLocal
-            from app.client import _mcp_session
+            from app.utils.mcp_utils import get_mcp_session_status
             
             if SessionLocal is None:
                 return
@@ -340,11 +358,14 @@ def setup_analytics_middleware(app):
                 # Clear old status entries
                 db.query(McpServerStatus).delete()
                 
-                if _mcp_session:
+                # Get current MCP status
+                mcp_status = get_mcp_session_status()
+                
+                if mcp_status['is_connected']:
                     # Server is active
                     server_status = McpServerStatus(
                         name='Primary MCP Server',
-                        url=getattr(_mcp_session, '_url', 'localhost'),
+                        url=mcp_status['url'],
                         status='active',
                         response_time_ms=50,
                         last_checked=datetime.utcnow(),
@@ -355,12 +376,12 @@ def setup_analytics_middleware(app):
                         updated_at=datetime.utcnow()
                     )
                     db.add(server_status)
-                    logger.info("MCP server status set to active")
+                    logger.info(f"MCP server status set to active at {mcp_status['url']}")
                 else:
                     # Server is inactive
                     server_status = McpServerStatus(
                         name='Primary MCP Server',
-                        url='Not Connected',
+                        url=mcp_status['url'],
                         status='inactive',
                         response_time_ms=None,
                         last_checked=datetime.utcnow(),
@@ -371,7 +392,7 @@ def setup_analytics_middleware(app):
                         updated_at=datetime.utcnow()
                     )
                     db.add(server_status)
-                    logger.info("MCP server status set to inactive")
+                    logger.info(f"MCP server status set to inactive: {mcp_status['url']}")
                 
                 db.commit()
                 

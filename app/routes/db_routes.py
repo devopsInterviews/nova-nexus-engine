@@ -5,7 +5,7 @@ import os
 import time
 import re
 from pathlib import Path
-from datetime import timedelta
+from datetime import timedelta, datetime
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Dict, Any, List, Optional
@@ -188,6 +188,24 @@ async def test_connection(
                 
                 logger.info(f"Connection successful - found {len(tables)} tables in database '{database}'")
                 logger.debug(f"Sample tables: {tables[:5] if len(tables) > 5 else tables}")
+                
+                # Track user activity for successful connection test
+                try:
+                    from app.models import UserActivity
+                    user_activity = UserActivity(
+                        user_id=current_user.id,
+                        activity_type='database',
+                        action='Database connection tested',
+                        status='success',
+                        ip_address=request.client.host if request.client else None,
+                        timestamp=datetime.utcnow()
+                    )
+                    db.add(user_activity)
+                    db.commit()
+                    logger.debug("User activity tracked for connection test")
+                except Exception as activity_error:
+                    logger.warning(f"Failed to track user activity: {activity_error}")
+                    # Don't fail the request if activity tracking fails
                 
                 return JSONResponse({
                     "success": True,
@@ -965,6 +983,24 @@ async def analytics_query(
         logger.info(f"Analytics query processing complete: {len(rows)} rows returned")
         if isinstance(rows, list) and len(rows) > 0:
             logger.debug(f"Sample result columns: {list(rows[0].keys()) if rows[0] else 'N/A'}")
+
+        # Track user activity for successful analytics query
+        try:
+            from app.models import UserActivity
+            user_activity = UserActivity(
+                user_id=current_user.id,
+                activity_type='bi',
+                action='Analytics query generated',
+                status='success',
+                ip_address=request.client.host if request.client else None,
+                timestamp=datetime.utcnow()
+            )
+            db.add(user_activity)
+            db.commit()
+            logger.debug("User activity tracked for analytics query")
+        except Exception as activity_error:
+            logger.warning(f"Failed to track user activity: {activity_error}")
+            # Don't fail the request if activity tracking fails
 
         # Return the results
         return JSONResponse({
