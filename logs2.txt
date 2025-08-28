@@ -1,0 +1,6 @@
+INFO:     GET /api/analytics/top-pages
+ERROR:app.middleware.analytics:Failed to track user activity: (psycopg2.errors.NotNullViolation) null value in column "user_id" of relation "user_activities" violates not-null constraint
+DETAIL:  Failing row contains (244, null, analytics, Analytics get, x.x.x.x, null, {}, success, null, 2025-08-28 09:04:20.239306+00).
+[SQL: INSERT INTO user_activities (user_id, activity_type, action, ip_address, user_agent, activity_metadata, status, error_message, timestamp) VALUES (%(user_id)s, %(activity_type)s, %(action)s, %(ip_address)s, %(user_agent)s, %(activity_metadata)s::JSON, %(status)s, %(error_message)s, %(timestamp)s) RETURNING user_activities.id]
+[parameters: {'user_id': None, 'activity_type': 'analytics', 'action': 'Analytics get', 'ip_address': 'x.x.x.x', 'user_agent': None, 'activity_metadata': '{}', 'status': 'success', 'error_message': None, 'timestamp': datetime.datetime(2025, 8, 28, 9, 4, 20, 239306)}]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
