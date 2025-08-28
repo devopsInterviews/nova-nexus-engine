@@ -50,7 +50,7 @@ class User(Base):
     database_connections = relationship("DatabaseConnection", back_populates="user", cascade="all, delete-orphan")
     test_configurations = relationship("TestConfiguration", back_populates="user", cascade="all, delete-orphan")
     test_executions = relationship("TestExecution", back_populates="user", cascade="all, delete-orphan")
-    user_activities = relationship("UserActivity", back_populates="user", cascade="all, delete-orphan")
+    user_activities = relationship("UserActivity", back_populates="user", cascade="all, delete")
     
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
@@ -229,7 +229,7 @@ class UserActivity(Base):
     __tablename__ = "user_activities"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Allow null for anonymous activities
     
     # Activity details
     activity_type = Column(String(100), nullable=False)  # 'login', 'logout', 'test_run', 'db_connection', etc.
