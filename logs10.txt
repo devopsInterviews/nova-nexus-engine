@@ -1,5 +1,0 @@
-ERROR:app.middleware.analytics:Request failed: 1 validation errors:
-  {'type': 'missing', 'loc': ('response', 'creation_date'), 'msg': 'Field required', 'input': <User(id=1, username='admin', email='admin@company.com')>}
-
-INFO:     GET /health -> 200
-ERROR:app.services.analytics_service:Unexpected error in MCP monitoring: 'NoneType' object is not callable
