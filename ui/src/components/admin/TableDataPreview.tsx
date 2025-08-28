@@ -92,21 +92,64 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
   if (!tableName) return null;
   if (!internalMode && !connectionActive) return <div className="text-sm text-muted-foreground">No active connection.</div>;
 
-  const showPagination = !internalMode || !internalShowAll;
+  const showPagination = !internalMode || !internalShowAll || (totalRows !== null && totalRows > pageSize);
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-4">
-        <div className="text-sm font-medium">Rows {(page * pageSize) + 1}-{(page * pageSize) + rows.length}{totalRows ? ` / ${totalRows}` : ''}</div>
+        <div className="text-sm font-medium">
+          Rows {(page * pageSize) + 1}-{(page * pageSize) + rows.length}
+          {totalRows ? ` / ${totalRows}` : ''}
+          {totalRows && totalRows > pageSize && (
+            <span className="text-muted-foreground ml-2">
+              (Page {page + 1} of {Math.ceil(totalRows / pageSize)})
+            </span>
+          )}
+        </div>
   {showPagination && (
   <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>Reload</Button>
-          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={loading || page === 0}>Prev</Button>
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={() => setPage(p => (rows.length < pageSize ? p : p + 1))}
+            onClick={() => setPage(0)} 
+            disabled={loading || page === 0}
+            title="First page"
+          >
+            ««
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPage(p => Math.max(0, p - 1))} 
+            disabled={loading || page === 0}
+            title="Previous page"
+          >
+            Prev
+          </Button>
+          <span className="text-sm text-muted-foreground px-2">
+            Page {page + 1}
+            {totalRows && totalRows > pageSize && ` of ${Math.ceil(totalRows / pageSize)}`}
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPage(p => p + 1)}
             disabled={loading || rows.length < pageSize || (totalRows !== null && (page + 1) * pageSize >= totalRows)}
-          >Next</Button>
+            title="Next page"
+          >
+            Next
+          </Button>
+          {totalRows && totalRows > pageSize && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setPage(Math.ceil(totalRows / pageSize) - 1)} 
+              disabled={loading || (totalRows !== null && (page + 1) * pageSize >= totalRows)}
+              title="Last page"
+            >
+              »»
+            </Button>
+          )}
   </div>)}
       </div>
       {error && (
@@ -117,15 +160,19 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
       ) : rows.length === 0 ? (
         <div className="text-sm text-muted-foreground">No rows.</div>
       ) : (
-        <div className={`${maxHeightClass} overflow-auto border rounded-md`}> 
+        <div className={`${maxHeightClass} overflow-auto border rounded-md bg-background`}> 
           <table className="text-sm min-w-full">
-            <thead className="bg-muted sticky top-0">
-              <tr>{columns.map(c => <th key={c} className="text-left px-2 py-1 font-medium whitespace-nowrap">{c}</th>)}</tr>
+            <thead className="bg-muted sticky top-0 z-10">
+              <tr>{columns.map(c => <th key={c} className="text-left px-2 py-1 font-medium whitespace-nowrap border-b">{c}</th>)}</tr>
             </thead>
             <tbody>
               {rows.map((r,i)=>(
-                <tr key={i} className="even:bg-muted/40">
-                  {columns.map(c => <td key={c} className="px-2 py-1 font-mono text-xs whitespace-nowrap">{String(r[c] ?? '')}</td>)}
+                <tr key={i} className="even:bg-muted/40 hover:bg-muted/60 transition-colors">
+                  {columns.map(c => (
+                    <td key={c} className="px-2 py-1 font-mono text-xs whitespace-nowrap border-b border-border/30">
+                      {String(r[c] ?? '')}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
