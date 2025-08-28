@@ -71,21 +71,22 @@ async def save_test(
 
         new_test = Test(
             user_id=current_user.id,
-            test_name=test_in.name,
-            test_data=test_data_json
+            name=test_in.name,
+            test_type=test_in.test_category,  # Use test_category as test_type
+            configuration=test_data_json
         )
         db.add(new_test)
         db.commit()
         db.refresh(new_test)
         
-        test_data = json.loads(new_test.test_data)
+        test_data = json.loads(new_test.configuration)
         response = TestResponse(
             id=new_test.id,
-            name=new_test.test_name,
-            created_at=new_test.creation_date.isoformat(),
+            name=new_test.name,
+            created_at=new_test.created_at.isoformat(),
             **test_data
         )
-        logger.info(f"Test '{new_test.test_name}' saved successfully with ID {new_test.id}")
+        logger.info(f"Test '{new_test.name}' saved successfully with ID {new_test.id}")
         return response
     except Exception as e:
         db.rollback()
@@ -104,10 +105,10 @@ async def get_saved_tests(
     """
     logger.info(f"Fetching saved tests for user {current_user.username} (category: {test_category or 'all'})")
     try:
-        tests = db.query(Test).filter(Test.user_id == current_user.id).order_by(Test.creation_date.desc()).all()
+        tests = db.query(Test).filter(Test.user_id == current_user.id).order_by(Test.created_at.desc()).all()
         response = []
         for test in tests:
-            test_data = json.loads(test.test_data)
+            test_data = json.loads(test.configuration)
             
             # Filter by category if specified
             if test_category and test_data.get("test_category", "client") != test_category:
@@ -120,8 +121,8 @@ async def get_saved_tests(
             
             response.append(TestResponse(
                 id=test.id,
-                name=test.test_name,
-                created_at=test.creation_date.isoformat(),
+                name=test.name,
+                created_at=test.created_at.isoformat(),
                 **test_data
             ))
         logger.info(f"Found {len(response)} tests for user {current_user.username}")

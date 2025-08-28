@@ -57,26 +57,31 @@ def _load_saved_connections(user_id: int, db: Session) -> List[Dict[str, Any]]:
     for conn in connections:
         conn_list.append({
             "id": conn.id,
-            "name": conn.connection_name,
-            "host": conn.db_host,  # Map db_host to host
-            "port": conn.db_port,  # Map db_port to port
-            "user": conn.db_user,  # Map db_user to user
-            "password": conn.db_password,  # Map db_password to password
-            "database": conn.db_name,  # Map db_name to database
-            "database_type": conn.db_type,  # Map db_type to database_type
+            "name": conn.name,  # Use 'name' field
+            "host": conn.host,  # Use 'host' field
+            "port": conn.port,  # Use 'port' field
+            "user": conn.username,  # Use 'username' field
+            "password": conn.encrypted_password,  # Use 'encrypted_password' field
+            "database": conn.database,  # Use 'database' field
+            "database_type": conn.database_type,  # Use 'database_type' field
         })
     return conn_list
 
 def _persist_saved_connections(user_id: int, conn_data: Dict[str, Any], db: Session) -> int:
+    # Basic password encoding (TODO: implement proper encryption in production)
+    password = conn_data['password']
+    # For now, just store as-is since the field is named encrypted_password
+    # In production, you would use proper encryption here
+    
     new_conn = DBConnection(
         user_id=user_id,
-        connection_name=conn_data['name'],
-        db_type=conn_data['database_type'],
-        db_host=conn_data['host'],
-        db_port=conn_data['port'],
-        db_user=conn_data['user'],
-        db_password=conn_data['password'],
-        db_name=conn_data['database']
+        name=conn_data['name'],  # Use 'name' not 'connection_name'
+        database_type=conn_data['database_type'],  # Use 'database_type' not 'db_type'
+        host=conn_data['host'],  # Use 'host' not 'db_host'
+        port=conn_data['port'],  # Use 'port' not 'db_port'
+        username=conn_data['user'],  # Use 'username' not 'db_user'
+        encrypted_password=password,  # Store password (should be encrypted in production)
+        database=conn_data['database']  # Use 'database' not 'db_name'
     )
     db.add(new_conn)
     db.commit()
