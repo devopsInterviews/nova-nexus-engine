@@ -81,16 +81,33 @@ async def get_system_overview(
                 uptime_percentage = (successful_requests / total_requests * 100)
                 logger.info(f"Real uptime calculation: {successful_requests}/{total_requests} = {uptime_percentage}%")
             
-            # Calculate average response time (last 24 hours)
+            # Calculate average response time (last 24 hours) - use 95th percentile like Analytics page
             yesterday = datetime.utcnow() - timedelta(days=1)
-            real_avg_response = db.query(func.avg(RequestLog.response_time_ms)).filter(
-                RequestLog.timestamp >= yesterday,
-                RequestLog.response_time_ms.isnot(None)
-            ).scalar()
             
-            if real_avg_response is not None:
-                avg_response_time = real_avg_response
-                logger.info(f"Real average response time: {avg_response_time}ms")
+            # Get 95th percentile response time for consistency with Analytics page
+            response_times_result = db.execute(text("""
+                SELECT response_time_ms 
+                FROM request_logs 
+                WHERE timestamp >= :yesterday 
+                  AND response_time_ms IS NOT NULL 
+                ORDER BY response_time_ms
+            """), {"yesterday": yesterday}).fetchall()
+            
+            if response_times_result:
+                times = [row[0] for row in response_times_result]
+                percentile_95_index = int(len(times) * 0.95)
+                avg_response_time = times[percentile_95_index] if percentile_95_index < len(times) else times[-1]
+                logger.info(f"Real 95th percentile response time: {avg_response_time}ms (from {len(times)} requests)")
+            else:
+                # Fallback to average if no data
+                real_avg_response = db.query(func.avg(RequestLog.response_time_ms)).filter(
+                    RequestLog.timestamp >= yesterday,
+                    RequestLog.response_time_ms.isnot(None)
+                ).scalar()
+                
+                if real_avg_response is not None:
+                    avg_response_time = real_avg_response
+                    logger.info(f"Fallback to average response time: {avg_response_time}ms")
             
             # Get active users count (users who logged in within last 24 hours)
             real_active_users = db.query(func.count(User.id.distinct())).filter(
@@ -156,7 +173,7 @@ async def get_system_overview(
                     {
                         "title": "Response Time",
                         "value": f"{int(avg_response_time)}ms",
-                        "description": "Average latency",
+                        "description": "95th percentile",
                         "status": "success" if avg_response_time < 100 else "warning" if avg_response_time < 500 else "error",
                         "trend": "down" if response_time_trend < 0 else "up" if response_time_trend > 0 else "stable",
                         "trendValue": f"{response_time_trend:+.0f}ms" if response_time_trend != 0 else "0ms"

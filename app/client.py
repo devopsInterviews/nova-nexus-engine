@@ -37,9 +37,33 @@ TEMPLATES_DIR  = os.path.join(BASE_DIR, "templates")
 
 uvicorn_logger = logging.getLogger("uvicorn.error")
 
-if LOG_LEVEL != "INFO":
-    logging.basicConfig(level=getattr(logging, LOG_LEVEL))
-    uvicorn_logger.setLevel(getattr(logging, LOG_LEVEL))
+# Configure logging with timestamps for all loggers
+log_formatter = logging.Formatter(
+    fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Configure root logger
+root_logger = logging.getLogger()
+if not root_logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_formatter)
+    root_logger.addHandler(console_handler)
+    root_logger.setLevel(getattr(logging, LOG_LEVEL))
+
+# Configure uvicorn logger to use the same format
+for handler in uvicorn_logger.handlers:
+    handler.setFormatter(log_formatter)
+
+# Set log levels
+uvicorn_logger.setLevel(getattr(logging, LOG_LEVEL))
+
+# Also configure other common loggers
+for logger_name in ["uvicorn.access", "fastapi", "app.middleware.analytics"]:
+    logger_instance = logging.getLogger(logger_name)
+    logger_instance.setLevel(getattr(logging, LOG_LEVEL))
+    for handler in logger_instance.handlers:
+        handler.setFormatter(log_formatter)
 
 # Initialize FastAPI
 app = FastAPI(title="MCP Client")
@@ -58,6 +82,7 @@ app.add_middleware(
 # Setup analytics middleware for request logging
 setup_analytics_middleware(app)
 
+# Get logger with consistent formatting
 logger = logging.getLogger("uvicorn.error")
 
 # Import and include database routes
