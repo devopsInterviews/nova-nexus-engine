@@ -489,6 +489,13 @@ export const analyticsService = {
       method: 'POST',
     });
   },
+
+  // Trigger test activity
+  triggerTestActivity: async (): Promise<ApiResponse<{ message: string }>> => {
+    return fetchApi('/api/analytics/trigger-test-activity', {
+      method: 'POST',
+    });
+  },
 };
 
 // Context for storing connection info across tabs

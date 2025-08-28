@@ -516,17 +516,20 @@ async def update_mcp_status(
     Manually update MCP server status.
     """
     try:
-        # Import MCP session dynamically
-        from app.client import _mcp_session
+        # Import MCP status utility
+        from app.utils.mcp_utils import get_mcp_session_status
         
         # Clear old status entries
         db.query(McpServerStatus).delete()
         
-        if _mcp_session:
+        # Get current MCP status
+        mcp_status = get_mcp_session_status()
+        
+        if mcp_status['is_connected']:
             # Server is active
             server_status = McpServerStatus(
                 name='Primary MCP Server',
-                url=getattr(_mcp_session, '_url', 'localhost'),
+                url=mcp_status['url'],
                 status='active',
                 response_time_ms=50,
                 last_checked=datetime.utcnow(),
@@ -537,12 +540,12 @@ async def update_mcp_status(
                 updated_at=datetime.utcnow()
             )
             db.add(server_status)
-            status_message = "MCP server status updated to active"
+            status_message = f"MCP server status updated to active at {mcp_status['url']}"
         else:
             # Server is inactive
             server_status = McpServerStatus(
                 name='Primary MCP Server',
-                url='Not Connected',
+                url=mcp_status['url'],
                 status='inactive',
                 response_time_ms=None,
                 last_checked=datetime.utcnow(),
@@ -553,7 +556,7 @@ async def update_mcp_status(
                 updated_at=datetime.utcnow()
             )
             db.add(server_status)
-            status_message = "MCP server status updated to inactive"
+            status_message = f"MCP server status updated to inactive: {mcp_status['url']}"
         
         db.commit()
         
@@ -563,6 +566,35 @@ async def update_mcp_status(
         logger.error(f"Failed to update MCP server status: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to update MCP server status")
+
+
+@router.post("/trigger-test-activity")
+async def trigger_test_activity(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Trigger a test user activity for debugging.
+    """
+    try:
+        # Create a test user activity
+        user_activity = UserActivity(
+            user_id=current_user.id,
+            activity_type='testing',
+            action='Test activity triggered',
+            status='success',
+            ip_address='127.0.0.1',
+            timestamp=datetime.utcnow()
+        )
+        db.add(user_activity)
+        db.commit()
+        
+        return {"status": "success", "message": "Test activity created"}
+        
+    except Exception as e:
+        logger.error(f"Failed to create test activity: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create test activity")
 
 
 # Helper functions
