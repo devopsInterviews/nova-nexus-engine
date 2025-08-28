@@ -79,14 +79,19 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
         # Get user ID if authenticated
         user_id = None
         try:
-            # Try to extract user ID from the request state
+            # First try to extract user ID from the request state (FastAPI dependency injection)
             if hasattr(request.state, 'current_user') and request.state.current_user:
                 user_id = request.state.current_user.id
-                logger.info(f"Analytics middleware found user_id: {user_id}")
+                logger.debug(f"Analytics middleware found user_id from request.state: {user_id}")
             else:
-                logger.info("Analytics middleware: No user found in request.state")
+                # Try to extract user ID from JWT token in Authorization header
+                user_id = self._extract_user_from_token(request)
+                if user_id:
+                    logger.debug(f"Analytics middleware found user_id from JWT token: {user_id}")
+                # No logging for anonymous requests to reduce log noise
+                
         except Exception as e:
-            logger.info(f"Analytics middleware: Error getting user: {e}")
+            logger.debug(f"Analytics middleware: Error getting user: {e}")
             pass  # Anonymous request
         
         # Log the request asynchronously to avoid blocking
@@ -118,7 +123,7 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
         
         # Track user activities for API endpoints
         if str(request.url.path).startswith('/api/') and response.status_code < 400:
-            logger.info(f"Analytics middleware tracking activity for {request.url.path} with user_id: {user_id}")
+            logger.debug(f"Analytics middleware tracking activity for {request.url.path} with user_id: {user_id or 'anonymous'}")
             self._track_user_activity_async(
                 path=str(request.url.path),
                 method=request.method,
@@ -127,6 +132,39 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
             )
         
         return response
+    
+    def _extract_user_from_token(self, request: Request) -> int:
+        """Try to extract user ID from JWT token in Authorization header."""
+        try:
+            # Get Authorization header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return None
+            
+            # Extract token
+            token = auth_header.split(' ')[1]
+            if not token:
+                return None
+            
+            # Import JWT utilities (dynamic import to avoid circular dependencies)
+            try:
+                from app.auth import verify_token
+                payload = verify_token(token, "access")
+                if payload:
+                    return payload.get('sub')  # 'sub' typically contains user ID
+            except ImportError:
+                # Fallback if auth module structure is different
+                from jose import jwt
+                try:
+                    from app.database import SECRET_KEY
+                    payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                    return payload.get('sub') or payload.get('user_id')
+                except:
+                    pass
+                
+        except Exception as e:
+            logger.debug(f"Could not extract user from token: {e}")
+            return None
     
     def _get_client_ip(self, request: Request) -> str:
         """Extract client IP address from request."""
@@ -212,7 +250,7 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
     def _track_user_activity_async(self, path: str, method: str, user_id: int = None, ip_address: str = None):
         """Track user activity data to database asynchronously."""
         try:
-            logger.info(f"Tracking user activity: path={path}, method={method}, user_id={user_id}")
+            logger.debug(f"Tracking user activity: path={path}, method={method}, user_id={user_id or 'anonymous'}")
             
             # Import SessionLocal dynamically to avoid import-time issues
             from app.database import SessionLocal
@@ -239,7 +277,7 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
                 )
                 db.add(user_activity)
                 db.commit()
-                logger.info(f"Successfully tracked user activity: {activity_type} - {action} (user_id: {user_id or 'anonymous'})")
+                logger.debug(f"Successfully tracked user activity: {activity_type} - {action} (user_id: {user_id or 'anonymous'})")
             except Exception as e:
                 logger.error(f"Failed to track user activity: {e}")
                 db.rollback()
