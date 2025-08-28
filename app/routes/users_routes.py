@@ -77,18 +77,9 @@ async def get_all_users(db: Session = Depends(get_db_session), current_user: Use
         # Format users for response
         formatted_users = []
         for user in users:
-            formatted_users.append({
-                "id": user.id,
-                "username": user.username,
-                "email": getattr(user, 'email', '') or '',
-                "full_name": getattr(user, 'full_name', None),
-                "is_active": getattr(user, 'is_active', True),
-                "is_admin": getattr(user, 'is_admin', user.username == 'admin'),
-                "created_at": getattr(user, 'created_at', user.creation_date if hasattr(user, 'creation_date') else None),
-                "last_login": user.last_login,
-                "login_count": user.login_count,
-                "preferences": getattr(user, 'preferences', {}) or {}
-            })
+            # Use the User model's to_dict method for consistent formatting
+            user_data = user.to_dict()
+            formatted_users.append(user_data)
         
         return {
             "status": "success",

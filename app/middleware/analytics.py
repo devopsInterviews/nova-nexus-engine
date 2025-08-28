@@ -53,8 +53,10 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception as e:
-            logger.error(f"Request failed: {e}")
-            error_message = str(e)
+            # Convert exception to string safely to avoid validation issues
+            error_str = str(e) if not isinstance(e, Exception) else repr(e)
+            logger.error(f"Request failed: {error_str}")
+            error_message = error_str
             # Create a 500 error response
             from fastapi.responses import JSONResponse
             response = JSONResponse(

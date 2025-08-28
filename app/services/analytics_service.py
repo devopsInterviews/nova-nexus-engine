@@ -10,12 +10,12 @@ This service handles:
 
 import asyncio
 import logging
+import random
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.database import SessionLocal
 from app.models import (
     SystemMetrics, RequestLog, McpServerStatus, PageView, 
     UserActivity, User
@@ -69,7 +69,6 @@ class AnalyticsService:
             timestamp = now - timedelta(hours=i)
             
             # Response time metrics (with some variation)
-            import random
             base_response_time = 50 + random.randint(-20, 30)
             response_time = max(20, base_response_time)
             
@@ -96,15 +95,9 @@ class AnalyticsService:
             db.add(metric)
     
     def _seed_request_logs(self, db: Session):
-        """Seed request logs with realistic API usage data."""
-        import random
-        
-        paths = [
-            '/api/health', '/api/list-tables', '/api/test-connection',
-            '/api/describe-columns', '/api/analytics-query', '/api/auth/login',
-            '/api/users/profile', '/api/save-connection', '/', '/bi',
-            '/analytics', '/devops', '/settings'
-        ]
+        """Seed request logs with realistic API usage data from actual endpoints."""
+        # Get real endpoints from the FastAPI app
+        paths = self._get_real_api_endpoints()
         
         methods = ['GET', 'POST', 'PUT', 'DELETE']
         status_codes = [200, 201, 400, 401, 404, 500]
@@ -150,29 +143,8 @@ class AnalyticsService:
                 db.add(log)
     
     def _seed_mcp_servers(self, db: Session):
-        """Seed MCP server status data."""
-        servers = [
-            {
-                'name': 'jenkins-mcp-server',
-                'url': 'http://jenkins-mcp:8050/mcp/',
-                'status': 'active'
-            },
-            {
-                'name': 'confluence-mcp-server', 
-                'url': 'http://confluence-mcp:8051/mcp/',
-                'status': 'active'
-            },
-            {
-                'name': 'database-mcp-server',
-                'url': 'http://db-mcp:8052/mcp/',
-                'status': 'active'
-            },
-            {
-                'name': 'logs-mcp-server',
-                'url': 'http://logs-mcp:8053/mcp/',
-                'status': 'inactive'
-            }
-        ]
+        """Seed MCP server status data from real connected servers."""
+        servers = self._get_real_mcp_servers()
         
         now = datetime.utcnow()
         
@@ -181,31 +153,42 @@ class AnalyticsService:
                 server_name=server_data['name'],
                 server_url=server_data['url'],
                 status=server_data['status'],
-                response_time_ms=random.randint(20, 100) if server_data['status'] == 'active' else None,
-                last_check=now - timedelta(minutes=random.randint(1, 30)),
-                last_successful_check=now - timedelta(minutes=random.randint(1, 30)) if server_data['status'] == 'active' else now - timedelta(hours=2),
-                error_count=0 if server_data['status'] == 'active' else random.randint(5, 20),
-                total_requests=random.randint(1000, 5000),
-                successful_requests=random.randint(950, 4950),
+                response_time_ms=server_data.get('response_time_ms', random.randint(20, 100) if server_data['status'] == 'active' else None),
+                last_check=server_data.get('last_checked', now - timedelta(minutes=random.randint(1, 30))),
+                last_successful_check=server_data.get('last_successful_check', now - timedelta(minutes=random.randint(1, 30)) if server_data['status'] == 'active' else now - timedelta(hours=2)),
+                error_count=server_data.get('error_count', 0 if server_data['status'] == 'active' else random.randint(5, 20)),
+                total_requests=server_data.get('total_requests', random.randint(1000, 5000)),
+                successful_requests=server_data.get('successful_requests', random.randint(950, 4950)),
                 created_at=now - timedelta(days=30),
-                updated_at=now - timedelta(minutes=random.randint(1, 30))
+                updated_at=server_data.get('updated_at', now - timedelta(minutes=random.randint(1, 30)))
             )
             db.add(server)
     
     def _seed_page_views(self, db: Session):
-        """Seed page view analytics data."""
-        import random
+        """Seed page view analytics data from real frontend routes."""
+        # Get real frontend routes and add some common ones
+        api_paths = self._get_real_api_endpoints()
         
-        pages = [
-            {'path': '/', 'title': 'Home'},
-            {'path': '/bi', 'title': 'Business Intelligence'},
-            {'path': '/analytics', 'title': 'Analytics'},
-            {'path': '/devops', 'title': 'DevOps'},
-            {'path': '/tests', 'title': 'Tests'},
-            {'path': '/settings', 'title': 'Settings'},
-            {'path': '/users', 'title': 'Users'},
-            {'path': '/login', 'title': 'Login'}
+        # Extract frontend paths and add common frontend routes
+        frontend_paths = []
+        for path in api_paths:
+            if not path.startswith('/api/'):
+                frontend_paths.append(path)
+        
+        # Add common frontend routes that might not be in API routes
+        common_frontend_paths = [
+            '/', '/bi', '/analytics', '/devops', '/tests', 
+            '/settings', '/users', '/login', '/home'
         ]
+        
+        # Combine and deduplicate
+        all_paths = list(set(frontend_paths + common_frontend_paths))
+        
+        # Create page objects with titles
+        pages = []
+        for path in all_paths:
+            title = self._path_to_title(path)
+            pages.append({'path': path, 'title': title})
         
         now = datetime.utcnow()
         
@@ -239,8 +222,6 @@ class AnalyticsService:
     
     def _seed_user_activities(self, db: Session):
         """Seed user activity data."""
-        import random
-        
         activities = [
             {'type': 'auth', 'action': 'User login', 'status': 'success'},
             {'type': 'database', 'action': 'Database connection test', 'status': 'success'},
@@ -273,6 +254,155 @@ class AnalyticsService:
             )
             db.add(activity)
     
+    def _get_real_api_endpoints(self) -> List[str]:
+        """
+        Get real API endpoints from the FastAPI application.
+        
+        Returns:
+            List[str]: List of actual endpoint paths from the application
+        """
+        try:
+            # Import FastAPI app dynamically to avoid circular imports
+            from app.client import app
+            
+            paths = []
+            for route in app.routes:
+                if hasattr(route, 'path') and hasattr(route, 'methods'):
+                    path = route.path
+                    
+                    # Skip non-API routes
+                    if (path in ['/', '/{full_path:path}'] or 
+                        path.startswith('/static') or 
+                        'openapi' in path.lower() or 
+                        path in ['/docs', '/redoc']):
+                        continue
+                    
+                    paths.append(path)
+            
+            # Remove duplicates and sort
+            unique_paths = list(set(paths))
+            unique_paths.sort()
+            
+            logger.info(f"Discovered {len(unique_paths)} real API endpoints for seeding")
+            return unique_paths
+            
+        except Exception as e:
+            logger.warning(f"Failed to discover real endpoints, using fallback: {e}")
+            # Fallback to basic paths if discovery fails
+            return [
+                '/api/health', '/api/auth/login', '/api/me', '/api/logout',
+                '/health', '/', '/bi', '/analytics', '/devops', '/settings'
+            ]
+    
+    def _get_real_mcp_servers(self) -> List[Dict[str, Any]]:
+        """
+        Get real MCP server information from the active connections.
+        
+        Returns:
+            List[Dict]: List of real MCP server data with connection status
+        """
+        try:
+            # Import MCP session dynamically to avoid circular imports
+            from app.client import _mcp_session
+            
+            servers = []
+            
+            if _mcp_session:
+                logger.info("Discovering real MCP servers from active session")
+                
+                # Get basic server info from the session
+                server_info = {
+                    'name': 'Primary MCP Server',
+                    'url': getattr(_mcp_session, '_url', 'Unknown URL'),
+                    'status': 'active',
+                    'response_time_ms': None,
+                    'last_checked': datetime.utcnow(),
+                    'last_successful_check': datetime.utcnow(),
+                    'error_count': 0,
+                    'total_requests': random.randint(1000, 5000),
+                    'successful_requests': None,  # Will be calculated
+                    'updated_at': datetime.utcnow()
+                }
+                
+                # Calculate successful requests (90-98% success rate)
+                success_rate = random.uniform(0.90, 0.98)
+                server_info['successful_requests'] = int(server_info['total_requests'] * success_rate)
+                
+                servers.append(server_info)
+                logger.info(f"Found active MCP server: {server_info['name']} at {server_info['url']}")
+                
+            else:
+                logger.warning("No active MCP session found, creating placeholder server entry")
+                # Create a placeholder entry for disconnected state
+                servers.append({
+                    'name': 'Primary MCP Server',
+                    'url': 'Unknown - Not Connected',
+                    'status': 'inactive',
+                    'response_time_ms': None,
+                    'last_checked': datetime.utcnow() - timedelta(minutes=30),
+                    'last_successful_check': datetime.utcnow() - timedelta(hours=2),
+                    'error_count': random.randint(10, 50),
+                    'total_requests': random.randint(500, 2000),
+                    'successful_requests': random.randint(400, 1500),
+                    'updated_at': datetime.utcnow() - timedelta(minutes=30)
+                })
+            
+            return servers
+            
+        except Exception as e:
+            logger.error(f"Failed to discover real MCP servers: {e}")
+            # Fallback to a basic disconnected server entry
+            return [{
+                'name': 'Primary MCP Server',
+                'url': 'Connection Error',
+                'status': 'error',
+                'response_time_ms': None,
+                'last_checked': datetime.utcnow(),
+                'last_successful_check': datetime.utcnow() - timedelta(hours=1),
+                'error_count': 1,
+                'total_requests': 0,
+                'successful_requests': 0,
+                'updated_at': datetime.utcnow()
+            }]
+    
+    def _path_to_title(self, path: str) -> str:
+        """
+        Convert a URL path to a human-readable title.
+        
+        Args:
+            path (str): URL path (e.g., '/api/users', '/analytics')
+            
+        Returns:
+            str: Human-readable title (e.g., 'API Users', 'Analytics')
+        """
+        if path == '/':
+            return 'Home'
+        
+        # Remove leading slash and API prefix
+        clean_path = path.lstrip('/')
+        if clean_path.startswith('api/'):
+            clean_path = clean_path[4:]  # Remove 'api/'
+        
+        # Split by slashes and hyphens, capitalize each word
+        parts = clean_path.replace('/', ' ').replace('-', ' ').replace('_', ' ').split()
+        title_parts = [part.capitalize() for part in parts if part]
+        
+        title = ' '.join(title_parts)
+        
+        # Special cases for better readability
+        title_map = {
+            'Bi': 'Business Intelligence',
+            'Api': 'API',
+            'Mcp': 'MCP',
+            'Auth': 'Authentication',
+            'Db': 'Database'
+        }
+        
+        for old, new in title_map.items():
+            title = title.replace(old, new)
+        
+        return title if title else 'Unknown Page'
+    
     async def start_monitoring(self):
         """Start background monitoring tasks."""
         logger.info("Starting analytics monitoring tasks...")
@@ -300,6 +430,14 @@ class AnalyticsService:
         """Background task to monitor MCP server health."""
         while True:
             try:
+                # Import SessionLocal dynamically to avoid initialization issues
+                from app.database import SessionLocal
+                
+                if SessionLocal is None:
+                    logger.warning("SessionLocal not initialized, skipping MCP monitoring")
+                    await asyncio.sleep(60)
+                    continue
+                
                 db = SessionLocal()
                 try:
                     # Get all registered servers
@@ -368,6 +506,14 @@ class AnalyticsService:
         """Background task to cleanup old analytics data."""
         while True:
             try:
+                # Import SessionLocal dynamically to avoid initialization issues
+                from app.database import SessionLocal
+                
+                if SessionLocal is None:
+                    logger.warning("SessionLocal not initialized, skipping data cleanup")
+                    await asyncio.sleep(3600)
+                    continue
+                
                 db = SessionLocal()
                 try:
                     now = datetime.utcnow()
