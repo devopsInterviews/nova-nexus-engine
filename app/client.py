@@ -34,37 +34,6 @@ BASE_DIR    = os.path.dirname(os.path.dirname(__file__))
 STATIC_DIR  = os.path.join(BASE_DIR, "static")
 TEMPLATES_DIR  = os.path.join(BASE_DIR, "templates")
 
-
-uvicorn_logger = logging.getLogger("uvicorn.error")
-
-# Configure logging with timestamps for all loggers
-log_formatter = logging.Formatter(
-    fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
-# Configure root logger
-root_logger = logging.getLogger()
-if not root_logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(log_formatter)
-    root_logger.addHandler(console_handler)
-    root_logger.setLevel(getattr(logging, LOG_LEVEL))
-
-# Configure uvicorn logger to use the same format
-for handler in uvicorn_logger.handlers:
-    handler.setFormatter(log_formatter)
-
-# Set log levels
-uvicorn_logger.setLevel(getattr(logging, LOG_LEVEL))
-
-# Also configure other common loggers
-for logger_name in ["uvicorn.access", "fastapi", "app.middleware.analytics"]:
-    logger_instance = logging.getLogger(logger_name)
-    logger_instance.setLevel(getattr(logging, LOG_LEVEL))
-    for handler in logger_instance.handlers:
-        handler.setFormatter(log_formatter)
-
 # Initialize FastAPI
 app = FastAPI(title="MCP Client")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
