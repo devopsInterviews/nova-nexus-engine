@@ -35,12 +35,17 @@ class UserResponse(BaseModel):
     """Pydantic model for user data returned by the API."""
     id: int
     username: str
-    creation_date: datetime.datetime | None
+    email: str
+    full_name: str | None
+    is_active: bool
+    is_admin: bool
+    created_at: datetime.datetime | None
+    creation_date: datetime.datetime | None  # Alias for compatibility
     last_login: datetime.datetime | None
     login_count: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True  # Updated from orm_mode for Pydantic v2
 
 
 async def get_current_user(request: Request, db: Session = Depends(get_db_session)) -> User:
@@ -173,7 +178,7 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
     Returns:
         UserResponse: The details of the current user.
     """
-    return current_user
+    return current_user.to_dict()
 
 @router.post("/logout")
 async def logout(current_user: User = Depends(get_current_user)):
