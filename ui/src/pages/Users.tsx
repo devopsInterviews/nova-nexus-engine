@@ -504,15 +504,15 @@ const UsersPage: React.FC = () => {
         <DialogContent className="max-w-[95vw] w-[95vw] h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Table: {dialog.user?.username}</DialogTitle>
-            <DialogDescription>Internal table preview (showing up to 5000 rows).</DialogDescription>
+            <DialogDescription>Internal table preview with pagination (100 rows per page).</DialogDescription>
           </DialogHeader>
       <div className="flex-1 overflow-hidden">
         <TableDataPreview 
           tableName={dialog.user?.username || ''} 
           connectionActive={!!currentConnection} 
           internalMode={true}
-          internalShowAll={true}
-          pageSize={200}
+          internalShowAll={false}
+          pageSize={100}
           maxHeightClass="h-full"
         />
       </div>
