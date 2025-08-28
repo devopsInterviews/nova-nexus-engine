@@ -213,63 +213,6 @@ export default function Settings() {
         </Card>
       </motion.div>
 
-      {/* Debug Analytics */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-      >
-        <Card className="glass border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bug className="w-5 h-5 text-orange-500" />
-              Debug Analytics
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Test analytics functionality and troubleshoot data collection issues.
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button 
-                  variant="outline" 
-                  onClick={async () => {
-                    try {
-                      const result = await analyticsService.updateMcpStatus();
-                      alert(result.data?.message || 'MCP status updated');
-                    } catch (error) {
-                      alert('Failed to update MCP status: ' + error);
-                    }
-                  }}
-                >
-                  Update MCP Status
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  onClick={async () => {
-                    try {
-                      const result = await analyticsService.triggerTestActivity();
-                      alert(result.data?.message || 'Test activity created');
-                    } catch (error) {
-                      alert('Failed to create test activity: ' + error);
-                    }
-                  }}
-                >
-                  Create Test Activity
-                </Button>
-              </div>
-
-              <div className="text-xs text-muted-foreground p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                <strong>Debug Info:</strong> Use these buttons to manually trigger analytics events and verify data collection is working properly.
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
       {/* About */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

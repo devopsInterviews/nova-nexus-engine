@@ -82,7 +82,11 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
             # Try to extract user ID from the request state
             if hasattr(request.state, 'current_user') and request.state.current_user:
                 user_id = request.state.current_user.id
-        except:
+                logger.info(f"Analytics middleware found user_id: {user_id}")
+            else:
+                logger.info("Analytics middleware: No user found in request.state")
+        except Exception as e:
+            logger.info(f"Analytics middleware: Error getting user: {e}")
             pass  # Anonymous request
         
         # Log the request asynchronously to avoid blocking
@@ -114,6 +118,7 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
         
         # Track user activities for API endpoints
         if str(request.url.path).startswith('/api/') and response.status_code < 400:
+            logger.info(f"Analytics middleware tracking activity for {request.url.path} with user_id: {user_id}")
             self._track_user_activity_async(
                 path=str(request.url.path),
                 method=request.method,
@@ -207,6 +212,8 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
     def _track_user_activity_async(self, path: str, method: str, user_id: int = None, ip_address: str = None):
         """Track user activity data to database asynchronously."""
         try:
+            logger.info(f"Tracking user activity: path={path}, method={method}, user_id={user_id}")
+            
             # Import SessionLocal dynamically to avoid import-time issues
             from app.database import SessionLocal
             
@@ -232,6 +239,7 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
                 )
                 db.add(user_activity)
                 db.commit()
+                logger.info(f"Successfully tracked user activity: {activity_type} - {action} (user_id: {user_id})")
             except Exception as e:
                 logger.error(f"Failed to track user activity: {e}")
                 db.rollback()
