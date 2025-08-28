@@ -482,6 +482,13 @@ export const analyticsService = {
       body: JSON.stringify(data),
     });
   },
+
+  // Update MCP server status
+  updateMcpStatus: async (): Promise<ApiResponse<{ message: string }>> => {
+    return fetchApi('/api/analytics/update-mcp-status', {
+      method: 'POST',
+    });
+  },
 };
 
 // Context for storing connection info across tabs

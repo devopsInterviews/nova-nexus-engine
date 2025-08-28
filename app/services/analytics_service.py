@@ -32,32 +32,24 @@ class AnalyticsService:
     
     def seed_demo_data(self, db: Session):
         """
-        Seed the database with demo data for development/testing.
-        This creates realistic sample data for the dashboard.
+        Initialize analytics system but avoid seeding demo data.
+        Real data will be collected by the analytics middleware.
         """
         try:
-            logger.info("Seeding demo analytics data...")
+            logger.info("Initializing analytics system...")
             
-            # Seed system metrics
-            self._seed_system_metrics(db)
+            # Check if real data already exists
+            existing_requests = db.query(func.count(RequestLog.id)).scalar()
+            existing_pageviews = db.query(func.count(PageView.id)).scalar()
             
-            # Seed request logs
-            self._seed_request_logs(db)
+            if existing_requests > 0 or existing_pageviews > 0:
+                logger.info("Real analytics data found, skipping demo data seeding")
+                return
             
-            # Seed MCP server status
-            self._seed_mcp_servers(db)
-            
-            # Seed page views
-            self._seed_page_views(db)
-            
-            # Seed user activities
-            self._seed_user_activities(db)
-            
-            db.commit()
-            logger.info("Demo data seeded successfully")
+            logger.info("Analytics system ready - real data will be collected by middleware")
             
         except Exception as e:
-            logger.error(f"Failed to seed demo data: {e}")
+            logger.error(f"Failed to initialize analytics system: {e}")
             db.rollback()
     
     def _seed_system_metrics(self, db: Session):

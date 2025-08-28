@@ -94,8 +94,8 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
 
   const showPagination = !internalMode || !internalShowAll || (totalRows !== null && totalRows > pageSize);
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col h-full space-y-3">
+      <div className="flex items-center justify-between gap-4 flex-shrink-0">
         <div className="text-sm font-medium">
           Rows {(page * pageSize) + 1}-{(page * pageSize) + rows.length}
           {totalRows ? ` / ${totalRows}` : ''}
@@ -153,14 +153,14 @@ export const TableDataPreview: React.FC<Props> = ({ tableName, connectionActive,
   </div>)}
       </div>
       {error && (
-        <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+        <Alert variant="destructive" className="flex-shrink-0"><AlertDescription>{error}</AlertDescription></Alert>
       )}
       {loading ? (
-        <div className="flex items-center gap-2 text-sm"><div className="animate-spin h-4 w-4 border-b-2 border-primary rounded-full"/> Loading…</div>
+        <div className="flex items-center gap-2 text-sm flex-shrink-0"><div className="animate-spin h-4 w-4 border-b-2 border-primary rounded-full"/> Loading…</div>
       ) : rows.length === 0 ? (
-        <div className="text-sm text-muted-foreground">No rows.</div>
+        <div className="text-sm text-muted-foreground flex-shrink-0">No rows.</div>
       ) : (
-        <div className={`${maxHeightClass} overflow-auto border rounded-md bg-background`}> 
+        <div className="flex-1 min-h-0 overflow-auto border rounded-md bg-background"> 
           <table className="text-sm min-w-full">
             <thead className="bg-muted sticky top-0 z-10">
               <tr>{columns.map(c => <th key={c} className="text-left px-2 py-1 font-medium whitespace-nowrap border-b">{c}</th>)}</tr>
