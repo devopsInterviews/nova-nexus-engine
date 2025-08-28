@@ -34,6 +34,68 @@ BASE_DIR    = os.path.dirname(os.path.dirname(__file__))
 STATIC_DIR  = os.path.join(BASE_DIR, "static")
 TEMPLATES_DIR  = os.path.join(BASE_DIR, "templates")
 
+# Configure logging with timestamps for all loggers
+logging_config = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S"
+        },
+        "access": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - \"%(request_line)s\" %(status_code)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S"
+        }
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout"
+        },
+        "access": {
+            "formatter": "access",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout"
+        }
+    },
+    "loggers": {
+        "uvicorn": {
+            "handlers": ["default"],
+            "level": LOG_LEVEL,
+            "propagate": False
+        },
+        "uvicorn.error": {
+            "handlers": ["default"],
+            "level": LOG_LEVEL,
+            "propagate": False
+        },
+        "uvicorn.access": {
+            "handlers": ["access"],
+            "level": LOG_LEVEL,
+            "propagate": False
+        },
+        "app.middleware.analytics": {
+            "handlers": ["default"],
+            "level": LOG_LEVEL,
+            "propagate": False
+        },
+        "fastapi": {
+            "handlers": ["default"],
+            "level": LOG_LEVEL,
+            "propagate": False
+        }
+    },
+    "root": {
+        "level": LOG_LEVEL,
+        "handlers": ["default"]
+    }
+}
+
+# Apply logging configuration
+logging.config.dictConfig(logging_config)
+
 # Initialize FastAPI
 app = FastAPI(title="MCP Client")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
