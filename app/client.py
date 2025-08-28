@@ -40,11 +40,11 @@ logging_config = {
     "disable_existing_loggers": False,
     "formatters": {
         "default": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "format": "%(asctime)s - %(levelname)s - %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S"
         },
         "access": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - \"%(request_line)s\" %(status_code)s",
+            "format": "%(asctime)s - %(levelname)s - \"%(request_line)s\" %(status_code)s",
             "datefmt": "%Y-%m-%d %H:%M:%S"
         }
     },
