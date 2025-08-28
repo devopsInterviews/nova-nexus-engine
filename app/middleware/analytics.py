@@ -228,9 +228,9 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
                 # Determine activity type and action based on path
                 activity_type, action = self._get_activity_info(path, method)
                 
-                # Create user activity entry
+                # Create user activity entry (user_id can be None for anonymous activities)
                 user_activity = UserActivity(
-                    user_id=user_id,
+                    user_id=user_id,  # Can be None for anonymous users
                     activity_type=activity_type,
                     action=action,
                     status='success',  # We only track successful activities here
@@ -239,7 +239,7 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
                 )
                 db.add(user_activity)
                 db.commit()
-                logger.info(f"Successfully tracked user activity: {activity_type} - {action} (user_id: {user_id})")
+                logger.info(f"Successfully tracked user activity: {activity_type} - {action} (user_id: {user_id or 'anonymous'})")
             except Exception as e:
                 logger.error(f"Failed to track user activity: {e}")
                 db.rollback()
