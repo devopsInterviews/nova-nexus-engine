@@ -1,5 +1,5 @@
 /**
- * Main Application Component for Nova Nexus Engine Frontend
+ * Main Application Component for MCP Client Frontend
  * 
  * This is the root component that orchestrates the entire React application.
  * It sets up the foundational architecture including:

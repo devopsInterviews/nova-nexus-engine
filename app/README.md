@@ -2,7 +2,7 @@
 
 ## Overview
 
-The backend is a FastAPI-based application that serves as the main server for the Nova Nexus Engine. It provides authentication, database management, MCP (Model Context Protocol) integration, analytics, and various API endpoints for the frontend.
+The backend is a FastAPI-based application that serves as the main server for the MCP Client. It provides authentication, database management, MCP (Model Context Protocol) integration, analytics, and various API endpoints for the frontend.
 
 ## Architecture
 

@@ -1,5 +1,5 @@
 /**
- * Database Connection Context Provider for Nova Nexus Engine
+ * Database Connection Context Provider for MCP Client
  * 
  * This context manages database connection state throughout the application,
  * providing centralized connection management for Business Intelligence and

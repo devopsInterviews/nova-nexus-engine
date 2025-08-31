@@ -1,7 +1,7 @@
 /**
  * Home Dashboard Page Component
  * 
- * This is the main landing page of the Nova Nexus Engine application that serves as
+ * This is the main landing page of the MCP Client application that serves as
  * the central control center and system overview dashboard.
  * 
  * Key Features:
