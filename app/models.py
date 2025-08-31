@@ -19,9 +19,39 @@ Base = declarative_base()
 
 class User(Base):
     """
-    User model for authentication and user management.
+    Core User model for authentication and user management.
     
-    Stores user credentials, profile information, and access control data.
+    This model represents a user account in the system and handles:
+    1. **Authentication**: Secure password storage and validation
+    2. **Profile Management**: User information and preferences
+    3. **Access Control**: Admin roles and permissions
+    4. **Activity Tracking**: Login history and usage metrics
+    5. **Relationship Management**: Connected data and configurations
+    
+    **Authentication Features**:
+    - Bcrypt password hashing for security
+    - Login count and last login tracking
+    - Account activation/deactivation
+    - Admin role assignment
+    
+    **Data Relationships**:
+    - DatabaseConnection: User's saved database profiles
+    - TestConfiguration: User's saved test setups
+    - UserActivity: Audit trail of user actions
+    - RequestLog: API request history
+    
+    **Usage in Authentication Flow**:
+    1. User registration creates new User record
+    2. Login validates password against hashed_password
+    3. JWT token generated with user.id
+    4. User object attached to requests for authorization
+    5. Activity tracking updates login_count and last_login
+    
+    **Security Considerations**:
+    - Passwords never stored in plain text
+    - Email and username uniqueness enforced
+    - Soft deletion preserves audit trail
+    - Admin privileges clearly separated
     """
     __tablename__ = "users"
     
@@ -413,9 +443,43 @@ class SystemMetrics(Base):
 
 class RequestLog(Base):
     """
-    API request logging for analytics and monitoring.
+    HTTP request logging model for comprehensive analytics and monitoring.
     
-    Tracks all incoming requests for performance analysis and usage statistics.
+    This model captures detailed information about every HTTP request to the application,
+    enabling powerful analytics, performance monitoring, and security auditing.
+    
+    **Captured Data**:
+    - **Request Details**: HTTP method, path, status code
+    - **Performance Metrics**: Response time, request/response sizes  
+    - **Client Information**: IP address, User-Agent, referrer
+    - **User Context**: Authenticated user ID when available
+    - **Error Information**: Error messages for failed requests
+    
+    **Analytics Use Cases**:
+    - **Performance Monitoring**: Track response times and identify bottlenecks
+    - **Usage Analytics**: Most popular endpoints and user behavior patterns
+    - **Error Tracking**: Monitor error rates and categorize failures
+    - **Security Auditing**: Track suspicious activity and access patterns
+    - **Capacity Planning**: Understand traffic patterns and growth trends
+    
+    **Data Flow**:
+    1. AnalyticsMiddleware intercepts every HTTP request
+    2. Request details captured at start of processing
+    3. Response metrics calculated after request completion
+    4. RequestLog record created asynchronously to avoid blocking
+    5. Data aggregated for real-time dashboard metrics
+    
+    **Dashboard Integration**:
+    - System uptime calculations (successful vs failed requests)
+    - Response time percentiles (95th percentile reporting)
+    - Error rate trending and categorization
+    - User activity heatmaps and patterns
+    
+    **Privacy & Compliance**:
+    - No sensitive data logged (passwords, tokens, personal info)
+    - IP addresses for security monitoring only
+    - Configurable data retention policies
+    - GDPR-compliant data handling
     """
     __tablename__ = "request_logs"
     

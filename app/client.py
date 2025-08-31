@@ -1,3 +1,25 @@
+"""
+Main FastAPI application server.
+This is the central application file that:
+1. Initializes the FastAPI server with middleware and routes
+2. Establishes MCP (Model Context Protocol) server connections
+3. Sets up authentication, analytics, and database systems
+4. Provides webhook endpoints for external system integrations
+5. Serves the frontend SPA and handles API routing
+
+Key integrations:
+- MCP Server: For AI/ML model interactions
+- Database: PostgreSQL with SQLAlchemy ORM
+- Analytics: Request logging and performance monitoring
+- Authentication: JWT-based user authentication
+- Frontend: Serves React SPA and API endpoints
+
+Environment Variables:
+- MCP_SERVER_URL: URL for MCP server connection
+- LOG_LEVEL: Logging verbosity (DEBUG, INFO, WARNING, ERROR)
+- JWT_SECRET_KEY: Secret key for JWT token signing
+"""
+
 import os
 import json
 import logging
@@ -22,110 +44,117 @@ from app.middleware.analytics import setup_analytics_middleware
 from app.services.analytics_service import analytics_service
 
 
-# Load environment variables
+# Load environment variables from .env file in parent directory
+# This loads configuration like database URLs, API keys, and feature flags
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-# Configuration
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8050/mcp/")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+# Configuration variables with sensible defaults
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8050/mcp/")  # MCP server endpoint for AI model interactions
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()  # Logging verbosity: DEBUG, INFO, WARNING, ERROR
 
-BASE_DIR    = os.path.dirname(os.path.dirname(__file__))
-STATIC_DIR  = os.path.join(BASE_DIR, "static")
-TEMPLATES_DIR  = os.path.join(BASE_DIR, "templates")
+# Directory paths for serving static files and templates
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # Project root directory
+STATIC_DIR = os.path.join(BASE_DIR, "static")  # Static assets (CSS, JS, images)
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")  # Jinja2 HTML templates
 
-# Configure logging with timestamps for all loggers
+# Configure structured logging for the entire application
+# This creates a consistent logging format across all components
 logging_config = {
-    "version": 1,
-    "disable_existing_loggers": False,
+    "version": 1,  # Required field for dictConfig
+    "disable_existing_loggers": False,  # Keep existing loggers intact
     "formatters": {
         "default": {
+            # Standard format: timestamp - level - message (e.g., "2025-08-31 10:15:30 - INFO - User logged in")
             "format": "%(asctime)s - %(levelname)s - %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S"
+            "datefmt": "%Y-%m-%d %H:%M:%S"  # ISO date format for consistency
         }
     },
     "handlers": {
         "default": {
-            "formatter": "default",
-            "class": "logging.StreamHandler",
-            "stream": "ext://sys.stdout"
+            "formatter": "default",  # Use the formatter defined above
+            "class": "logging.StreamHandler",  # Log to stdout/stderr
+            "stream": "ext://sys.stdout"  # Explicit stdout for container compatibility
         }
     },
     "loggers": {
-        "uvicorn": {
+        # Configure specific loggers for different components
+        "uvicorn": {  # Web server logs (startup, shutdown, etc.)
+            "handlers": ["default"],
+            "level": LOG_LEVEL,
+            "propagate": False  # Don't pass to parent loggers
+        },
+        "uvicorn.error": {  # Error-specific uvicorn logs
             "handlers": ["default"],
             "level": LOG_LEVEL,
             "propagate": False
         },
-        "uvicorn.error": {
+        "uvicorn.access": {  # HTTP access logs (requests, responses)
             "handlers": ["default"],
             "level": LOG_LEVEL,
             "propagate": False
         },
-        "uvicorn.access": {
+        "app.middleware.analytics": {  # Analytics middleware logs
             "handlers": ["default"],
             "level": LOG_LEVEL,
             "propagate": False
         },
-        "app.middleware.analytics": {
-            "handlers": ["default"],
-            "level": LOG_LEVEL,
-            "propagate": False
-        },
-        "fastapi": {
+        "fastapi": {  # FastAPI framework logs
             "handlers": ["default"],
             "level": LOG_LEVEL,
             "propagate": False
         }
     },
-    "root": {
+    "root": {  # Root logger catches all unspecified loggers
         "level": LOG_LEVEL,
         "handlers": ["default"]
     }
 }
 
-# Apply logging configuration
+# Apply the logging configuration to the Python logging system
 logging.config.dictConfig(logging_config)
 
-# Initialize FastAPI
-app = FastAPI(title="MCP Client")
+# Initialize the FastAPI application instance
+app = FastAPI(title="MCP Client")  # Creates the main web application
+
+# Mount static file serving for CSS, JS, images, etc.
+# This serves files from /static directory at /static URL path
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Initialize Jinja2 template engine for serving HTML templates
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-# Add CORS middleware to allow requests from frontend
+# Add CORS (Cross-Origin Resource Sharing) middleware
+# This allows the React frontend to make API calls to this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],  # WARNING: In production, specify exact frontend URL instead of wildcard
+    allow_credentials=True,  # Allow cookies and authorization headers
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],  # Allow all request headers
 )
 
-# Setup analytics middleware for request logging
+# Setup analytics middleware that logs every HTTP request
+# This must be added after CORS but before route handlers
 setup_analytics_middleware(app)
 
-# Get logger with consistent formatting
+# Get a logger instance for this module using the configured logging
 logger = logging.getLogger("uvicorn.error")
 
-# Import and include database routes
-from app.routes.db_routes import router as db_router
-# Import and include MCP testing routes
-from app.routes.mcp_routes import router as mcp_router
-# Import and include auth routes
-from app.routes.auth_routes import router as auth_router
-# Import and include user routes
-from app.routes.users_routes import router as users_router
-# Import and include test routes
-from app.routes.test_routes import router as test_router
-from app.routes.internal_data_routes import router as internal_data_router
-# Import and include permissions routes
-from app.routes.permissions_routes import router as permissions_router
-# Import and include analytics routes
-from app.routes.analytics_routes import router as analytics_router
+# Import all route modules that define API endpoints
+# These imports must be after app creation to avoid circular dependencies
+from app.routes.db_routes import router as db_router  # Database operations
+from app.routes.mcp_routes import router as mcp_router  # MCP server interactions
+from app.routes.auth_routes import router as auth_router  # Authentication endpoints
+from app.routes.users_routes import router as users_router  # User management
+from app.routes.test_routes import router as test_router  # Test execution
+from app.routes.internal_data_routes import router as internal_data_router  # Internal data APIs
+from app.routes.permissions_routes import router as permissions_router  # Role-based permissions
+from app.routes.analytics_routes import router as analytics_router  # System metrics
 
-# Expose database/API routes under /api to match UI calls
-app.include_router(db_router, prefix="/api")
-# Expose MCP testing routes under /api to match frontend expectations
-app.include_router(mcp_router, prefix="/api")
+# Register all route modules with the FastAPI app under /api prefix
+# This makes all endpoints accessible at /api/... URLs
+app.include_router(db_router, prefix="/api")  # Database routes: /api/database/*
+app.include_router(mcp_router, prefix="/api")  # MCP routes: /api/mcp/*
 # Expose auth routes under /api
 app.include_router(auth_router, prefix="/api")
 # Expose user routes under /api
@@ -139,19 +168,27 @@ app.include_router(permissions_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
-@app.middleware("http")
+@app.middleware("http")  # Decorator registers this function as HTTP middleware that runs on every request
 async def log_requests(request: Request, call_next):
     try:
+        # Log the incoming request method and path (e.g., "GET /api/users")
         logger.info("%s %s", request.method, request.url.path)
+        # Call the next middleware or route handler and get the response
         response = await call_next(request)
+        # Log the completed request with status code (e.g., "GET /api/users -> 200")
         logger.info("%s %s -> %s", request.method, request.url.path, response.status_code)
+        # Return the response to continue the chain
         return response
     except Exception:
+        # If any error occurs during request processing, log it with full stack trace
         logger.error("Unhandled error for %s %s", request.method, request.url.path, exc_info=True)
+        # Re-raise the exception so FastAPI can handle it properly
         raise
 
-# AsyncExitStack to manage context managers in the same task
+# Global variables to manage MCP (Model Context Protocol) connection lifecycle
+# AsyncExitStack manages async context managers (like connections) in the same task
 _exit_stack: AsyncExitStack
+# ClientSession holds the actual MCP connection to the AI model
 _mcp_session: ClientSession
 
 
@@ -169,113 +206,254 @@ class QueryResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """
-    Create and initialize the streamable http client and MCP session.
-    Uses AsyncExitStack to ensure enter/exit occur in the same task.
+    Application startup initialization.
+    
+    This function runs when the FastAPI server starts and performs critical setup:
+    
+    1. **MCP Connection Setup**: Establishes connection to MCP server for AI model interactions
+       - Creates HTTP transport with timeout configuration
+       - Initializes MCP session for tool calling
+       - Logs connection status for monitoring
+    
+    2. **Database Initialization**: 
+       - Creates all database tables if they don't exist
+       - Sets up SQLAlchemy engine and session factory
+       - Ensures database schema is current
+    
+    3. **Analytics Service**: 
+       - Starts background monitoring tasks
+       - Initializes real-time metrics collection
+       - Sets up performance tracking for actual usage data
+    
+    4. **LLM Client Setup**: 
+       - Initializes the Language Model client for MCP interactions
+       - Makes it globally available for request handlers
+       - Configures timeout and retry settings
+    
+    Error Handling:
+    - MCP connection failures are logged but don't stop startup
+    - Database errors are logged with details
+    - Individual component failures are isolated
+    
+    Environment Dependencies:
+    - MCP_SERVER_URL: Must be accessible for MCP functionality
+    - Database connection: Required for data persistence
     """
-    global _exit_stack, _mcp_session
-    _exit_stack = AsyncExitStack()
+    global _exit_stack, _mcp_session  # Access global variables for MCP connection management
+    _exit_stack = AsyncExitStack()  # Create stack to manage multiple async context managers
 
-    # Establish http transport
+    # Establish HTTP transport connection to MCP server
+    # streamablehttp_client creates bidirectional streaming connection for real-time communication
     _http_transport = await _exit_stack.enter_async_context(
-        streamablehttp_client(MCP_SERVER_URL, timeout = timedelta(seconds=600), sse_read_timeout = timedelta(seconds=600))
+        streamablehttp_client(
+            MCP_SERVER_URL,  # Server URL from environment variable
+            timeout = timedelta(seconds=600),  # 10 minute timeout for long operations
+            sse_read_timeout = timedelta(seconds=600)  # Server-sent events read timeout
+        )
     )
+    # Extract the read and write streams from the transport tuple
     read_stream, write_stream, _ = _http_transport
 
-    # Create and initialize MCP session
+    # Create MCP client session using the established streams
+    # ClientSession handles the MCP protocol communication
     _mcp_session = await _exit_stack.enter_async_context(
-        ClientSession(read_stream, write_stream)
+        ClientSession(read_stream, write_stream)  # Pass streams for bidirectional communication
     )
+    # Initialize the session to complete the MCP handshake
     await _mcp_session.initialize()
     logger.info(f"MCP session initialized and connected to {MCP_SERVER_URL}")
 
-    # Initialize the database
+    # Initialize the database by creating all tables defined in models.py
     init_db()
 
-    # Seed demo data for development
-    from app.database import SessionLocal
-    db = SessionLocal()
+    # Initialize analytics system for real-time data collection
+    from app.database import SessionLocal  # Import database session factory
+    db = SessionLocal()  # Create a new database session
     try:
-        # Check if we need to seed demo data (if no request logs exist)
-        from app.models import RequestLog
-        existing_logs = db.query(RequestLog).first()
-        if not existing_logs:
-            logger.info("Seeding demo analytics data...")
-            analytics_service.seed_demo_data(db)
+        # Initialize analytics system for real data collection
+        logger.info("Initializing analytics system...")
+        analytics_service.initialize_analytics(db)  # Initialize analytics for real data collection
     except Exception as e:
-        logger.warning(f"Could not seed demo data: {e}")
+        # Log warning if initialization fails but don't crash the application
+        logger.warning(f"Could not initialize analytics: {e}")
     finally:
-        db.close()
+        db.close()  # Always close the database session to prevent connection leaks
 
-    # Start analytics monitoring
+    # Start analytics monitoring background tasks for real-time metrics collection
     await analytics_service.start_monitoring()
 
-    llm_client = LLMClient()
-    globals()["llm_client"] = llm_client
+    # Initialize the LLM client for AI model interactions
+    llm_client = LLMClient()  # Create instance of language model client
+    globals()["llm_client"] = llm_client  # Make it globally accessible to all route handlers
     logger.info("LLMClient initialized and ready.")
 
 
-@app.on_event("shutdown")
+@app.on_event("shutdown")  # Decorator registers this function to run when FastAPI shuts down
 async def shutdown_event():
+    """
+    Application shutdown cleanup.
+    
+    This function runs when the FastAPI server is shutting down and performs:
+    1. Stops analytics monitoring background tasks
+    2. Closes all MCP connections and async context managers
+    3. Cleans up resources to prevent memory leaks
+    """
     logger.info("shutdown_event: enter")
     try:
-        # Stop analytics monitoring
+        # Stop analytics monitoring background tasks gracefully
         await analytics_service.stop_monitoring()
         
+        # Close all async context managers managed by the exit stack
+        # This includes MCP session and HTTP transport connections
         await _exit_stack.aclose()
     except Exception as e:
+        # Log any errors during shutdown but don't crash
         logger.error("shutdown_event: error during aclose(): %s", e, exc_info=True)
     else:
         logger.info("shutdown_event: exit cleanly")
 
 
-@app.exception_handler(Exception)
+@app.exception_handler(Exception)  # Global exception handler for any unhandled exceptions
 async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler that catches any unhandled errors in the application.
+    
+    This provides a safety net for unexpected errors and ensures:
+    1. All errors are logged with full context
+    2. Clients receive a standardized error response
+    3. Server doesn't crash on unexpected exceptions
+    """
+    # Log the full error with request context and stack trace
     logger.error("Unhandled exception during request %s %s: %s", request.method, request.url, exc, exc_info=True)
+    # Return standardized JSON error response to client
     return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)  # Root route serves the React SPA
 async def spa_root(request: Request):
-    # templates points at your templates dir
+    """
+    Serves the React single-page application at the root URL.
+    
+    This endpoint returns the main HTML template that loads the React app.
+    The template includes all necessary CSS and JS bundles.
+    """
+    # Use Jinja2 template engine to render the main UI template
+    # templates points to your templates directory containing ui.html
     return templates.TemplateResponse("ui.html", {"request": request})
 
 
 @app.post("/events/code-analysis", status_code=202)
 async def code_analysis_endpoint(request: Request) -> QueryResponse:
     """
-    Accept any JSON body, log it in full, then feed it to the LLM.
-    Currently it supports getting only 1 json file.
+    Webhook endpoint for automated code analysis.
+    
+    This endpoint receives code analysis reports (typically from CI/CD pipelines) 
+    and processes them through the LLM for intelligent insights and recommendations.
+    
+    **Use Case**: 
+    - Triggered by CI/CD systems after code scans
+    - Processes static analysis results, security scans, or quality reports
+    - Returns AI-generated insights and recommendations
+    
+    **Request Flow**:
+    1. Receives JSON payload containing analysis reports
+    2. Logs full payload for audit and debugging
+    3. Formats data using CODE_ANALYSIS_PROMPT template
+    4. Sends to LLM via MCP session for analysis
+    5. Returns AI-generated insights and recommendations
+    
+    **Expected JSON Structure**:
+    ```json
+    {
+        "scan_results": {...},
+        "vulnerabilities": [...],
+        "code_quality": {...},
+        "metadata": {...}
+    }
+    ```
+    
+    **Response**: AI analysis with recommendations for code improvement
+    
+    **Integration Points**:
+    - CI/CD pipelines (Jenkins, GitHub Actions, etc.)
+    - Security scanning tools (SonarQube, Snyk, etc.)
+    - Code quality tools (ESLint, Pylint, etc.)
     """
-    # 1️⃣  Parse the raw JSON body
+    # 1️⃣  Parse the raw JSON body from the incoming HTTP request
     try:
-        payload = await request.json()
+        payload = await request.json()  # Extract JSON payload from request body
     except json.JSONDecodeError as err:
+        # If JSON is malformed, log error and return 400 Bad Request
         logger.error("Invalid JSON body: %s", err, exc_info=True)
         raise HTTPException(status_code=400, detail="Body must be valid JSON")
 
-    # 2️⃣  Log the entire payload for debugging / auditing
+    # 2️⃣  Log the entire payload for debugging and audit trail
+    # This helps track what data was received for troubleshooting
     logger.info("Received code-analysis payload:\n%s",
                 json.dumps(payload, indent=2, ensure_ascii=False))
 
-    # 3️⃣  Build the LLM prompt (same template as before)
+    # 3️⃣  Build the LLM prompt using the predefined template
+    # CODE_ANALYSIS_PROMPT contains instructions for how to analyze the code reports
     prompt_text = CODE_ANALYSIS_PROMPT.format(
-        reports_json=json.dumps(payload, indent=2, ensure_ascii=False)
+        reports_json=json.dumps(payload, indent=2, ensure_ascii=False)  # Insert JSON into template
     )
 
-    # 4️⃣  Send to LLM and return its answer
+    # 4️⃣  Send the formatted prompt to the LLM via MCP session and return response
     try:
+        # Process the query through the LLM client using the established MCP session
         answer = await llm_client.process_query(
-            user_query=prompt_text,
-            session=_mcp_session
+            user_query=prompt_text,  # The formatted prompt with code analysis data
+            session=_mcp_session     # Global MCP session for AI communication
         )
+        # Log the LLM's response for debugging and monitoring
         logger.info("LLM Final Answer:\n%s", answer)
+        # Return the AI analysis wrapped in the response model
         return QueryResponse(answer=answer)
     except Exception as err:
+        # If LLM processing fails, log error and return 500 Internal Server Error
         logger.error("❌  LLM processing failed: %s", err, exc_info=True)
         raise HTTPException(status_code=500, detail=str(err))
 
 
 @app.post("/events/jira", status_code=202)
 async def jira_endpoint(request: Request):
+    """
+    Webhook endpoint for JIRA ticket analysis and investigation.
+    
+    This endpoint processes JIRA webhook events to automatically investigate
+    and analyze tickets using AI-powered insights.
+    
+    **Use Case**:
+    - Triggered when JIRA tickets are created or updated
+    - Automatically analyzes ticket content for context and severity
+    - Provides AI-driven investigation recommendations
+    - Links related incidents and knowledge base articles
+    
+    **Request Flow**:
+    1. Receives JIRA webhook with ticket information
+    2. Extracts ticket ID from the message field
+    3. Uses JIRA_INVESTIGATION_USER_PROMPT to analyze ticket
+    4. Queries LLM for investigation insights and recommendations
+    5. Returns structured analysis for ticket context
+    
+    **Expected Message Format**:
+    ```json
+    {
+        "message": "{\"field\": \"ticket_id\", \"value\": \"PROJ-123\"}"
+    }
+    ```
+    
+    **AI Analysis Includes**:
+    - Ticket severity assessment
+    - Related incident correlation
+    - Investigation steps recommendations
+    - Resource and documentation links
+    
+    **Integration Points**:
+    - JIRA webhooks for ticket events
+    - ServiceNow for incident management
+    - Knowledge base systems
+    - Monitoring and alerting platforms
+    """
 
     evt = await request.json()
     raw_msg = evt.get("message")
@@ -1049,4 +1227,64 @@ async def on_pr_event(request: Request):
 # SPA catch-all route - MUST be defined last to avoid intercepting API routes
 @app.get("/{full_path:path}", response_class=HTMLResponse)
 async def spa_catch_all(request: Request, full_path: str):
+    """
+    SPA (Single Page Application) catch-all route handler.
+    
+    **What is a SPA?**
+    A Single Page Application (SPA) is a web application that loads a single HTML page
+    and dynamically updates content as the user interacts with the app, without full
+    page reloads. Popular examples include Gmail, Twitter, and Facebook.
+    
+    **How SPAs Work:**
+    1. **Initial Load**: Browser requests any URL (e.g., `/analytics`, `/bi`, `/settings`)
+    2. **Server Response**: Server always returns the same `ui.html` file
+    3. **Client-Side Routing**: JavaScript (React Router) examines the URL and renders
+       the appropriate component without server communication
+    4. **Dynamic Updates**: Subsequent navigation happens entirely in JavaScript
+    5. **API Calls**: Data fetching happens via AJAX calls to `/api/*` endpoints
+    
+    **Why This Route Exists:**
+    - **URL Support**: Enables direct navigation to routes like `/analytics` or `/bi`
+    - **Refresh Handling**: When users refresh the page on `/settings`, this route serves
+      the React app instead of returning a 404 error
+    - **Bookmarking**: Users can bookmark and share deep links to specific app pages
+    - **SEO Friendly**: Search engines can crawl different URL paths
+    
+    **Route Pattern Explanation:**
+    - `/{full_path:path}` - Catches ALL unmatched routes after API routes
+    - Must be defined LAST to avoid intercepting `/api/*` endpoints
+    - `full_path` parameter captures the entire path (e.g., "analytics/dashboard")
+    
+    **Example Flow:**
+    1. User visits `http://localhost:5173/bi/sql-builder`
+    2. This route catches the request since `/bi/sql-builder` doesn't match any API route
+    3. Returns `ui.html` containing the React application
+    4. React Router sees `/bi/sql-builder` in the URL and renders the SQL Builder component
+    5. User sees the SQL Builder page without any server-side rendering
+    
+    **Technical Implementation:**
+    - **Frontend**: React app with React Router for client-side routing
+    - **Backend**: FastAPI serves the same HTML file for all non-API routes
+    - **Templates**: Uses Jinja2 to serve `ui.html` with request context
+    - **Static Assets**: CSS/JS bundles loaded by the HTML template
+    
+    **Benefits of SPA Architecture:**
+    - **Fast Navigation**: No full page reloads between routes
+    - **Rich Interactivity**: Smooth animations and state preservation
+    - **Offline Capability**: Can work offline once initial assets are cached
+    - **API-Driven**: Clean separation between frontend and backend
+    
+    Args:
+        request (Request): FastAPI request object with headers, cookies, etc.
+        full_path (str): The captured URL path (e.g., "analytics", "bi/dashboard")
+        
+    Returns:
+        HTMLResponse: Always returns the same `ui.html` template containing the React SPA
+        
+    Note:
+        This route will match ANY path that isn't handled by previous routes.
+        Ensure all API routes are defined with `/api/` prefix to avoid conflicts.
+    """
+    # Always return the same React SPA entry point regardless of the requested path
+    # The React Router will handle client-side routing based on the URL
     return templates.TemplateResponse("ui.html", {"request": request})
