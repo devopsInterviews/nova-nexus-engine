@@ -1,4 +1,4 @@
-# Nova Nexus Engine 🚀
+# MCP Client 🚀
 
 A cutting-edge **Model Context Protocol (MCP) management platform** with a cyberpunk-inspired interface for managing AI servers, database connections, analytics, and user workflows.
 
@@ -57,13 +57,40 @@ ui/src/
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Quick Start with Docker (Recommended) 🐳
+
+For the fastest development setup, use Docker Compose:
+
+```bash
+# Clone and setup
+git clone <repository-url>
+cd mcp-client
+cp .env.example .env
+
+# Start development environment
+docker-compose up --build
+```
+
+**Access the application:**
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8000  
+- **API Documentation**: http://localhost:8000/docs
+
+📖 **See [DOCKER.md](./DOCKER.md) for comprehensive Docker setup instructions, including:**
+- Multiple deployment profiles (basic, full, nginx, mcp)
+- Helper scripts for easy management
+- Troubleshooting and development tips
+- Production deployment guidance
+
+### Manual Setup (Traditional)
+
+#### Prerequisites
 - **Python 3.8+** with FastAPI and SQLAlchemy
 - **Node.js 16+** with npm/yarn
 - **PostgreSQL** database
 - **MCP Server** (optional for full functionality)
 
-### Backend Setup
+#### Backend Setup
 
 1. **Install Dependencies**
 ```bash
@@ -78,7 +105,7 @@ cp .env.example .env
 
 # Configure variables
 MCP_SERVER_URL=http://localhost:8050/mcp/
-DATABASE_URL=postgresql://user:password@localhost/nova_nexus
+DATABASE_URL=postgresql://user:password@localhost/mcp_client
 JWT_SECRET_KEY=your-secret-key-here
 ACCESS_TOKEN_EXPIRE_MINUTES=120
 ```
@@ -89,7 +116,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=120
 python -m uvicorn client:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Frontend Setup
+#### Frontend Setup
 
 1. **Install Dependencies**
 ```bash
@@ -108,7 +135,7 @@ VITE_API_BASE_URL=http://localhost:8000
 npm run dev
 ```
 
-### Access the Application
+#### Access the Application
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
@@ -349,4 +376,4 @@ The application connects to MCP servers for:
 
 ---
 
-**Nova Nexus Engine** - Bridging AI and Enterprise Systems with Style 🚀✨
+**MCP Client** - Bridging AI and Enterprise Systems with Style 🚀✨

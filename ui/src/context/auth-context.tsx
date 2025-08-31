@@ -1,5 +1,5 @@
 /**
- * Authentication Context Provider for Nova Nexus Engine
+ * Authentication Context Provider for MCP Client
  * 
  * This context manages the entire authentication state and flow for the application.
  * It provides centralized authentication logic that handles JWT tokens, user sessions,

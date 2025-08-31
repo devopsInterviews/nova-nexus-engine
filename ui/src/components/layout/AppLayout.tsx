@@ -1,7 +1,7 @@
 /**
  * AppLayout - Main Application Shell Component
  * 
- * This component provides the core layout structure for the entire Nova Nexus Engine application.
+ * This component provides the core layout structure for the entire MCP Client application.
  * It combines navigation, content area, visual effects, and easter eggs into a cohesive user experience.
  * 
  * Key Features:

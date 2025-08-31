@@ -2,7 +2,7 @@
 
 ## 🔄 Complete User Journey
 
-This document provides a comprehensive walkthrough of the user experience and system interactions within Nova Nexus Engine.
+This document provides a comprehensive walkthrough of the user experience and system interactions within MCP Client.
 
 ## 🚪 Initial Access & Authentication
 

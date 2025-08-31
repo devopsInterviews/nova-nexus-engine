@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: mcp-client-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-mcp_client}
+      POSTGRES_USER: ${DATABASE_USER:-nova_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-NovaNextDevPassword2025!}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - mcp-client-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-nova_user} -d ${DATABASE_NAME:-mcp_client}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # MCP Client App (Frontend + Backend)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-client-app
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      DATABASE_URL: postgresql://${DATABASE_USER:-nova_user}:${DATABASE_PASSWORD:-NovaNextDevPassword2025!}@postgres:5432/${DATABASE_NAME:-mcp_client}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${DATABASE_NAME:-mcp_client}
+      DATABASE_USER: ${DATABASE_USER:-nova_user}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-NovaNextDevPassword2025!}
+      
+      # Server Configuration
+      CLIENT_HOST: 0.0.0.0
+      CLIENT_PORT: 8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # Authentication
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production-please}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+      
+      # MCP Configuration
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-http://localhost:8050/mcp/}
+      
+      # LLM Configuration
+      LLM_API_URL: ${LLM_API_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_SSL_VERIFY: ${LLM_SSL_VERIFY:-true}
+      
+      # Environment
+      ENVIRONMENT: production
+      DEBUG: ${DEBUG:-false}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mcp-client-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    name: mcp-client-postgres-data
+
+networks:
+  mcp-client-network:
+    name: mcp-client-network
+    driver: bridge

@@ -4,7 +4,7 @@
 Write-Host "Starting user_activities migration..." -ForegroundColor Yellow
 
 # Change to the project directory
-Set-Location "c:\Users\shafi\Documents\Work\mcp-client\nova-nexus-engine"
+Set-Location "c:\Users\shafi\Documents\Work\mcp-client\mcp-client"
 
 # Run the Python migration script
 try {

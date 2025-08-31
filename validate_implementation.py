@@ -140,7 +140,7 @@ def validate_backend_integration():
 
 def main():
     """Main validation function"""
-    print("🔍 Nova Nexus Engine - Implementation Validation")
+    print("🔍 MCP Client - Implementation Validation")
     print("=" * 50)
     print()
     
