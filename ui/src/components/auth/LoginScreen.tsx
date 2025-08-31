@@ -266,7 +266,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-start mb-4">
-                <h2 className="text-xl font-bold gradient-text">MCP Control System v2.0</h2>
+                <h2 className="text-xl font-bold gradient-text">MCP Control System </h2>
                 <Button
                   variant="ghost"
                   size="sm"
