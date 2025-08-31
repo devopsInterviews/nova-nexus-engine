@@ -8,8 +8,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-mcp_client}
-      POSTGRES_USER: ${DATABASE_USER:-nova_user}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-NovaNextDevPassword2025!}
+      POSTGRES_USER: ${DATABASE_USER:-mcp_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-mcp_password}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "${DATABASE_PORT:-5432}:5432"
@@ -19,7 +19,7 @@ services:
     networks:
       - mcp-client-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-nova_user} -d ${DATABASE_NAME:-mcp_client}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-mcp_user} -d ${DATABASE_NAME:-mcp_client}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,12 +34,12 @@ services:
     restart: unless-stopped
     environment:
       # Database Configuration
-      DATABASE_URL: postgresql://${DATABASE_USER:-nova_user}:${DATABASE_PASSWORD:-NovaNextDevPassword2025!}@postgres:5432/${DATABASE_NAME:-mcp_client}
+      DATABASE_URL: postgresql://${DATABASE_USER:-mcp_user}:${DATABASE_PASSWORD:-mcp_password}@postgres:5432/${DATABASE_NAME:-mcp_client}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_NAME: ${DATABASE_NAME:-mcp_client}
-      DATABASE_USER: ${DATABASE_USER:-nova_user}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-NovaNextDevPassword2025!}
+      DATABASE_USER: ${DATABASE_USER:-mcp_user}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-mcp_password}
       
       # Server Configuration
       CLIENT_HOST: 0.0.0.0
