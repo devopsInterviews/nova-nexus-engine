@@ -2,18 +2,21 @@
 Analytics middleware for request logging and monitoring.
 
 This middleware automatically logs all requests for analytics purposes,
-tracking performance metrics, error rates, and usage patterns.
+tracking performance metrics, error rates, and usage patterns with detailed 
+line-by-line explanations of how each piece of data is captured and processed.
 """
 
-import time
-import logging
-from datetime import datetime, timedelta
-from typing import Callable
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from sqlalchemy.orm import Session
+import time        # For precise timing measurements of request processing
+import logging     # For structured logging of middleware operations and errors
+from datetime import datetime, timedelta  # For timestamp handling and date calculations
+from typing import Callable  # For type hinting the next middleware function
+from fastapi import Request, Response  # FastAPI request/response objects
+from starlette.middleware.base import BaseHTTPMiddleware  # Base class for custom middleware
+from sqlalchemy.orm import Session  # Database session for analytics data storage
+# Import database models for different types of analytics data
 from app.models import RequestLog, SystemMetrics, PageView, McpServerStatus, UserActivity
 
+# Create logger instance for this module (inherits from parent logger configuration)
 logger = logging.getLogger(__name__)
 
 
@@ -29,50 +32,94 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """Process request and log analytics data."""
+        """
+        Process HTTP request and collect comprehensive analytics data.
+        
+        This middleware function wraps every HTTP request to the application and:
+        
+        1. **Request Capture**: Records request start time and client information
+        2. **Performance Monitoring**: Measures response times and request sizes
+        3. **User Tracking**: Identifies authenticated users via JWT tokens
+        4. **Error Monitoring**: Captures and logs any exceptions or errors
+        5. **Database Logging**: Asynchronously stores analytics data
+        6. **Activity Tracking**: Records user actions for audit and analytics
+        
+        **Data Collected**:
+        - Request method, path, and query parameters
+        - Response status codes and timing
+        - Client IP address and User-Agent
+        - Request/response sizes when available
+        - User ID for authenticated requests
+        - Error messages and stack traces
+        
+        **Performance Metrics**:
+        - Response time in milliseconds
+        - System metrics (request count, error rate)
+        - Real-time performance indicators
+        
+        **User Activity Tracking**:
+        - API endpoint usage patterns
+        - Page view tracking for frontend routes
+        - User action categorization (auth, database, testing, etc.)
+        - Anonymous activity tracking for non-authenticated users
+        
+        **Error Handling**:
+        - Graceful failure for analytics collection
+        - Database connection issues don't affect request processing
+        - Analytics failures are logged but don't block responses
+        
+        **Privacy & Security**:
+        - No sensitive data logged (passwords, tokens)
+        - IP addresses collected for security monitoring
+        - User consent assumed for legitimate business analytics
+        
+        The middleware operates asynchronously to avoid impacting request performance.
+        """
+        # Record the exact time when request processing begins (high precision)
         start_time = time.time()
         
-        # Get client information
-        client_ip = self._get_client_ip(request)
-        user_agent = request.headers.get('User-Agent', '')
-        referer = request.headers.get('Referer', '')
+        # Extract client information from HTTP headers for analytics and security
+        client_ip = self._get_client_ip(request)           # Get real client IP (handles proxies)
+        user_agent = request.headers.get('User-Agent', '') # Browser/client identification string
+        referer = request.headers.get('Referer', '')       # Previous page URL (for navigation tracking)
         
-        # Get request size
-        request_size = None
-        content_length = request.headers.get('Content-Length')
+        # Determine request payload size for bandwidth analytics
+        request_size = None  # Initialize as None (unknown size)
+        content_length = request.headers.get('Content-Length')  # HTTP header with payload size
         if content_length:
             try:
-                request_size = int(content_length)
+                request_size = int(content_length)  # Convert string header to integer bytes
             except ValueError:
-                pass
+                pass  # If conversion fails, leave as None (malformed header)
         
-        # Process the request
-        response = None
-        error_message = None
+        # Initialize response variables before processing request
+        response = None      # Will hold the HTTP response object
+        error_message = None # Will capture any error that occurs during processing
         
         try:
+            # Call the next middleware or route handler in the chain
             response = await call_next(request)
         except Exception as e:
-            # Convert exception to string safely to avoid validation issues
-            error_str = str(e) if not isinstance(e, Exception) else repr(e)
-            logger.error(f"Request failed: {error_str}")
-            error_message = error_str
-            # Create a 500 error response
+            # If any error occurs during request processing, capture it for analytics
+            error_str = str(e) if not isinstance(e, Exception) else repr(e)  # Safe error conversion
+            logger.error(f"Request failed: {error_str}")  # Log error for debugging
+            error_message = error_str  # Store error message for database logging
+            # Create standardized error response for client
             from fastapi.responses import JSONResponse
             response = JSONResponse(
-                status_code=500,
-                content={"detail": "Internal server error"}
+                status_code=500,  # Internal Server Error status
+                content={"detail": "Internal server error"}  # Generic error message
             )
         
-        # Calculate metrics
-        end_time = time.time()
-        response_time_ms = int((end_time - start_time) * 1000)
+        # Calculate performance metrics after request completion
+        end_time = time.time()  # Record exact completion time
+        response_time_ms = int((end_time - start_time) * 1000)  # Convert to milliseconds for precision
         
-        # Get response size
-        response_size = None
+        # Determine response payload size for bandwidth analytics
+        response_size = None  # Initialize as None (unknown size)
         if hasattr(response, 'headers') and response.headers.get('Content-Length'):
             try:
-                response_size = int(response.headers['Content-Length'])
+                response_size = int(response.headers['Content-Length'])  # Convert header to integer bytes
             except ValueError:
                 pass
         
@@ -287,7 +334,40 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
             logger.error(f"Failed to create database session for user activity tracking: {e}")
     
     def _get_activity_info(self, path: str, method: str) -> tuple[str, str]:
-        """Get activity type and action based on API path and method."""
+        """
+        Categorize API requests into meaningful activity types and actions.
+        
+        This function analyzes the request path and HTTP method to determine:
+        1. **Activity Type**: High-level category (auth, database, analytics, etc.)
+        2. **Action Description**: Specific action taken by the user
+        
+        **Categories**:
+        - **auth**: Login, logout, token refresh
+        - **user_management**: User CRUD operations, password changes
+        - **database**: SQL queries, connection testing, schema operations
+        - **mcp**: Model Context Protocol server interactions
+        - **analytics**: Metrics collection, page view tracking
+        - **testing**: Test execution and management
+        - **bi**: Business Intelligence and reporting
+        - **api**: General API operations
+        
+        **Usage in Analytics**:
+        - User behavior analysis
+        - Feature usage tracking
+        - Security audit trails
+        - Performance optimization insights
+        
+        **Examples**:
+        - POST /api/auth/login → ('auth', 'User login')
+        - GET /api/database/query → ('database', 'SQL query executed')
+        - POST /api/analytics/log-page-view → ('analytics', 'Page view logged')
+        
+        This categorization enables:
+        - Dashboard metrics by feature area
+        - User journey analysis
+        - Security monitoring for sensitive operations
+        - Feature adoption tracking
+        """
         # Map API paths to activity types and actions
         if '/auth/' in path:
             if method == 'POST' and '/login' in path:
