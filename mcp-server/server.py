@@ -52,27 +52,92 @@ async def list_databases(
 
 
 @mcp.tool()
+async def list_database_schemas(
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    database: str,
+    database_type: str = "postgres"
+) -> List[str]:
+    """
+    Retrieve all schema names from a specified database, for Postgres or MSSQL.
+
+    This tool connects to the specified database and lists all non-system schemas.
+    For Postgres it excludes system schemas like information_schema, pg_catalog, etc.
+
+    Args:
+      host (str):          IP or hostname of the DB server.
+      port (int):          TCP port (Postgres default 5432, MSSQL default 1433).
+      user (str):          Username with list-permissions.
+      password (str):      Password for the user.
+      database (str):      Database name to connect to and list schemas from.
+      database_type (str): Either "postgres" or "mssql".
+
+    Returns:
+      List[str]:           List of schema names.
+
+    Raises:
+      ValueError:
+        If `database_type` is unsupported.
+      asyncpg.PostgresError:
+        On any Postgres connection or query failure.
+    """
+    if database_type == "postgres":
+        client = PostgresClient(host, port, user, password,
+                                database=database, min_size=1, max_size=5)
+    elif database_type == "mssql":
+        # MSSQL client would need similar schema listing functionality
+        # For now, just support Postgres
+        raise ValueError("MSSQL schema listing not yet implemented")
+    else:
+        raise ValueError(f"Unsupported database_type: {database_type!r}")
+
+    await client.init()
+    logger.info("Connected to %s at %s:%s/%s as %s", database_type, host, port, database, user)
+
+    try:
+        schemas = await client.list_schemas()
+        logger.info("Schemas found: %s", schemas)
+        return schemas
+    finally:
+        await client.close()
+
+
+@mcp.tool()
 async def list_database_tables(
     host: str,
     port: int,
     user: str,
     password: str,
     database: str = "",
-    database_type: str = "postgres"
+    database_type: str = "postgres",
+    schema: str = None
 ) -> str:
     """
     List all user tables in the specified database, for Postgres or MSSQL.
 
+    Args:
+      host (str):          IP or hostname of the DB server.
+      port (int):          TCP port (Postgres default 5432, MSSQL default 1433).
+      user (str):          Username with list-permissions.
+      password (str):      Password for the user.
+      database (str):      Database name to connect to.
+      database_type (str): Either "postgres" or "mssql".
+      schema (str):        Optional schema name. If provided, only tables from this schema.
+                          If None, tables from all non-system schemas (default: 'public' for backward compatibility).
+
     Returns:
       A JSON‐encoded array of table names, e.g. '["shops","items","sales"]'.
+      When schema is None, returns tables from all schemas.
 
     Raises:
       ValueError: If `database_type` is unsupported.
       Otherwise, re-raises any DB client errors so you can see them.
     """
     logger.info(
-        "list_database_tables called against %s:%s/%s as %s (%s)",
-        host, port, database or "<default>", user, database_type
+        "list_database_tables called against %s:%s/%s as %s (%s) schema=%s",
+        host, port, database or "<default>", user, database_type, schema or "all"
     )
 
     # 1) Instantiate the right client
@@ -94,8 +159,20 @@ async def list_database_tables(
 
     try:
         # 3) Fetch raw list
-        tables_list: List[str] = await client.list_tables()
-        logger.debug("Raw tables_list for %s: %r", database_type, tables_list)
+        # For backward compatibility, use 'public' schema when no schema specified
+        # and we're not explicitly asking for all schemas
+        if database_type == "postgres":
+            if schema is None:
+                # Default behavior: get tables from all schemas for enhanced functionality
+                tables_list: List[str] = await client.list_tables()
+            else:
+                # Get tables from specific schema
+                tables_list: List[str] = await client.list_tables(schema)
+        else:
+            # For MSSQL, maintain existing behavior (schema parameter ignored for now)
+            tables_list: List[str] = await client.list_tables()
+        
+        logger.debug("Raw tables_list for %s (schema=%s): %r", database_type, schema or "all", tables_list)
 
         # 4) Serialize
         tables_json = json.dumps(tables_list)
@@ -125,7 +202,8 @@ async def list_database_keys(
     user: str,
     password: str,
     database: str,
-    database_type: str = "postgres"
+    database_type: str = "postgres",
+    schema: str = None
 ) -> Dict[str, List[str]]:
     """
     List all column names (“keys”) for each table in the specified database,
@@ -176,8 +254,13 @@ async def list_database_keys(
 
     await client.init()
     try:
-        keys_map = await client.list_keys()
-        logger.debug("Keys map: %s", keys_map)
+        # Pass schema parameter to list_keys for enhanced functionality
+        if database_type == "postgres":
+            keys_map = await client.list_keys(schema)
+        else:
+            # For MSSQL, maintain existing behavior (schema parameter ignored for now)
+            keys_map = await client.list_keys()
+        logger.debug("Keys map (schema=%s): %s", schema or "all", keys_map)
         return keys_map
     finally:
         await client.close()
@@ -278,8 +361,9 @@ async def suggest_keys_for_analytics(
     )
     await pg.init()
     try:
+        # Get keys from all schemas for comprehensive analytics
         keys_map: Dict[str, List[str]] = await pg.list_keys()
-        logger.debug("Keys map: %s", keys_map)
+        logger.debug("Keys map (all schemas): %s", keys_map)
     finally:
         await pg.close()
 
@@ -329,6 +413,7 @@ async def run_analytics_query_on_database(
     pg = PostgresClient(host, port, user, password, database)
     await pg.init()
     try:
+        # Get keys from all schemas for comprehensive analytics
         schema = await pg.list_keys()
     except Exception as e:
         logger.exception("DB list_keys failed: %s", e)
