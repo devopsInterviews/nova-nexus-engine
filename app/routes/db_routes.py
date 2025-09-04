@@ -385,16 +385,23 @@ async def list_tables(
 
         # Call MCP tool to list tables
         try:
+            # Prepare arguments for the tool call
+            tool_args = {
+                "host": data["host"],
+                "port": data["port"],
+                "user": data["user"],
+                "password": data["password"],
+                "database": data["database"],
+                "database_type": data["database_type"]
+            }
+            
+            # Add schema parameter if provided in request
+            if "schema" in data and data["schema"]:
+                tool_args["schema"] = data["schema"]
+            
             result = await _mcp_session.call_tool(
                 "list_database_tables",
-                arguments={
-                    "host": data["host"],
-                    "port": data["port"],
-                    "user": data["user"],
-                    "password": data["password"],
-                    "database": data["database"],
-                    "database_type": data["database_type"]
-                }
+                arguments=tool_args
             )
             
             # Process the response
@@ -418,6 +425,72 @@ async def list_tables(
             
     except Exception as e:
         logger.error(f"List tables request failed: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": f"Request processing failed: {str(e)}"
+            }
+        )
+
+@router.post("/list-schemas")
+async def list_schemas(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    """
+    List schemas in the database
+    """
+    from app.client import _mcp_session  # Import here to avoid circular imports
+    
+    try:
+        # Parse request data
+        data = await request.json()
+
+        # Resolve from profile if needed
+        saved_connections = _load_saved_connections(current_user.id, db)
+        data = _resolve_connection_payload(data, saved_connections)
+
+        logger.info("Listing schemas for %s on %s:%s/%s", data['database_type'], data['host'], data['port'], data['database'])
+
+        # Call MCP tool to list schemas
+        try:
+            result = await _mcp_session.call_tool(
+                "list_database_schemas",
+                arguments={
+                    "host": data["host"],
+                    "port": data["port"],
+                    "user": data["user"],
+                    "password": data["password"],
+                    "database": data["database"],
+                    "database_type": data["database_type"]
+                }
+            )
+            
+            # Process the response
+            if result.content and len(result.content) > 0:
+                schemas = result.content[0].text if isinstance(result.content[0].text, list) else json.loads(result.content[0].text)
+            else:
+                schemas = []
+            
+            return JSONResponse({
+                "status": "success",
+                "data": schemas
+            })
+                
+        except Exception as tool_error:
+            logger.error(f"List schemas tool error: {str(tool_error)}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "error": f"List schemas failed: {str(tool_error)}"
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"List schemas request failed: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={
@@ -1133,14 +1206,19 @@ async def sync_all_tables_with_progress(
                 results.append({"table": tbl, "newColumns": [], "error": "no_schema"})
                 continue
 
+            # Extract table name without schema for Confluence formatting
+            # If tbl is "public.users" or "analytics.stats", extract just "users" or "stats"
+            table_name_only = tbl.split(".", 1)[-1] if "." in tbl else tbl
+            
             # --- Step 3a: Compute delta (which columns are missing from Confluence) ---
-            logger.debug("sync_all_tables: computing delta for table %s with %d columns", tbl, len(all_cols))
+            logger.debug("sync_all_tables: computing delta for table %s (schema-aware: %s) with %d columns", 
+                        table_name_only, tbl, len(all_cols))
             delta_res = await _mcp_session.call_tool(
                 "get_table_delta_keys",
                 arguments={
                     "space": data["space"],
                     "title": data["title"],
-                    "columns": [f"{tbl}.{c}" for c in all_cols]
+                    "columns": [f"{table_name_only}.{c}" for c in all_cols]  # Use table name without schema
                 },
                 read_timeout_seconds=timedelta(seconds=60),
             )
@@ -1162,12 +1240,12 @@ async def sync_all_tables_with_progress(
             logger.info("sync_all_tables: found %d missing columns for table %s", len(missing), tbl)
 
             # --- Step 3b: Describe only the missing columns ---
-            logger.debug("sync_all_tables: describing missing columns for table %s", tbl)
+            logger.debug("sync_all_tables: describing missing columns for table %s (schema-aware: %s)", table_name_only, tbl)
             desc_res = await _mcp_session.call_tool(
                 "describe_columns",
                 arguments={
                     **common_args,
-                    "table": tbl,
+                    "table": tbl,  # Use full schema.table name for describe_columns
                     "columns": [c.split(".", 1)[1] for c in missing],
                     "limit": data["limit"],
                 },
@@ -1203,10 +1281,10 @@ async def sync_all_tables_with_progress(
                     logger.error("sync_all_tables: failed to parse sync JSON for %s: %s", tbl, e)
 
             synced_columns = sync_info.get("delta", [])
-            logger.info("sync_all_tables: synced %d columns for table %s", len(synced_columns), tbl)
+            logger.info("sync_all_tables: synced %d columns for table %s (schema-aware: %s)", len(synced_columns), table_name_only, tbl)
 
             results.append({
-                "table": tbl,
+                "table": table_name_only,  # Use clean table name for UI display
                 "newColumns": synced_columns,
                 "error": None
             })
@@ -1376,11 +1454,11 @@ async def sync_all_tables_with_progress_stream(
                 # Update progress for current table
                 progress_data.update({
                     "stage": "processing_table",
-                    "current_table": tbl,
+                    "current_table": table_name_only,  # Display clean table name
                     "current_table_index": table_index + 1,
                     "progress_percentage": int(current_progress),
-                    "stage_details": f"Processing table '{tbl}' ({table_index + 1}/{len(tables)})",
-                    "tables_pending": tables[table_index + 1:]
+                    "stage_details": f"Processing table '{table_name_only}' ({table_index + 1}/{len(tables)})",
+                    "tables_pending": [t.split(".", 1)[-1] if "." in t else t for t in tables[table_index + 1:]]  # Clean table names for display
                 })
                 yield f"data: {json.dumps(progress_data)}\n\n"
                 
@@ -1393,17 +1471,21 @@ async def sync_all_tables_with_progress_stream(
                     progress_data["summary"]["failed_tables"] += 1
                     continue
 
+                # Extract table name without schema for Confluence formatting
+                # If tbl is "public.users" or "analytics.stats", extract just "users" or "stats"
+                table_name_only = tbl.split(".", 1)[-1] if "." in tbl else tbl
+
                 # Sub-stage 3a: Compute delta
-                progress_data["stage_details"] = f"Computing delta for table '{tbl}' - checking {len(all_cols)} columns"
+                progress_data["stage_details"] = f"Computing delta for table '{table_name_only}' (schema-aware: {tbl}) - checking {len(all_cols)} columns"
                 yield f"data: {json.dumps(progress_data)}\n\n"
-                logger.debug("sync_all_tables_with_progress_stream: computing delta for table %s", tbl)
+                logger.debug("sync_all_tables_with_progress_stream: computing delta for table %s (schema-aware: %s)", table_name_only, tbl)
                 
                 delta_res = await _mcp_session.call_tool(
                     "get_table_delta_keys",
                     arguments={
                         "space": data["space"],
                         "title": data["title"],
-                        "columns": [f"{tbl}.{c}" for c in all_cols]
+                        "columns": [f"{table_name_only}.{c}" for c in all_cols]  # Use table name without schema
                     },
                     read_timeout_seconds=timedelta(seconds=60),
                 )
@@ -1418,19 +1500,19 @@ async def sync_all_tables_with_progress_stream(
 
                 if not missing:
                     logger.info("sync_all_tables_with_progress_stream: no missing columns for table %s", tbl)
-                    progress_data["stage_details"] = f"No new columns found for table '{tbl}' - already up to date"
+                    progress_data["stage_details"] = f"No new columns found for table '{table_name_only}' - already up to date"
                     yield f"data: {json.dumps(progress_data)}\n\n"
                     
-                    result = {"table": tbl, "newColumns": [], "error": None, "stage": "completed"}
+                    result = {"table": table_name_only, "newColumns": [], "error": None, "stage": "completed"}
                     results.append(result)
                     progress_data["tables_processed"].append(result)
                     progress_data["summary"]["successful_tables"] += 1
                     continue
 
                 # Sub-stage 3b: Describe missing columns
-                progress_data["stage_details"] = f"Found {len(missing)} missing columns for '{tbl}' - generating descriptions"
+                progress_data["stage_details"] = f"Found {len(missing)} missing columns for '{table_name_only}' - generating descriptions"
                 yield f"data: {json.dumps(progress_data)}\n\n"
-                logger.info("sync_all_tables_with_progress_stream: found %d missing columns for table %s", len(missing), tbl)
+                logger.info("sync_all_tables_with_progress_stream: found %d missing columns for table %s (schema-aware: %s)", len(missing), table_name_only, tbl)
                 
                 desc_res = await _mcp_session.call_tool(
                     "describe_columns",
@@ -1474,13 +1556,13 @@ async def sync_all_tables_with_progress_stream(
                         logger.error("sync_all_tables_with_progress_stream: failed to parse sync JSON for %s: %s", tbl, e)
 
                 synced_columns = sync_info.get("delta", [])
-                logger.info("sync_all_tables_with_progress_stream: synced %d columns for table %s", len(synced_columns), tbl)
+                logger.info("sync_all_tables_with_progress_stream: synced %d columns for table %s (schema-aware: %s)", len(synced_columns), table_name_only, tbl)
 
                 # Update completion for this table
-                progress_data["stage_details"] = f"Completed table '{tbl}' - synced {len(synced_columns)} new columns"
+                progress_data["stage_details"] = f"Completed table '{table_name_only}' - synced {len(synced_columns)} new columns"
                 yield f"data: {json.dumps(progress_data)}\n\n"
 
-                result = {"table": tbl, "newColumns": synced_columns, "error": None, "stage": "completed"}
+                result = {"table": table_name_only, "newColumns": synced_columns, "error": None, "stage": "completed"}
                 results.append(result)
                 progress_data["tables_processed"].append(result)
                 progress_data["summary"]["successful_tables"] += 1

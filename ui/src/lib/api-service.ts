@@ -207,6 +207,15 @@ export const dbService = {
     });
   },
 
+  // Get list of all schema names in the database
+  listSchemas: async (connection: DbConnection): Promise<ApiResponse<string[]>> => { // string[] = array of strings
+    const body = buildPayload(connection); // Prepare connection payload
+    return fetchApi<string[]>('/api/list-schemas', { // <string[]> explicitly tells TypeScript what data type to expect
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
   // Get detailed information about columns in a specific table
   // Intersection type (&): combines DbConnection with additional fields
   describeColumns: async (connection: DbConnection & { table: string; limit?: number }): 
