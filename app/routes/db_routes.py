@@ -20,6 +20,53 @@ from app.routes.auth_routes import get_current_user
 router = APIRouter(tags=["database"])  # prefix inherited from app.include_router("/api")
 logger = logging.getLogger("uvicorn.error")
 
+def clean_table_column_for_ui(name: str) -> str:
+    """
+    Clean table or column names for UI display by removing schema prefixes.
+    
+    Examples:
+    - "public.users" -> "users"
+    - "analytics.user_stats" -> "user_stats" 
+    - "public.users.id" -> "users.id"
+    - "simple_table" -> "simple_table"
+    
+    For backend operations that need schema qualification, use the original names.
+    """
+    if "." in name:
+        parts = name.split(".")
+        if len(parts) == 2:
+            # schema.table -> table
+            return parts[1]
+        elif len(parts) == 3:
+            # schema.table.column -> table.column
+            return f"{parts[1]}.{parts[2]}"
+    return name
+
+def clean_schema_map_for_ui(schema_map: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    """
+    Clean a schema map (table -> columns mapping) for UI display.
+    Converts schema.table keys to clean table names.
+    """
+    cleaned = {}
+    for table_key, columns in schema_map.items():
+        clean_table_name = clean_table_column_for_ui(table_key)
+        if clean_table_name in cleaned:
+            # Merge columns if same table name from different schemas
+            existing_cols = set(cleaned[clean_table_name])
+            new_cols = set(columns)
+            cleaned[clean_table_name] = list(existing_cols.union(new_cols))
+        else:
+            cleaned[clean_table_name] = columns
+    return cleaned
+
+def log_schema_source(table_with_schema: str, clean_table: str) -> None:
+    """
+    Log schema information for debugging/tracking purposes.
+    """
+    if "." in table_with_schema and table_with_schema != clean_table:
+        schema = table_with_schema.split(".", 1)[0]
+        logger.info(f"Schema info: table '{clean_table}' sourced from schema '{schema}' (full: {table_with_schema})")
+
 def _mask_secret(value: Optional[str]) -> str:
     if not value:
         return ""
@@ -406,11 +453,19 @@ async def list_tables(
             
             # Process the response
             tables_text = result.content[0].text if result.content else "[]"
-            tables = json.loads(tables_text)
+            tables_raw = json.loads(tables_text)
+            
+            # Clean table names for UI display (remove schema prefixes)
+            tables_cleaned = []
+            for table in tables_raw:
+                clean_table = clean_table_column_for_ui(table)
+                tables_cleaned.append(clean_table)
+                # Log schema source information
+                log_schema_source(table, clean_table)
             
             return JSONResponse({
                 "status": "success",
-                "data": tables
+                "data": tables_cleaned
             })
                 
         except Exception as tool_error:
@@ -542,11 +597,17 @@ async def describe_columns(
             columns_text = result.content[0].text if result.content else "[]"
             columns = json.loads(columns_text)
             
-            # Transform to include data types
+            # Transform to include data types and clean column names for UI
             formatted_columns = []
             for col in columns:
+                column_raw = col.get("column", "")
+                column_clean = clean_table_column_for_ui(column_raw)
+                
+                # Log schema source information
+                log_schema_source(column_raw, column_clean)
+                
                 formatted_columns.append({
-                    "column": col.get("column", ""),
+                    "column": column_clean,
                     "description": col.get("description", ""),
                     "data_type": col.get("data_type", "")
                 })
@@ -608,7 +669,7 @@ async def get_table_rows(
             )
             rows_text = result.content[0].text if result.content else "{}"
             payload = json.loads(rows_text) if rows_text.strip() else {"rows": []}
-            # Normalize
+            # Normalize and clean column names for UI
             columns = payload.get("columns")
             rows = payload.get("rows") or []
             if not columns and rows:
@@ -616,6 +677,17 @@ async def get_table_rows(
                 first = rows[0]
                 if isinstance(first, dict):
                     columns = list(first.keys())
+            
+            # Clean column names for UI display (remove any schema prefixes)
+            if columns:
+                cleaned_columns = []
+                for col in columns:
+                    clean_col = clean_table_column_for_ui(col)
+                    cleaned_columns.append(clean_col)
+                    # Log schema source if different
+                    log_schema_source(col, clean_col)
+                columns = cleaned_columns
+                
             return JSONResponse({
                 "status": "success",
                 "data": {
@@ -786,12 +858,12 @@ async def suggest_columns(
             
             if len(parts) >= 3:
                 # Standard format: "table.column - description - type"
-                column_name = parts[0]
+                column_name_raw = parts[0]
                 description = parts[1]
                 data_type = parts[2]
             elif len(parts) == 2:
                 # Format: "table.column - description with type at end"
-                column_name = parts[0]
+                column_name_raw = parts[0]
                 description_with_type = parts[1]
                 
                 # Try to extract type from end of description
@@ -810,9 +882,15 @@ async def suggest_columns(
                     data_type = "TEXT"
             else:
                 # Only column name provided
-                column_name = parts[0] if parts else key
+                column_name_raw = parts[0] if parts else key
                 description = ""
                 data_type = "TEXT"
+            
+            # Clean column name for UI display (remove schema prefix)
+            column_name = clean_table_column_for_ui(column_name_raw)
+            
+            # Log schema source information
+            log_schema_source(column_name_raw, column_name)
             
             # Clean up the data type - handle VARCHAR(255) etc.
             if data_type != "TEXT":
@@ -1450,6 +1528,9 @@ async def sync_all_tables_with_progress_stream(
             for table_index, tbl in enumerate(tables):
                 current_progress = 10 + (table_index * table_progress_increment)
                 logger.info("sync_all_tables_with_progress_stream: processing table %d/%d: %s", table_index + 1, len(tables), tbl)
+                
+                # Extract clean table name (without schema prefix)
+                table_name_only = tbl.split(".", 1)[-1] if "." in tbl else tbl
                 
                 # Update progress for current table
                 progress_data.update({

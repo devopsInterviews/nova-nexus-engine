@@ -1,3 +1,9 @@
+import asyncpg
+import logging
+from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
+
 class PostgresClient:
     """
     Async client for PostgreSQL, with dynamic connection parameters
@@ -166,12 +172,12 @@ class PostgresClient:
             schema: If specified, only return keys for tables in this schema.
                    If None, return keys for tables in all non-system schemas.
                    When schema is None, table names in the result will be prefixed
-                   with schema name (e.g., "public.users").
+                   with schema name (e.g., "public.users") for backend operations.
 
         Queries information_schema.columns for all columns in the specified schema(s),
         then groups them by table_name.
 
-        :returns: Dict where each key is a table name (or schema.table_name) and 
+        :returns: Dict where each key is a table name (or schema.table_name when schema=None) and 
                   the value is the ordered list of that table's column names.
         :raises: AssertionError if the pool isn't initialized, or asyncpg errors
                  for connection/query issues.
@@ -207,7 +213,119 @@ class PostgresClient:
                      ORDER BY table_schema, table_name, ordinal_position;
                     """
                 )
-                # Use schema.table_name as key when querying all schemas
+                # Use schema.table_name as key when querying all schemas for backend operations
+                result: Dict[str, List[str]] = {}
+                for row in rows:
+                    tbl_key = f"{row['table_schema']}.{row['table_name']}"
+                    col = row["column_name"]
+                    result.setdefault(tbl_key, []).append(col)
+        
+        return result
+
+    async def list_keys_display_format(self, schema: str = None) -> Dict[str, List[str]]:
+        """
+        Return a mapping of each table name to its list of column names
+        formatted for UI display (clean table.column format).
+
+        Args:
+            schema: If specified, only return keys for tables in this schema.
+                   If None, return keys for tables in all non-system schemas.
+                   
+        Returns clean table names as keys (without schema prefix) for UI display.
+
+        :returns: Dict where each key is a clean table name and 
+                  the value is the ordered list of that table's column names.
+        """
+        assert self._pool is not None, "Connection pool is not initialized"
+        async with self._pool.acquire() as conn:
+            if schema:
+                # fetch table + column combos for specific schema
+                rows = await conn.fetch(
+                    """
+                    SELECT table_name, column_name
+                      FROM information_schema.columns
+                     WHERE table_schema = $1
+                     ORDER BY table_name, ordinal_position;
+                    """,
+                    schema
+                )
+                # Use just table name as key when querying specific schema
+                result: Dict[str, List[str]] = {}
+                for row in rows:
+                    tbl = row["table_name"]
+                    col = row["column_name"]
+                    result.setdefault(tbl, []).append(col)
+            else:
+                # fetch table + column combos for all non-system schemas
+                rows = await conn.fetch(
+                    """
+                    SELECT table_schema, table_name, column_name
+                      FROM information_schema.columns
+                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                       AND table_schema NOT LIKE 'pg_temp_%'
+                       AND table_schema NOT LIKE 'pg_toast_temp_%'
+                     ORDER BY table_schema, table_name, ordinal_position;
+                    """
+                )
+                # Use clean table_name as key, merge columns from different schemas
+                result: Dict[str, List[str]] = {}
+                for row in rows:
+                    tbl_key = row["table_name"]  # Clean table name without schema
+                    col = row["column_name"]
+                    if tbl_key not in result:
+                        result[tbl_key] = []
+                    if col not in result[tbl_key]:  # Avoid duplicates if same column exists in multiple schemas
+                        result[tbl_key].append(col)
+        
+        return result
+
+    async def list_keys_with_schema_info(self, schema: str = None) -> Dict[str, List[str]]:
+        """
+        Return a mapping of each table name to its list of column names,
+        with schema information preserved for backend operations.
+
+        Args:
+            schema: If specified, only return keys for tables in this schema.
+                   If None, return keys for tables in all non-system schemas.
+                   
+        Returns schema.table names as keys (with schema prefix) for backend operations.
+        This method is used internally where schema information is needed.
+
+        :returns: Dict where each key is schema.table_name and 
+                  the value is the ordered list of that table's column names.
+        """
+        assert self._pool is not None, "Connection pool is not initialized"
+        async with self._pool.acquire() as conn:
+            if schema:
+                # fetch table + column combos for specific schema
+                rows = await conn.fetch(
+                    """
+                    SELECT table_name, column_name
+                      FROM information_schema.columns
+                     WHERE table_schema = $1
+                     ORDER BY table_name, ordinal_position;
+                    """,
+                    schema
+                )
+                # Use just table name as key when querying specific schema
+                result: Dict[str, List[str]] = {}
+                for row in rows:
+                    tbl = row["table_name"]
+                    col = row["column_name"]
+                    result.setdefault(tbl, []).append(col)
+            else:
+                # fetch table + column combos for all non-system schemas
+                rows = await conn.fetch(
+                    """
+                    SELECT table_schema, table_name, column_name
+                      FROM information_schema.columns
+                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                       AND table_schema NOT LIKE 'pg_temp_%'
+                       AND table_schema NOT LIKE 'pg_toast_temp_%'
+                     ORDER BY table_schema, table_name, ordinal_position;
+                    """
+                )
+                # Use schema.table_name as key for backend operations
                 result: Dict[str, List[str]] = {}
                 for row in rows:
                     tbl_key = f"{row['table_schema']}.{row['table_name']}"
