@@ -109,11 +109,12 @@ class PostgresClient:
                     """,
                     schema
                 )
+                return [r["table_name"] for r in rows]
             else:
-                # Get tables from all non-system schemas
+                # Get tables from all non-system schemas - return simple table names
                 rows = await conn.fetch(
                     """
-                    SELECT table_name
+                    SELECT DISTINCT table_name
                       FROM information_schema.tables
                      WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
                        AND table_schema NOT LIKE 'pg_temp_%'
@@ -122,7 +123,7 @@ class PostgresClient:
                      ORDER BY table_name;
                     """
                 )
-        return [r["table_name"] for r in rows]
+                return [r["table_name"] for r in rows]
 
     async def list_tables_with_schema(self, schema: str = None) -> List[str]:
         """
@@ -166,21 +167,14 @@ class PostgresClient:
     async def list_keys(self, schema: str = None) -> Dict[str, List[str]]:
         """
         Return a mapping of each table name to its list of column names
-        (i.e. "keys") in the connected database.
+        in table.column format.
 
         Args:
             schema: If specified, only return keys for tables in this schema.
                    If None, return keys for tables in all non-system schemas.
-                   When schema is None, table names in the result will be prefixed
-                   with schema name (e.g., "public.users") for backend operations.
 
-        Queries information_schema.columns for all columns in the specified schema(s),
-        then groups them by table_name.
-
-        :returns: Dict where each key is a table name (or schema.table_name when schema=None) and 
-                  the value is the ordered list of that table's column names.
-        :raises: AssertionError if the pool isn't initialized, or asyncpg errors
-                 for connection/query issues.
+        :returns: Dict where each key is a table name and the value is 
+                  a list of "table.column" formatted strings.
         """
         assert self._pool is not None, "Connection pool is not initialized"
         async with self._pool.acquire() as conn:
@@ -195,32 +189,28 @@ class PostgresClient:
                     """,
                     schema
                 )
-                # Use just table name as key when querying specific schema
-                result: Dict[str, List[str]] = {}
-                for row in rows:
-                    tbl = row["table_name"]
-                    col = row["column_name"]
-                    result.setdefault(tbl, []).append(col)
             else:
                 # fetch table + column combos for all non-system schemas
                 rows = await conn.fetch(
                     """
-                    SELECT table_schema, table_name, column_name
+                    SELECT table_name, column_name
                       FROM information_schema.columns
                      WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
                        AND table_schema NOT LIKE 'pg_temp_%'
                        AND table_schema NOT LIKE 'pg_toast_temp_%'
-                     ORDER BY table_schema, table_name, ordinal_position;
+                     ORDER BY table_name, ordinal_position;
                     """
                 )
-                # Use schema.table_name as key when querying all schemas for backend operations
-                result: Dict[str, List[str]] = {}
-                for row in rows:
-                    tbl_key = f"{row['table_schema']}.{row['table_name']}"
-                    col = row["column_name"]
-                    result.setdefault(tbl_key, []).append(col)
-        
-        return result
+            
+            # Group by table and format as table.column
+            result: Dict[str, List[str]] = {}
+            for row in rows:
+                table_name = row["table_name"]
+                column_name = row["column_name"]
+                table_column = f"{table_name}.{column_name}"
+                result.setdefault(table_name, []).append(table_column)
+            
+            return result
 
     async def list_keys_display_format(self, schema: str = None) -> Dict[str, List[str]]:
         """
