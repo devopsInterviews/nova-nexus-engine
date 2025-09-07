@@ -667,14 +667,22 @@ async def suggest_columns(
             + "\n\n---\n"
             + "KNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
             + json.dumps(key_descriptions, ensure_ascii=False)
-            + "\n\nGuidance: Analyze the request and select relevant columns from the KNOWN_COLUMN_DESCRIPTIONS_JSON. "
-              "Output ONLY the selected columns in this exact format, one per line:\n"
-              "table.column - schema\n\n"
-              "Example output:\n"
+            + "\n\nIMPORTANT: Select relevant columns from the KNOWN_COLUMN_DESCRIPTIONS_JSON above. "
+              "Return ONLY the column names in one of these formats (one per line):\n\n"
+              "FORMAT 1 (preferred): table.column - schema\n"
+              "FORMAT 2 (alternative): table.column\n"
+              "FORMAT 3 (alternative): schema.table.column\n\n"
+              "Examples:\n"
               "sales.customer_id - public\n"
               "products.name - inventory\n"
-              "orders.total_amount - sales\n\n"
-              "No greetings, no punctuation, no additional text, no descriptions - just the format above."
+              "orders.total_amount\n"
+              "public.users.email\n\n"
+              "DO NOT include:\n"
+              "- Greetings or explanations\n"
+              "- Descriptions or comments\n"
+              "- Punctuation marks\n"
+              "- Any text other than the column identifiers\n\n"
+              "Just return the column identifiers, one per line."
         )
         logger.info(
             "suggest_columns: augmented_user_prompt built (length=%d chars, desc_count=%d)",
@@ -711,11 +719,16 @@ async def suggest_columns(
 
         full_text = "\n".join(m.text for m in parts2 if getattr(m, "text", None))
         logger.debug("suggest_columns: raw suggestion text length=%d chars", len(full_text))
+        logger.debug("suggest_columns: full LLM response:\n%s", full_text)
 
         # Parse LLM response - expecting format "table.column - schema"
         raw_lines = [line.strip() for line in full_text.splitlines() if line.strip()]
         logger.info("suggest_columns: extracted %d raw line(s) from LLM", len(raw_lines))
         logger.debug("suggest_columns: raw lines sample=%s", _sample_list(raw_lines))
+        
+        # Log each line for debugging
+        for i, line in enumerate(raw_lines):
+            logger.debug("suggest_columns: line %d: %r", i+1, line)
 
         # --- Step 4: Process LLM selections and lookup details from Confluence data ---
         columns: List[Dict[str, Any]] = []
@@ -724,23 +737,41 @@ async def suggest_columns(
             logger.debug("suggest_columns: processing line: %s", line)
             
             try:
-                # Parse format: "table.column - schema"
-                if " - " not in line:
-                    logger.warning("suggest_columns: skipping malformed line (no ' - '): %s", line)
-                    continue
-                    
-                parts = line.split(" - ", 1)
-                if len(parts) != 2:
-                    logger.warning("suggest_columns: skipping malformed line (wrong parts): %s", line)
-                    continue
-                    
-                table_column = parts[0].strip()
-                suggested_schema = parts[1].strip()
+                # Parse different possible formats from LLM
+                table_column = None
+                suggested_schema = "public"  # default schema
                 
-                # Validate table.column format
-                if "." not in table_column:
-                    logger.warning("suggest_columns: skipping invalid table.column format: %s", table_column)
+                # Format 1: "table.column - schema"
+                if " - " in line:
+                    parts = line.split(" - ", 1)
+                    if len(parts) == 2:
+                        table_column = parts[0].strip()
+                        suggested_schema = parts[1].strip()
+                
+                # Format 2: "schema.table.column" (fully qualified)
+                elif line.count(".") >= 2:
+                    parts = line.split(".", 2)
+                    if len(parts) == 3:
+                        suggested_schema = parts[0].strip()
+                        table_column = f"{parts[1].strip()}.{parts[2].strip()}"
+                
+                # Format 3: "table.column" (no schema specified)
+                elif "." in line and line.count(".") == 1:
+                    table_column = line.strip()
+                    suggested_schema = "public"  # default
+                
+                # Format 4: Just the column name without table (skip these)
+                else:
+                    logger.warning("suggest_columns: skipping unrecognized format: %s", line)
                     continue
+                
+                # Validate that we extracted table.column format
+                if not table_column or "." not in table_column:
+                    logger.warning("suggest_columns: could not extract table.column from line: %s", line)
+                    continue
+                    
+                logger.debug("suggest_columns: parsed line '%s' -> table_column='%s', schema='%s'", 
+                           line, table_column, suggested_schema)
                 
                 # Look up this column in our Confluence data
                 # Confluence stores data as "table.column" keys with schema info in the value
