@@ -743,22 +743,31 @@ async def suggest_columns(
                     continue
                 
                 # Look up this column in our Confluence data
+                # Confluence stores data as "table.column" keys with schema info in the value
                 column_key = None
                 column_details = None
                 
-                # Try exact match first
+                # Look for table.column format in Confluence data
                 if table_column in key_descriptions:
+                    # Found exact match for table.column
                     column_key = table_column
                     column_details = key_descriptions[table_column]
+                    logger.debug("suggest_columns: found exact match for %s", table_column)
                 else:
-                    # Try to find by partial match (in case schema prefix differs)
+                    # No exact match - log available keys for debugging
+                    available_keys = list(key_descriptions.keys())
+                    logger.debug("suggest_columns: no exact match for %s. Available keys sample: %s", 
+                               table_column, available_keys[:10])
+                    
+                    # Try to find by partial match (table and column name)
                     table_name = table_column.split(".", 1)[0]
                     column_name = table_column.split(".", 1)[1]
                     
-                    for key, details in key_descriptions.items():
-                        if key.endswith(f".{column_name}") and table_name in key:
+                    for key in key_descriptions.keys():
+                        if key == f"{table_name}.{column_name}":
                             column_key = key
-                            column_details = details
+                            column_details = key_descriptions[key]
+                            logger.debug("suggest_columns: found partial match %s for %s", key, table_column)
                             break
                 
                 if not column_details:
@@ -778,13 +787,13 @@ async def suggest_columns(
                 # Extract details from Confluence data
                 description = ""
                 data_type = "UNKNOWN"
-                schema = suggested_schema
+                actual_schema = suggested_schema  # fallback to LLM suggestion
                 
                 if isinstance(column_details, dict):
                     # Already a dictionary - use directly
                     description = column_details.get("description", "")
                     data_type = column_details.get("type", "UNKNOWN")
-                    schema = column_details.get("schema", suggested_schema)
+                    actual_schema = column_details.get("schema", suggested_schema)
                 elif isinstance(column_details, str):
                     # String - could be JSON or plain description
                     try:
@@ -793,7 +802,7 @@ async def suggest_columns(
                         if isinstance(parsed_details, dict):
                             description = parsed_details.get("description", column_details)
                             data_type = parsed_details.get("type", "UNKNOWN")
-                            schema = parsed_details.get("schema", suggested_schema)
+                            actual_schema = parsed_details.get("schema", suggested_schema)
                         else:
                             # JSON but not a dict - treat as description
                             description = str(parsed_details)
@@ -823,11 +832,16 @@ async def suggest_columns(
                     logger.warning("suggest_columns: unexpected column_details format for %s: %s", table_column, type(column_details))
                     description = str(column_details)
                     data_type = "UNKNOWN"
-                    schema = suggested_schema
+                    actual_schema = suggested_schema
                 
-                # Format the final response for UI (name - description - type)
+                # Validate schema match (if we have schema info from Confluence)
+                if actual_schema != suggested_schema:
+                    logger.warning("suggest_columns: schema mismatch for %s - LLM suggested '%s' but Confluence has '%s'", 
+                                 table_column, suggested_schema, actual_schema)
+                
+                # Format the final response for UI using the actual schema from Confluence
                 formatted_column = {
-                    "name": table_column,
+                    "name": f"{actual_schema}.{table_column}" if actual_schema and actual_schema != suggested_schema else table_column,
                     "description": description,
                     "data_type": data_type
                 }
