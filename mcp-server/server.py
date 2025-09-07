@@ -1,7 +1,8 @@
 import json
 import logging
 import re
-from typing import List, Dict, Any
+import asyncio
+from typing import List, Dict, Any, Set, Tuple
 from bs4 import BeautifulSoup
 
 # Import client classes (these should be available from the app directory)
@@ -16,6 +17,494 @@ logger = logging.getLogger(__name__)
 # Note: The actual import will depend on your MCP setup
 # This is a placeholder that represents the MCP framework
 import mcp
+
+@mcp.tool()
+async def get_confluence_page_content(space: str, title: str) -> str:
+    """
+    Fetches the HTML storage-format body of a Confluence page.
+
+    Args:
+      space (str): The Confluence space key (e.g. "PROJ").
+      title (str): The title of the page to fetch.
+
+    Returns:
+      str: The storage-format HTML content of the page body.
+    """
+
+    # Resolve the page ID
+    page_id = await confluence.get_page_id(space, title)
+    # Fetch full page content (including storage body)
+    page = await confluence.get_page_content(page_id, expand="body.storage")
+    # Return the raw HTML/storage value
+    return page["body"]["storage"]["value"]
+
+@mcp.tool()
+async def append_to_confluence_page(space: str, title: str, html_fragment: str) -> str:
+    """
+    Appends an HTML fragment to the end of an existing Confluence page.
+
+    Args:
+      space (str): The Confluence space key.
+      title (str): The title of the page to update.
+      html_fragment (str): A snippet of HTML (storage format) to append.
+
+    Returns:
+      str: Confirmation message including the page ID.
+    """
+    # Resolve the page ID
+    page_id = await confluence.get_page_id(space, title)
+    # Append the fragment and update the page
+    await confluence.append_to_page(page_id, html_fragment)
+    logger.info(f"Appended content to Confluence page '{title}' (ID: {page_id})")
+
+@mcp.tool()
+async def update_confluence_table(
+    space: str,
+    title: str,
+    data: list[dict]
+) -> dict:
+    """
+    Replace the contents of the first <table class="relative-table"> in a Confluence page
+    with new rows generated from a list of column metadata.
+
+    Args:
+        space (str):    Confluence space key (e.g., "PROJ").
+        title (str):    Title of the Confluence page to update.
+        data (list[dict]):
+            A list of dictionaries, each with keys:
+                "column" (str):     Column identifier (e.g., "shops.id").
+                "description" (str): Text description of the column.
+                "type" (str):       Data type of the column (e.g., "integer", "varchar").
+                "schema" (str):     Schema name where the table/view resides.
+                "owner" (str):      Owner information (optional, defaults to empty).
+
+    Returns:
+        dict: The full response from Confluence API's update_page call, containing
+              updated page metadata and version information.
+
+    Raises:
+        ValueError: If the target table (<table class="relative-table">) is not found on the page.
+        Exception: Propagates any errors from the Confluence API client.
+
+    Example:
+        >>> new_rows = [
+        ...     {
+        ...         "column": "shops.id", 
+        ...         "description": "Unique shop ID",
+        ...         "type": "integer",
+        ...         "schema": "public",
+        ...         "owner": ""
+        ...     }
+        ... ]
+        >>> updated = await update_confluence_table("MALL", "Shop Catalog", new_rows)
+        >>> print(updated["version"]["number"])
+    """
+    logger.info("🔍 Updating Confluence table in %s/%s with %d rows", space, title, len(data))
+    
+    # 1) Fetch existing page content in storage format (HTML)
+    page_id = await confluence.get_page_id(space, title)
+    page = await confluence.get_page_content(page_id, expand="body.storage,version")
+    html = page["body"]["storage"]["value"]
+
+    # 2) Parse with BeautifulSoup and locate or create the target table
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table", class_="relative-table")
+    
+    if not table:
+        logger.info("📋 No existing table found, creating new table structure")
+        # Create new table if none exists
+        table = soup.new_tag("table", **{"class": "relative-table"})
+        tbody = soup.new_tag("tbody")
+        
+        # Create header row
+        header_row = soup.new_tag("tr")
+        headers = ["Name", "Description", "Type", "Schema", "Owner"]
+        for header_text in headers:
+            th = soup.new_tag("th")
+            th.string = header_text
+            header_row.append(th)
+        tbody.append(header_row)
+        
+        table.append(tbody)
+        
+        # Add table to the end of the page content
+        if soup.body:
+            soup.body.append(table)
+        else:
+            soup.append(table)
+        
+        logger.info("✅ Created new table with 5-column structure")
+    else:
+        logger.info("📋 Found existing table, updating structure if needed")
+        # Check if table has the right number of columns in header
+        header_row = table.find("tr")
+        if header_row:
+            headers = header_row.find_all(["th", "td"])
+            if len(headers) < 5:
+                logger.info("🔄 Updating table header to 5-column structure")
+                # Clear existing headers and rebuild
+                header_row.clear()
+                header_texts = ["Name", "Description", "Type", "Schema", "Owner"]
+                for header_text in header_texts:
+                    th = soup.new_tag("th")
+                    th.string = header_text
+                    header_row.append(th)
+
+    # 2a) Remove all old rows except the header
+    rows = table.find_all("tr")
+    for old_row in rows[1:]:
+        old_row.extract()
+
+    # 2b) Append new rows from 'data'
+    for entry in data:
+        col_val = entry.get("column", "")
+        desc_val = entry.get("description", "")
+        type_val = entry.get("type", "")
+        schema_val = entry.get("schema", "")
+        owner_val = entry.get("owner", "")
+        
+        new_tr = soup.new_tag("tr")
+        
+        # Create all 5 columns
+        td_col = soup.new_tag("td"); td_col.string = col_val
+        td_desc = soup.new_tag("td"); td_desc.string = desc_val
+        td_type = soup.new_tag("td"); td_type.string = type_val
+        td_schema = soup.new_tag("td"); td_schema.string = schema_val
+        td_owner = soup.new_tag("td"); td_owner.string = owner_val
+        
+        new_tr.extend([td_col, td_desc, td_type, td_schema, td_owner])
+        table.tbody.append(new_tr)
+
+    # 2c) Serialize modified HTML back to a string
+    updated_html = str(soup)
+    logger.debug("Updated HTML length: %d characters", len(updated_html))
+
+    # 3) Push update via Confluence API (auto-bumps version)
+    updated = await confluence.update_page(
+        page_id,
+        title,
+        updated_html,
+        minor_edit=True
+    )
+    
+    logger.info("✅ Successfully updated Confluence table with %d rows", len(data))
+    return updated
+
+@mcp.tool()
+async def sync_confluence_table_delta(
+    space: str,
+    title: str,
+    data: list[dict]
+) -> dict:
+    """
+    Read the existing <table class="relative-table"> from a Confluence page,
+    compute which entries in `data` are not already present (by column key),
+    append only those delta rows to the table, and push the update.
+
+    Args:
+        space (str):    Confluence space key (e.g., "PROJ").
+        title (str):    Title of the Confluence page to update.
+        data (list[dict]):
+            List of dicts with keys "column", "description", "type", "schema", "owner".
+
+    Returns:
+        dict: Full Confluence API response for the update_page call, or
+              an empty dict if no delta rows to append.
+
+    Raises:
+        ValueError: If the target table (<table class="relative-table">) is not found.
+        Exception: Propagates errors from the Confluence client.
+    """
+    logger.info("🔍 Syncing Confluence table delta in %s/%s with %d potential rows", 
+               space, title, len(data))
+    
+    # 1) Fetch current page HTML and version
+    page_id = await confluence.get_page_id(space, title)
+    page = await confluence.get_page_content(page_id, expand="body.storage,version")
+    html = page["body"]["storage"]["value"]
+
+    # 2) Parse HTML and extract existing keys or create table if needed
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table", class_="relative-table")
+    
+    if not table:
+        logger.info("📋 No existing table found, creating new table structure")
+        # Create new table if none exists
+        table = soup.new_tag("table", **{"class": "relative-table"})
+        tbody = soup.new_tag("tbody")
+        
+        # Create header row with 5 columns
+        header_row = soup.new_tag("tr")
+        headers = ["Name", "Description", "Type", "Schema", "Owner"]
+        for header_text in headers:
+            th = soup.new_tag("th")
+            th.string = header_text
+            header_row.append(th)
+        tbody.append(header_row)
+        
+        table.append(tbody)
+        
+        # Add table to the end of the page content
+        if soup.body:
+            soup.body.append(table)
+        else:
+            soup.append(table)
+        
+        existing = set()  # No existing keys since table was just created
+        logger.info("✅ Created new table with 5-column structure")
+    else:
+        # Extract existing keys from first <td> in each <tr> (skip header)
+        existing = set()
+        rows = table.find_all('tr')
+        
+        # Check and update header if needed
+        if rows:
+            header_row = rows[0]
+            headers = header_row.find_all(["th", "td"])
+            if len(headers) < 5:
+                logger.info("🔄 Updating table header to 5-column structure")
+                header_row.clear()
+                header_texts = ["Name", "Description", "Type", "Schema", "Owner"]
+                for header_text in header_texts:
+                    th = soup.new_tag("th")
+                    th.string = header_text
+                    header_row.append(th)
+        
+        # Extract existing keys from data rows
+        for tr in rows[1:]:
+            td = tr.find('td')
+            if td and td.text:
+                existing.add(td.text.strip())
+
+    logger.debug("Existing keys in table: %s", existing)
+    logger.debug("Incoming data keys: %s", [item["column"] for item in data])
+
+    # 3) Determine delta rows
+    delta = [entry for entry in data if entry["column"] not in existing]
+    if not delta:
+        logger.info("✅ No delta rows to add - table is up to date")
+        return {"delta": [], "updated": None}
+    
+    logger.info("📊 Found %d delta rows to add", len(delta))
+    logger.debug("Delta columns: %s", [item["column"] for item in delta])
+
+    # 4) Append delta rows to the table in the soup
+    for entry in delta:
+        col_val = entry.get("column", "")
+        desc_val = entry.get("description", "")
+        type_val = entry.get("type", "")
+        schema_val = entry.get("schema", "")
+        owner_val = entry.get("owner", "")
+        
+        new_tr = soup.new_tag("tr")
+        
+        # Create all 5 columns
+        td_col = soup.new_tag("td"); td_col.string = col_val
+        td_desc = soup.new_tag("td"); td_desc.string = desc_val
+        td_type = soup.new_tag("td"); td_type.string = type_val
+        td_schema = soup.new_tag("td"); td_schema.string = schema_val
+        td_owner = soup.new_tag("td"); td_owner.string = owner_val
+        
+        new_tr.extend([td_col, td_desc, td_type, td_schema, td_owner])
+        table.tbody.append(new_tr)
+
+    updated_html = str(soup)
+
+    # 5) Push update via Confluence API (auto-version)
+    updated = await confluence.update_page(
+        page_id,
+        title,
+        updated_html,
+        minor_edit=True
+    )
+
+    logger.info("✅ Successfully synced %d delta rows to Confluence table", len(delta))
+    return {
+        "delta":   delta,   # list of {column,description,type,schema,owner}
+        "updated": updated  # full API response
+    }
+
+@mcp.tool()
+async def get_confluence_page_id(
+    space: str,
+    title: str
+) -> str:
+    """
+    Retrieve the numeric ID of a Confluence page by space and title.
+    """
+    logger.debug("get_confluence_page_id called with space=%s, title=%s", space, title)
+    page_id = await asyncio.to_thread(
+        confluence.get_page_id,
+        space,
+        title
+    )
+    logger.debug("get_confluence_page_id result: page_id=%s", page_id)
+    return page_id
+
+@mcp.tool()
+async def post_confluence_comment(
+    space: str,
+    title: str,
+    comment: str
+) -> Dict[str, Any]:
+    """
+    Add a comment to a Confluence page by ID.
+    Returns the Confluence API response.
+    """
+    page_id = await confluence.get_page_id(space=space,title=title)
+    logger.debug("post_confluence_comment called with page_id=%s, comment=%s", page_id, comment)
+    resp = await confluence.post_comment(page_id,comment)
+    logger.debug("post_confluence_comment result: %s", resp)
+    return resp
+
+@mcp.tool()
+async def collect_db_confluence_key_descriptions(
+    space: str,
+    title: str,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    database: str,
+) -> Dict[str, str]:
+    """
+    Return a mapping of keys that exist BOTH in Confluence and in the DB schema,
+    with their descriptions taken from Confluence.
+    """
+    # --- helpers for safe logging ---
+    def _mask_secret(s: str, show: int = 2) -> str:
+        if s is None:
+            return "None"
+        s = str(s)
+        return (s[:show] + "..." + s[-show:]) if len(s) > (show * 2) else "***"
+
+    def _sample_dict(d: Dict[str, str], n: int = 15) -> Dict[str, str]:
+        keys = list(d.keys())[:n]
+        return {k: d[k] for k in keys}
+
+    def _sample_schema(schema: Dict[str, List[str]], n_tables: int = 10, n_cols: int = 10) -> Dict[str, List[str]]:
+        out = {}
+        for i, (tbl, cols) in enumerate(schema.items()):
+            if i >= n_tables:
+                break
+            out[tbl] = cols[:n_cols]
+        return out
+
+    try:
+        logger.info(
+            "collect_db_confluence_key_descriptions: start space=%r title=%r host=%s port=%s db=%s user=%s",
+            space, title, host, port, database, user
+        )
+
+        # --- 1) Confluence: read storage HTML and pull key->desc from the table ---
+        logger.debug("Confluence: resolving page_id for space=%r title=%r …", space, title)
+        page_id = await confluence.get_page_id(space, title)
+        logger.info("Confluence: got page_id=%s", page_id)
+
+        logger.debug("Confluence: fetching page content expand='body.storage,version' …")
+        page = await confluence.get_page_content(page_id, expand="body.storage,version")
+        html = page["body"]["storage"]["value"]
+        logger.debug("Confluence: storage HTML length=%d chars", len(html))
+
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table", class_="relative-table")
+        if not table:
+            logger.error("Confluence: <table class='relative-table'> not found on page=%r space=%r", title, space)
+            raise ValueError(f"relative-table not found on page '{title}' in space '{space}'")
+
+        rows = table.find_all("tr")
+        logger.debug("Confluence: found %d <tr> rows in relative-table", len(rows))
+
+        conf_map: Dict[str, str] = {}
+        for tr in rows[1:]:  # skip header
+            tds = tr.find_all("td")
+            if not tds:
+                continue
+            key = tds[0].get_text(" ", strip=True) if len(tds) >= 1 else ""
+            desc = tds[1].get_text(" ", strip=True) if len(tds) >= 2 else ""
+            if key:
+                conf_map[key] = desc
+
+        logger.info("Confluence: parsed %d key(s) from table", len(conf_map))
+        logger.debug("Confluence: sample key→desc: %s", _sample_dict(conf_map))
+
+        # --- 2) DB schema: build canonical key set and helpers ---
+        logger.info("DB: connecting to %s:%s db=%s user=%s", host, port, database, user)
+        pg = PostgresClient(host=host, port=port, user=user, password=password, database=database)
+        await pg.init()
+        try:
+            logger.debug("DB: calling list_keys() …")
+            schema: Dict[str, List[str]] = await pg.list_keys()  # {table: [col,...]}
+        finally:
+            logger.debug("DB: closing connection pool …")
+            await pg.close()
+
+        total_tables = len(schema or {})
+        total_cols = sum(len(v) for v in (schema or {}).values())
+        logger.info("DB: schema loaded tables=%d total_columns=%d", total_tables, total_cols)
+        logger.debug("DB: sample schema: %s", _sample_schema(schema or {}))
+
+        db_full_keys: Set[str] = set()
+        lower_to_canonical: Dict[str, str] = {}
+        col_to_tables: Dict[str, Set[str]] = {}
+
+        for tbl, cols in (schema or {}).items():
+            for col in cols:
+                full = f"{tbl}.{col}"
+                db_full_keys.add(full)
+                lower_to_canonical[full.lower()] = full
+                col_to_tables.setdefault(col, set()).add(tbl)
+                col_to_tables.setdefault(col.lower(), set()).add(tbl)
+
+        logger.debug(
+            "DB: canonical keys built count=%d unique_columns=%d",
+            len(db_full_keys), len({c for c in col_to_tables.keys() if isinstance(c, str) and c.islower()})
+        )
+
+        # --- 3) Intersect: keep keys that exist in both sources, prefer canonical table.col ---
+        result: Dict[str, str] = {}
+        matched_exact = 0
+        matched_by_unique_column = 0
+        skipped_ambiguous = 0
+
+        for raw_key, desc in conf_map.items():
+            k = (raw_key or "").strip()
+            if not k:
+                continue
+
+            # a) Exact table.column form (case-insensitive)
+            if "." in k:
+                canon = lower_to_canonical.get(k.lower())
+                if canon:
+                    result[canon] = desc
+                    matched_exact += 1
+                continue
+
+            # b) Column-only form: include only if column is unique across all tables
+            candidates = col_to_tables.get(k) or col_to_tables.get(k.lower()) or set()
+            if len(candidates) == 1:
+                only_tbl = next(iter(candidates))
+                canon = lower_to_canonical.get(f"{only_tbl}.{k}".lower())
+                if canon:
+                    result[canon] = desc
+                    matched_by_unique_column += 1
+            else:
+                if candidates:
+                    skipped_ambiguous += 1  # present in multiple tables
+
+        logger.info(
+            "Intersect: result=%d (exact=%d, unique-col=%d, ambiguous-skipped=%d)",
+            len(result), matched_exact, matched_by_unique_column, skipped_ambiguous
+        )
+        logger.debug("Intersect: sample result: %s", _sample_dict(result))
+        return result
+
+    except Exception as e:
+        logger.exception(
+            "collect_db_confluence_key_descriptions failed for space=%r title=%r host=%s port=%s db=%s user=%s err=%s",
+            space, title, host, port, database, user, e
+        )
+        raise
 
 
 @mcp.tool()
@@ -274,6 +763,57 @@ async def list_database_keys(
         await client.close()
 
 @mcp.tool()
+async def get_database_column_metadata(
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    database: str,
+    schema: str = None,
+    database_type: str = "postgres"
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Get detailed metadata for all columns including data types and schema information.
+    
+    Returns a mapping where each key is "schema.table.column" and value contains:
+    - table_name, column_name, data_type, table_schema, is_nullable, etc.
+    
+    Args:
+      host (str):          DB host.
+      port (int):          DB port.
+      user (str):          Username.
+      password (str):      Password.
+      database (str):      Database to inspect.
+      schema (str):        Optional schema filter. If None, includes all user schemas.
+      database_type (str): Either "postgres" or "mssql".
+    
+    Returns:
+      Dict[str, Dict[str, Any]]: Comprehensive column metadata
+    """
+    logger.info(
+        "🔍 get_database_column_metadata called against %s:%s/%s as %s (%s) - schema filter: %s",
+        host, port, database, user, database_type, schema or "ALL"
+    )
+
+    if database_type == "postgres":
+        client = PostgresClient(host, port, user, password,
+                                database=database, min_size=1, max_size=5)
+    elif database_type == "mssql":
+        client = MSSQLClient(host, port, user, password,
+                             database=database)
+    else:
+        raise ValueError(f"Unsupported database_type: {database_type!r}")
+
+    await client.init()
+    try:
+        metadata = await client.get_column_metadata(schema=schema)
+        logger.info("📋 Retrieved metadata for %d columns", len(metadata))
+        logger.debug("Sample metadata keys: %s", list(metadata.keys())[:5])
+        return metadata
+    finally:
+        await client.close()
+
+@mcp.tool()
 async def get_table_delta_keys(
     space: str,
     title: str,
@@ -360,7 +900,10 @@ async def suggest_keys_for_analytics(
       asyncpg.PostgresError: On DB connection/query errors.
       HTTPError:            On LLM API failures.
     """
-    # 1) Fetch schema keys
+    # 1) Fetch schema keys and metadata
+    logger.info("🔍 suggest_keys_for_analytics called for database %s:%s/%s", 
+               host, port, database)
+    
     pg = PostgresClient(
         host=host, port=port,
         user=user, password=password,
@@ -369,22 +912,54 @@ async def suggest_keys_for_analytics(
     )
     await pg.init()
     try:
+        # Get basic table->columns mapping
         keys_map: Dict[str, List[str]] = await pg.list_keys()
-        logger.debug("Keys map: %s", keys_map)
+        
+        # Get detailed column metadata for schema context
+        metadata = await pg.get_column_metadata()
+        
+        logger.info("📊 Retrieved %d tables and %d column metadata entries", 
+                   len(keys_map), len(metadata))
+        
+        # Build schema-aware context
+        schema_context = {}
+        for table, columns in keys_map.items():
+            # Find schema for this table by looking at metadata
+            table_schema = "public"  # default
+            for meta_key, meta_data in metadata.items():
+                if meta_data["table_name"] == table:
+                    table_schema = meta_data["table_schema"]
+                    break
+            
+            # Use schema.table as key for better context
+            schema_table_key = f"{table_schema}.{table}"
+            schema_context[schema_table_key] = columns
+        
+        logger.debug("Schema-aware context built: %d schema.table entries", len(schema_context))
+        
     finally:
         await pg.close()
 
-    # 2) Prepare context for LLM
-    context = json.dumps(keys_map, indent=2)
+    # 2) Prepare enhanced context for LLM with schema information
+    context_parts = [
+        "Database schema information with schema qualifiers:",
+        json.dumps(schema_context, indent=2),
+        "",
+        "Note: When suggesting columns, please include schema qualifiers (e.g., 'public.table.column') "
+        "to ensure the LLM understands which schema to use for each table."
+    ]
+    context = "\n".join(context_parts)
 
-    # 3) Invoke LLM
+    # 3) Invoke LLM with enhanced context
+    logger.info("📤 Calling LLM with schema-aware context (%d chars)", len(context))
     recommendation = await llm.call_remote_llm(
         context=context,
         prompt=user_prompt,
         system_prompt=system_prompt
     )
 
-    logger.info("LLM recommendation: %s", recommendation)
+    logger.info("✅ LLM recommendation received (%d chars)", len(recommendation or ""))
+    logger.debug("LLM recommendation preview: %s", (recommendation or "")[:200])
     return recommendation
 
 
@@ -414,21 +989,61 @@ async def run_analytics_query_on_database(
         t = re.sub(r"^\s*sql\s*[:\-]?\s*", "", t, flags=re.I)
         return t
 
-    logger.info("run_analytics_query_on_database: start host=%s port=%s db=%s user=%s", host, port, database, user)
+    logger.info("🔍 run_analytics_query_on_database: start host=%s port=%s db=%s user=%s", host, port, database, user)
 
-    # 1) schema
+    # 1) Get schema and metadata
     pg = PostgresClient(host, port, user, password, database)
     await pg.init()
     try:
+        # Get basic table->column structure
         schema = await pg.list_keys()
+        
+        # Get detailed metadata for schema context
+        metadata = await pg.get_column_metadata()
+        
+        logger.info("📊 Retrieved %d tables and %d column metadata entries for SQL building", 
+                   len(schema), len(metadata))
+        
+        # Build schema-aware context for LLM
+        enhanced_schema = {}
+        for table, columns in schema.items():
+            # Find schema for this table
+            table_schema = "public"  # default
+            for meta_key, meta_data in metadata.items():
+                if meta_data["table_name"] == table:
+                    table_schema = meta_data["table_schema"]
+                    break
+            
+            # Use schema.table as key and include type information
+            schema_table_key = f"{table_schema}.{table}"
+            column_details = []
+            
+            for col in columns:
+                # Find column type from metadata
+                col_type = "unknown"
+                full_meta_key = f"{table_schema}.{table}.{col}"
+                if full_meta_key in metadata:
+                    col_type = metadata[full_meta_key]["data_type"]
+                
+                column_details.append(f"{col} ({col_type})")
+            
+            enhanced_schema[schema_table_key] = column_details
+        
     except Exception as e:
-        logger.exception("DB list_keys failed: %s", e)
+        logger.exception("❌ DB schema introspection failed: %s", e)
         await pg.close()
         raise
 
-    # 2) context (DB schema only; any Confluence desc was appended to analytics_prompt by the route)
-    context = json.dumps(schema, indent=2)
-    logger.debug("Context JSON length=%d", len(context))
+    # 2) Enhanced context with schema and type information
+    context_parts = [
+        "Database schema with types and schema qualifiers:",
+        json.dumps(enhanced_schema, indent=2),
+        "",
+        "Important: Use schema-qualified table names (e.g., 'public.table_name') in your SQL queries.",
+        "Column types are shown in parentheses for reference."
+    ]
+    context = "\n".join(context_parts)
+    logger.info("📤 Enhanced context for LLM: %d chars", len(context))
 
     # 3) LLM
     sql_raw = await llm.call_remote_llm(
@@ -469,17 +1084,25 @@ async def describe_columns(
     Describe only the given `columns` of `table` (or view) for Postgres or MSSQL.
 
     1. Connects to the correct database type (PostgresClient or MSSQLClient).
-    2. Samples up to `limit` values per column.
-    3. Asks the LLM to produce a one-line description for each.
+    2. Gets column metadata including data types and schema information.
+    3. Samples up to `limit` values per column.
+    4. Asks the LLM to produce a one-line description for each (excluding type info).
 
     Returns a JSON‐encoded array of:
-      [{ "column": "table.col", "description": "...", "values": [...] }, …]
+      [{ 
+        "column": "table.col", 
+        "description": "...", 
+        "type": "data_type",
+        "schema": "schema_name",
+        "values": [...] 
+      }, …]
 
     Raises:
       ValueError: If `database_type` is unsupported.
     """
     logger.info("🔍 describe_columns called for table/view '%s' in %s:%s/%s (%s)", 
                table, host, port, database, database_type)
+    
     # 1) Pick the right client
     if database_type == "postgres":
         client = PostgresClient(
@@ -498,33 +1121,78 @@ async def describe_columns(
     await client.init()
 
     try:
+        # First get the schema for this table
+        schema_name = await client.get_table_schema(table)
+        logger.info("📂 Using schema '%s' for table '%s'", schema_name, table)
+        
+        # Get comprehensive column metadata
+        metadata = await client.get_column_metadata(schema=schema_name)
+        logger.info("📊 Retrieved metadata for %d columns in schema '%s'", len(metadata), schema_name)
+        
         results: List[Dict[str, Any]] = []
         for col in columns:
             try:
+                # Look for column metadata using various key formats
+                full_key = f"{schema_name}.{table}.{col}"
+                metadata_entry = metadata.get(full_key)
+                
+                if not metadata_entry:
+                    # Try without schema if not found
+                    alt_keys = [key for key in metadata.keys() 
+                              if key.endswith(f".{table}.{col}")]
+                    if alt_keys:
+                        metadata_entry = metadata[alt_keys[0]]
+                        logger.debug("Found metadata using alternate key: %s", alt_keys[0])
+                
+                # Extract type and schema information
+                data_type = metadata_entry.get("data_type", "unknown") if metadata_entry else "unknown"
+                column_schema = metadata_entry.get("table_schema", schema_name) if metadata_entry else schema_name
+                
+                # Get sample values
                 vals = await client.get_column_values(table, col, limit)
+                
+                # Create LLM prompt with schema context and type exclusion
                 prompt = (
-                    f"Describe the column {table}.{col}. "
+                    f"Describe the purpose and meaning of column '{col}' from table '{table}' "
+                    f"in schema '{column_schema}'. "
                     f"Here are up to {limit} example values: {vals}. "
-                    "Format each as: column – description – possible values/type"
+                    f"The column type is {data_type}. "
+                    f"Provide only a brief functional description of what this column represents - "
+                    f"do NOT include the data type in your description as that will be stored separately. "
+                    f"Focus on the business meaning and purpose."
                 )
-                desc = await llm.call_remote_llm(context="", prompt=prompt)
+                
+                desc = await llm.call_remote_llm(
+                    context=f"Database schema context: {column_schema}.{table}",
+                    prompt=prompt
+                )
+                
                 results.append({
                     "column":      f"{table}.{col}",
-                    "description": desc,
+                    "description": desc.strip(),
+                    "type":        data_type,
+                    "schema":      column_schema,
                     "values":      vals
                 })
+                
+                logger.debug("✅ Processed column %s.%s: type=%s, schema=%s", 
+                           table, col, data_type, column_schema)
+                           
             except Exception as inner:
                 logger.error(
-                    "describe_columns error for %s.%s: %s",
+                    "❌ describe_columns error for %s.%s: %s",
                     table, col, inner, exc_info=True
                 )
                 results.append({
                     "column":      f"{table}.{col}",
                     "description": f"<error: {inner}>",
+                    "type":        "unknown",
+                    "schema":      schema_name,
                     "values":      []
                 })
 
-        logger.debug("Raw describe_columns results for %s: %r", table, results)
+        logger.info("✅ Successfully processed %d columns with metadata", len(results))
+        logger.debug("Sample result: %r", results[0] if results else None)
         return json.dumps(results, default=str, separators=(",",":"))
 
     finally:
