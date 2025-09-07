@@ -1,8 +1,9 @@
+from typing import List, Dict, Any, Optional
 import asyncpg
 import logging
-from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
 
 class PostgresClient:
     """
@@ -65,35 +66,37 @@ class PostgresClient:
             )
         # Extract 'datname' field from each Record
         return [r["datname"] for r in rows]
-
+    
     async def list_schemas(self) -> List[str]:
         """
-        Return a list of all schemas in the connected database.
-        Excludes system schemas like information_schema and pg_* schemas.
+        Return a list of all user-defined schemas in the connected database.
+        
+        This queries the standard INFORMATION_SCHEMA.SCHEMATA view, excluding
+        system schemas like information_schema and pg_* schemas.
         """
         assert self._pool is not None, "Connection pool is not initialized"
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT schema_name
-                FROM information_schema.schemata
-                WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
-                  AND schema_name NOT LIKE 'pg_temp_%'
-                  AND schema_name NOT LIKE 'pg_toast_temp_%'
-                ORDER BY schema_name;
+                  FROM information_schema.schemata
+                 WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                   AND schema_name NOT LIKE 'pg_temp_%'
+                   AND schema_name NOT LIKE 'pg_toast_temp_%'
+                 ORDER BY schema_name;
                 """
             )
         return [r["schema_name"] for r in rows]
     
     async def list_tables(self, schema: str = None) -> List[str]:
         """
-        Return a list of all user-defined tables in the connected database.
+        Return a list of all user-defined tables.
         
-        Args:
-            schema: If specified, only return tables from this schema.
-                   If None, return tables from all non-system schemas.
+        If schema is provided, returns tables from that specific schema.
+        If schema is None (default), returns tables from all schemas except system schemas.
 
-        This queries the standard INFORMATION_SCHEMA.TABLES view.
+        This queries the standard INFORMATION_SCHEMA.TABLES view, filtering on
+        table_type = 'BASE TABLE' to exclude views and system tables.
         """
         assert self._pool is not None, "Connection pool is not initialized"
         async with self._pool.acquire() as conn:
@@ -109,218 +112,114 @@ class PostgresClient:
                     """,
                     schema
                 )
-                return [r["table_name"] for r in rows]
             else:
-                # Get tables from all non-system schemas - return simple table names
+                # Get tables from all user schemas (excluding system schemas)
                 rows = await conn.fetch(
                     """
-                    SELECT DISTINCT table_name
+                    SELECT table_name
                       FROM information_schema.tables
-                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
                        AND table_schema NOT LIKE 'pg_temp_%'
                        AND table_schema NOT LIKE 'pg_toast_temp_%'
                        AND table_type = 'BASE TABLE'
                      ORDER BY table_name;
                     """
                 )
-                return [r["table_name"] for r in rows]
+        return [r["table_name"] for r in rows]
 
-    async def list_tables_with_schema(self, schema: str = None) -> List[str]:
+    async def list_keys(self) -> Dict[str, List[str]]:
         """
-        Return a list of all user-defined tables with their schema prefix.
-        
-        Args:
-            schema: If specified, only return tables from this schema.
-                   If None, return tables from all non-system schemas.
+        Return a mapping of each table name to its list of column names
+        (i.e. “keys”) in the connected database’s public schema.
 
-        Returns table names in format "schema.table_name"
+        Queries information_schema.columns for all columns in schema 'public',
+        then groups them by table_name.
+
+        :returns: Dict where each key is a table name and the value is the
+                  ordered list of that table’s column names.
+        :raises: AssertionError if the pool isn’t initialized, or asyncpg errors
+                 for connection/query issues.
         """
         assert self._pool is not None, "Connection pool is not initialized"
         async with self._pool.acquire() as conn:
-            if schema:
-                # Get tables from specific schema
-                rows = await conn.fetch(
-                    """
-                    SELECT table_schema, table_name
-                      FROM information_schema.tables
-                     WHERE table_schema = $1
-                       AND table_type = 'BASE TABLE'
-                     ORDER BY table_name;
-                    """,
-                    schema
-                )
-            else:
-                # Get tables from all non-system schemas
-                rows = await conn.fetch(
-                    """
-                    SELECT table_schema, table_name
-                      FROM information_schema.tables
-                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
-                       AND table_schema NOT LIKE 'pg_temp_%'
-                       AND table_schema NOT LIKE 'pg_toast_temp_%'
-                       AND table_type = 'BASE TABLE'
-                     ORDER BY table_schema, table_name;
-                    """
-                )
-        return [f"{r['table_schema']}.{r['table_name']}" for r in rows]
+            # fetch table + column combos
+            rows = await conn.fetch(
+                """
+                SELECT table_name, column_name
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                 ORDER BY table_name, ordinal_position;
+                """
+            )
+        result: Dict[str, List[str]] = {}
+        for row in rows:
+            tbl = row["table_name"]
+            col = row["column_name"]
+            result.setdefault(tbl, []).append(col)
+        return result
 
     async def list_keys(self, schema: str = None) -> Dict[str, List[str]]:
         """
         Return a mapping of each table name to its list of column names
-        in table.column format.
+        (i.e. "keys") in the connected database.
 
-        Args:
-            schema: If specified, only return keys for tables in this schema.
-                   If None, return keys for tables in all non-system schemas.
+        If schema is provided, returns keys from tables in that specific schema.
+        If schema is None (default), returns keys from tables in all schemas except system schemas.
 
-        :returns: Dict where each key is a table name and the value is 
-                  a list of "table.column" formatted strings.
+        Queries information_schema.columns for all columns, then groups them by table_name.
+        Note: The table names in the result will NOT include schema prefixes, but schema
+        information will be logged for debugging purposes.
+
+        :param schema: Optional schema name to filter by. If None, includes all user schemas.
+        :returns: Dict where each key is a table name and the value is the
+                  ordered list of that table's column names.
+        :raises: AssertionError if the pool isn't initialized, or asyncpg errors
+                 for connection/query issues.
         """
         assert self._pool is not None, "Connection pool is not initialized"
         async with self._pool.acquire() as conn:
             if schema:
-                # fetch table + column combos for specific schema
-                rows = await conn.fetch(
-                    """
-                    SELECT table_name, column_name
-                      FROM information_schema.columns
-                     WHERE table_schema = $1
-                     ORDER BY table_name, ordinal_position;
-                    """,
-                    schema
-                )
-            else:
-                # fetch table + column combos for all non-system schemas
-                rows = await conn.fetch(
-                    """
-                    SELECT table_name, column_name
-                      FROM information_schema.columns
-                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
-                       AND table_schema NOT LIKE 'pg_temp_%'
-                       AND table_schema NOT LIKE 'pg_toast_temp_%'
-                     ORDER BY table_name, ordinal_position;
-                    """
-                )
-            
-            # Group by table and format as table.column
-            result: Dict[str, List[str]] = {}
-            for row in rows:
-                table_name = row["table_name"]
-                column_name = row["column_name"]
-                table_column = f"{table_name}.{column_name}"
-                result.setdefault(table_name, []).append(table_column)
-            
-            return result
-
-    async def list_keys_display_format(self, schema: str = None) -> Dict[str, List[str]]:
-        """
-        Return a mapping of each table name to its list of column names
-        formatted for UI display (clean table.column format).
-
-        Args:
-            schema: If specified, only return keys for tables in this schema.
-                   If None, return keys for tables in all non-system schemas.
-                   
-        Returns clean table names as keys (without schema prefix) for UI display.
-
-        :returns: Dict where each key is a clean table name and 
-                  the value is the ordered list of that table's column names.
-        """
-        assert self._pool is not None, "Connection pool is not initialized"
-        async with self._pool.acquire() as conn:
-            if schema:
-                # fetch table + column combos for specific schema
-                rows = await conn.fetch(
-                    """
-                    SELECT table_name, column_name
-                      FROM information_schema.columns
-                     WHERE table_schema = $1
-                     ORDER BY table_name, ordinal_position;
-                    """,
-                    schema
-                )
-                # Use just table name as key when querying specific schema
-                result: Dict[str, List[str]] = {}
-                for row in rows:
-                    tbl = row["table_name"]
-                    col = row["column_name"]
-                    result.setdefault(tbl, []).append(col)
-            else:
-                # fetch table + column combos for all non-system schemas
+                # fetch table + column combos from specific schema
                 rows = await conn.fetch(
                     """
                     SELECT table_schema, table_name, column_name
                       FROM information_schema.columns
-                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                     WHERE table_schema = $1
+                     ORDER BY table_name, ordinal_position;
+                    """,
+                    schema
+                )
+            else:
+                # fetch table + column combos from all user schemas
+                rows = await conn.fetch(
+                    """
+                    SELECT table_schema, table_name, column_name
+                      FROM information_schema.columns
+                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
                        AND table_schema NOT LIKE 'pg_temp_%'
                        AND table_schema NOT LIKE 'pg_toast_temp_%'
-                     ORDER BY table_schema, table_name, ordinal_position;
+                     ORDER BY table_name, ordinal_position;
                     """
                 )
-                # Use clean table_name as key, merge columns from different schemas
-                result: Dict[str, List[str]] = {}
-                for row in rows:
-                    tbl_key = row["table_name"]  # Clean table name without schema
-                    col = row["column_name"]
-                    if tbl_key not in result:
-                        result[tbl_key] = []
-                    if col not in result[tbl_key]:  # Avoid duplicates if same column exists in multiple schemas
-                        result[tbl_key].append(col)
         
-        return result
-
-    async def list_keys_with_schema_info(self, schema: str = None) -> Dict[str, List[str]]:
-        """
-        Return a mapping of each table name to its list of column names,
-        with schema information preserved for backend operations.
-
-        Args:
-            schema: If specified, only return keys for tables in this schema.
-                   If None, return keys for tables in all non-system schemas.
-                   
-        Returns schema.table names as keys (with schema prefix) for backend operations.
-        This method is used internally where schema information is needed.
-
-        :returns: Dict where each key is schema.table_name and 
-                  the value is the ordered list of that table's column names.
-        """
-        assert self._pool is not None, "Connection pool is not initialized"
-        async with self._pool.acquire() as conn:
-            if schema:
-                # fetch table + column combos for specific schema
-                rows = await conn.fetch(
-                    """
-                    SELECT table_name, column_name
-                      FROM information_schema.columns
-                     WHERE table_schema = $1
-                     ORDER BY table_name, ordinal_position;
-                    """,
-                    schema
-                )
-                # Use just table name as key when querying specific schema
-                result: Dict[str, List[str]] = {}
-                for row in rows:
-                    tbl = row["table_name"]
-                    col = row["column_name"]
-                    result.setdefault(tbl, []).append(col)
-            else:
-                # fetch table + column combos for all non-system schemas
-                rows = await conn.fetch(
-                    """
-                    SELECT table_schema, table_name, column_name
-                      FROM information_schema.columns
-                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
-                       AND table_schema NOT LIKE 'pg_temp_%'
-                       AND table_schema NOT LIKE 'pg_toast_temp_%'
-                     ORDER BY table_schema, table_name, ordinal_position;
-                    """
-                )
-                # Use schema.table_name as key for backend operations
-                result: Dict[str, List[str]] = {}
-                for row in rows:
-                    tbl_key = f"{row['table_schema']}.{row['table_name']}"
-                    col = row["column_name"]
-                    result.setdefault(tbl_key, []).append(col)
+        result: Dict[str, List[str]] = {}
+        schema_info: Dict[str, str] = {}  # Track which schema each table belongs to for logging
+        
+        for row in rows:
+            table_schema = row["table_schema"]
+            tbl = row["table_name"]
+            col = row["column_name"]
+            
+            # Store schema info for logging
+            if tbl not in schema_info:
+                schema_info[tbl] = table_schema
+            
+            # Use just table name (no schema prefix) as the key
+            result.setdefault(tbl, []).append(col)
+        
+        # Log schema information for debugging
+        if schema_info:
+            logger.debug("Table schema mapping: %s", schema_info)
         
         return result
 
@@ -333,6 +232,39 @@ class PostgresClient:
             records = await conn.fetch(sql)
         return [dict(r) for r in records]
 
+    async def get_table_schema(self, table: str) -> str:
+        """
+        Find the schema for a given table name.
+        
+        :param table: The table name to search for
+        :returns: The schema name where the table exists, defaults to 'public' if not found
+        """
+        assert self._pool, "Postgres pool not initialized"
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT table_schema
+                  FROM information_schema.tables
+                 WHERE table_name = $1
+                   AND table_schema NOT IN ('information_schema', 'pg_catalog')
+                   AND table_schema NOT LIKE 'pg_temp_%'
+                   AND table_schema NOT LIKE 'pg_toast_temp_%'
+                 ORDER BY 
+                   CASE table_schema 
+                     WHEN 'public' THEN 1 
+                     ELSE 2 
+                   END;
+                """,
+                table
+            )
+        if rows:
+            schema = rows[0]["table_schema"]
+            logger.debug("Found table '%s' in schema '%s'", table, schema)
+            return schema
+        else:
+            logger.warning("Table '%s' not found, defaulting to 'public' schema", table)
+            return 'public'
+
     async def get_column_values(
         self,
         table: str,
@@ -341,11 +273,66 @@ class PostgresClient:
     ) -> list:
         """
         Return up to `limit` distinct values for `column` in `table`.
+        Automatically finds the correct schema for the table.
         """
         assert self._pool, "Postgres pool not initialized"
+        
+        # Find the correct schema for this table
+        schema = await self.get_table_schema(table)
+        
         async with self._pool.acquire() as conn:
-            # Use parameter binding for safety
-            sql = f"SELECT DISTINCT {column} FROM {table} LIMIT $1"
+            # Use schema-qualified table name and parameter binding for safety
+            sql = f"SELECT DISTINCT {column} FROM {schema}.{table} LIMIT $1"
             records = await conn.fetch(sql, limit)
         # Extract the single column from each record
         return [r[column] for r in records]
+
+
+class MSSQLClient:
+    """
+    Placeholder MSSQL client. 
+    
+    This is a stub implementation to support the existing server.py structure
+    that expects both PostgreSQL and MSSQL clients. The actual MSSQL implementation
+    would need to be added here with proper SQL Server connection handling.
+    """
+    
+    def __init__(self, host: str, port: int, user: str, password: str, database: str = "master"):
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
+        self.database = database
+        
+    async def init(self) -> None:
+        """Initialize MSSQL connection - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+        
+    async def close(self) -> None:
+        """Close MSSQL connection - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+        
+    async def list_databases(self) -> List[str]:
+        """List MSSQL databases - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+        
+    async def list_schemas(self) -> List[str]:
+        """List MSSQL schemas - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+        
+    async def list_tables(self, schema: str = None) -> List[str]:
+        """List MSSQL tables - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+        
+    async def list_keys(self, schema: str = None) -> Dict[str, List[str]]:
+        """List MSSQL table keys - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+        
+    async def execute_query(self, sql: str) -> List[Dict[str, Any]]:
+        """Execute MSSQL query - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+        
+    async def get_column_values(self, table: str, column: str, limit: int) -> list:
+        """Get MSSQL column values - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
+
