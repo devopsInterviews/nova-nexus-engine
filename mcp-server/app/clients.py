@@ -75,6 +75,7 @@ class PostgresClient:
         system schemas like information_schema and pg_* schemas.
         """
         assert self._pool is not None, "Connection pool is not initialized"
+        logger.info("🔍 Listing all schemas in database")
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -86,46 +87,104 @@ class PostgresClient:
                  ORDER BY schema_name;
                 """
             )
-        return [r["schema_name"] for r in rows]
+        schemas = [r["schema_name"] for r in rows]
+        logger.info("📋 Found %d schemas: %s", len(schemas), schemas)
+        return schemas
     
     async def list_tables(self, schema: str = None) -> List[str]:
         """
-        Return a list of all user-defined tables.
+        Return a list of all user-defined tables and views.
         
-        If schema is provided, returns tables from that specific schema.
-        If schema is None (default), returns tables from all schemas except system schemas.
+        If schema is provided, returns tables and views from that specific schema.
+        If schema is None (default), returns tables and views from all schemas except system schemas.
 
         This queries the standard INFORMATION_SCHEMA.TABLES view, filtering on
-        table_type = 'BASE TABLE' to exclude views and system tables.
+        table_type IN ('BASE TABLE', 'VIEW') to include both tables and views.
         """
         assert self._pool is not None, "Connection pool is not initialized"
+        
+        if schema:
+            logger.info("🔍 Listing tables and views from specific schema: '%s'", schema)
+        else:
+            logger.info("🔍 Listing tables and views from ALL user schemas")
+            
         async with self._pool.acquire() as conn:
             if schema:
-                # Get tables from specific schema
+                # Get tables and views from specific schema
                 rows = await conn.fetch(
                     """
-                    SELECT table_name
+                    SELECT table_name, table_type
                       FROM information_schema.tables
                      WHERE table_schema = $1
-                       AND table_type = 'BASE TABLE'
-                     ORDER BY table_name;
+                       AND table_type IN ('BASE TABLE', 'VIEW')
+                     ORDER BY table_type, table_name;
                     """,
                     schema
                 )
+                # Separate tables and views for logging
+                base_tables = [r["table_name"] for r in rows if r["table_type"] == "BASE TABLE"]
+                views = [r["table_name"] for r in rows if r["table_type"] == "VIEW"]
+                tables = [r["table_name"] for r in rows]
+                
+                logger.info("📋 Found %d objects in schema '%s': %d base tables, %d views", 
+                           len(tables), schema, len(base_tables), len(views))
+                if base_tables:
+                    logger.info("  📊 Base tables: %s", base_tables[:10] if len(base_tables) > 10 else base_tables)
+                    if len(base_tables) > 10:
+                        logger.info("    ... and %d more base tables", len(base_tables) - 10)
+                if views:
+                    logger.info("  👁️  Views: %s", views[:10] if len(views) > 10 else views)
+                    if len(views) > 10:
+                        logger.info("    ... and %d more views", len(views) - 10)
             else:
-                # Get tables from all user schemas (excluding system schemas)
+                # Get tables and views from all user schemas (excluding system schemas)
                 rows = await conn.fetch(
                     """
-                    SELECT table_name
+                    SELECT table_schema, table_name, table_type
                       FROM information_schema.tables
                      WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
                        AND table_schema NOT LIKE 'pg_temp_%'
                        AND table_schema NOT LIKE 'pg_toast_temp_%'
-                       AND table_type = 'BASE TABLE'
-                     ORDER BY table_name;
+                       AND table_type IN ('BASE TABLE', 'VIEW')
+                     ORDER BY table_schema, table_type, table_name;
                     """
                 )
-        return [r["table_name"] for r in rows]
+                # Group by schema and type for logging
+                schema_objects = {}
+                for row in rows:
+                    schema_name = row["table_schema"]
+                    table_name = row["table_name"]
+                    table_type = row["table_type"]
+                    if schema_name not in schema_objects:
+                        schema_objects[schema_name] = {"BASE TABLE": [], "VIEW": []}
+                    schema_objects[schema_name][table_type].append(table_name)
+                
+                # Log schema breakdown with table types
+                total_objects = len(rows)
+                total_tables = sum(len(objects["BASE TABLE"]) for objects in schema_objects.values())
+                total_views = sum(len(objects["VIEW"]) for objects in schema_objects.values())
+                
+                logger.info("📊 Found %d total objects across %d schemas: %d base tables, %d views", 
+                           total_objects, len(schema_objects), total_tables, total_views)
+                
+                for schema_name, objects in schema_objects.items():
+                    base_tables = objects["BASE TABLE"]
+                    views = objects["VIEW"]
+                    total_schema_objects = len(base_tables) + len(views)
+                    
+                    logger.info("  📂 Schema '%s': %d objects (%d tables, %d views)", 
+                              schema_name, total_schema_objects, len(base_tables), len(views))
+                    
+                    if base_tables:
+                        logger.info("    📊 Tables: %s", 
+                                  ', '.join(base_tables[:3]) + ('...' if len(base_tables) > 3 else ''))
+                    if views:
+                        logger.info("    👁️  Views: %s", 
+                                  ', '.join(views[:3]) + ('...' if len(views) > 3 else ''))
+                
+                tables = [r["table_name"] for r in rows]
+                
+        return tables
 
     async def list_keys(self) -> Dict[str, List[str]]:
         """
@@ -177,6 +236,12 @@ class PostgresClient:
                  for connection/query issues.
         """
         assert self._pool is not None, "Connection pool is not initialized"
+        
+        if schema:
+            logger.info("🔍 Listing keys from specific schema: '%s'", schema)
+        else:
+            logger.info("🔍 Listing keys from ALL user schemas")
+            
         async with self._pool.acquire() as conn:
             if schema:
                 # fetch table + column combos from specific schema
@@ -198,12 +263,13 @@ class PostgresClient:
                      WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
                        AND table_schema NOT LIKE 'pg_temp_%'
                        AND table_schema NOT LIKE 'pg_toast_temp_%'
-                     ORDER BY table_name, ordinal_position;
+                     ORDER BY table_schema, table_name, ordinal_position;
                     """
                 )
         
         result: Dict[str, List[str]] = {}
         schema_info: Dict[str, str] = {}  # Track which schema each table belongs to for logging
+        schema_stats: Dict[str, int] = {}  # Track column count per schema
         
         for row in rows:
             table_schema = row["table_schema"]
@@ -213,13 +279,38 @@ class PostgresClient:
             # Store schema info for logging
             if tbl not in schema_info:
                 schema_info[tbl] = table_schema
+                
+            # Count columns per schema
+            schema_stats[table_schema] = schema_stats.get(table_schema, 0) + 1
             
             # Use just table name (no schema prefix) as the key
             result.setdefault(tbl, []).append(col)
         
-        # Log schema information for debugging
-        if schema_info:
-            logger.debug("Table schema mapping: %s", schema_info)
+        # Log comprehensive schema information
+        total_columns = sum(len(cols) for cols in result.values())
+        logger.info("📊 Found %d columns across %d tables in %d schemas:", 
+                   total_columns, len(result), len(schema_stats))
+        
+        for schema_name, column_count in schema_stats.items():
+            schema_tables = [table for table, table_schema in schema_info.items() if table_schema == schema_name]
+            logger.info("  📂 Schema '%s': %d tables, %d columns (%s)", 
+                       schema_name, len(schema_tables), column_count,
+                       ', '.join(schema_tables[:3]) + ('...' if len(schema_tables) > 3 else ''))
+        
+        # Log potential table name conflicts across schemas
+        table_schemas = {}
+        for table, table_schema in schema_info.items():
+            if table not in table_schemas:
+                table_schemas[table] = []
+            table_schemas[table].append(table_schema)
+        
+        conflicts = {table: schemas for table, schemas in table_schemas.items() if len(schemas) > 1}
+        if conflicts:
+            logger.warning("⚠️  Found %d table names that exist in multiple schemas:", len(conflicts))
+            for table, schemas in conflicts.items():
+                logger.warning("  🔄 Table '%s' exists in schemas: %s", table, ', '.join(schemas))
+        else:
+            logger.info("✅ No table name conflicts between schemas")
         
         return result
 
@@ -234,21 +325,23 @@ class PostgresClient:
 
     async def get_table_schema(self, table: str) -> str:
         """
-        Find the schema for a given table name.
+        Find the schema for a given table or view name.
         
-        :param table: The table name to search for
-        :returns: The schema name where the table exists, defaults to 'public' if not found
+        :param table: The table or view name to search for
+        :returns: The schema name where the table/view exists, defaults to 'public' if not found
         """
         assert self._pool, "Postgres pool not initialized"
+        logger.info("🔍 Looking up schema for table/view: '%s'", table)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT table_schema
+                SELECT table_schema, table_type
                   FROM information_schema.tables
                  WHERE table_name = $1
                    AND table_schema NOT IN ('information_schema', 'pg_catalog')
                    AND table_schema NOT LIKE 'pg_temp_%'
                    AND table_schema NOT LIKE 'pg_toast_temp_%'
+                   AND table_type IN ('BASE TABLE', 'VIEW')
                  ORDER BY 
                    CASE table_schema 
                      WHEN 'public' THEN 1 
@@ -259,10 +352,18 @@ class PostgresClient:
             )
         if rows:
             schema = rows[0]["table_schema"]
-            logger.debug("Found table '%s' in schema '%s'", table, schema)
+            table_type = rows[0]["table_type"]
+            type_icon = "📊" if table_type == "BASE TABLE" else "👁️"
+            
+            if len(rows) > 1:
+                all_schemas_types = [(r["table_schema"], r["table_type"]) for r in rows]
+                logger.warning("⚠️  Object '%s' found in multiple schemas: %s - using '%s' (%s, public preferred)", 
+                             table, all_schemas_types, schema, table_type.lower())
+            else:
+                logger.info("✅ Found %s '%s' (%s) in schema '%s'", table_type.lower(), table, type_icon, schema)
             return schema
         else:
-            logger.warning("Table '%s' not found, defaulting to 'public' schema", table)
+            logger.warning("❌ Table/view '%s' not found in any schema, defaulting to 'public'", table)
             return 'public'
 
     async def get_column_values(
@@ -279,13 +380,19 @@ class PostgresClient:
         
         # Find the correct schema for this table
         schema = await self.get_table_schema(table)
+        logger.info("🔍 Getting %d sample values from column '%s' in table/view '%s.%s'", 
+                   limit, column, schema, table)
         
         async with self._pool.acquire() as conn:
             # Use schema-qualified table name and parameter binding for safety
             sql = f"SELECT DISTINCT {column} FROM {schema}.{table} LIMIT $1"
+            logger.debug("📝 Executing query: %s", sql)
             records = await conn.fetch(sql, limit)
-        # Extract the single column from each record
-        return [r[column] for r in records]
+        
+        values = [r[column] for r in records]
+        logger.info("✅ Retrieved %d distinct values from '%s.%s.%s'", 
+                   len(values), schema, table, column)
+        return values
 
 
 class MSSQLClient:
