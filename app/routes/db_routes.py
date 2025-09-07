@@ -640,6 +640,7 @@ async def suggest_columns(
         desc_text_parts = [m.text for m in parts if getattr(m, "text", None)]
         desc_text = desc_text_parts[0] if desc_text_parts else "{}"
         logger.debug("suggest_columns: descriptions JSON length=%d chars", len(desc_text))
+        logger.debug("suggest_columns: raw Confluence data from LLM: %s", desc_text[:1000])  # Log first 1000 chars
 
         try:
             key_descriptions = json.loads(desc_text)
@@ -648,6 +649,14 @@ async def suggest_columns(
                 "suggest_columns: sample descriptions keys=%s",
                 _sample_list(list(key_descriptions.keys()))
             )
+            
+            # Debug: check what type the values are 
+            if key_descriptions:
+                sample_key = next(iter(key_descriptions.keys()))
+                sample_value = key_descriptions[sample_key]
+                logger.debug("suggest_columns: sample key=%s, value type=%s, value=%s", 
+                           sample_key, type(sample_value), sample_value)
+                           
         except json.JSONDecodeError as je:
             logger.warning("suggest_columns: failed to parse descriptions JSON (%s), falling back to empty {}", je)
             key_descriptions = {}
@@ -762,10 +771,59 @@ async def suggest_columns(
                     })
                     continue
                 
+                # Debug: check what type column_details is
+                logger.debug("suggest_columns: column_details type for %s: %s", table_column, type(column_details))
+                logger.debug("suggest_columns: column_details content: %s", column_details)
+                
                 # Extract details from Confluence data
-                description = column_details.get("description", "")
-                data_type = column_details.get("type", "UNKNOWN")
-                schema = column_details.get("schema", suggested_schema)
+                description = ""
+                data_type = "UNKNOWN"
+                schema = suggested_schema
+                
+                if isinstance(column_details, dict):
+                    # Already a dictionary - use directly
+                    description = column_details.get("description", "")
+                    data_type = column_details.get("type", "UNKNOWN")
+                    schema = column_details.get("schema", suggested_schema)
+                elif isinstance(column_details, str):
+                    # String - could be JSON or plain description
+                    try:
+                        # Try to parse as JSON first
+                        parsed_details = json.loads(column_details)
+                        if isinstance(parsed_details, dict):
+                            description = parsed_details.get("description", column_details)
+                            data_type = parsed_details.get("type", "UNKNOWN")
+                            schema = parsed_details.get("schema", suggested_schema)
+                        else:
+                            # JSON but not a dict - treat as description
+                            description = str(parsed_details)
+                    except json.JSONDecodeError:
+                        # Not JSON - treat as plain description
+                        description = column_details
+                        
+                        # Try to extract type/schema info from description string
+                        # Look for patterns like "VARCHAR - public" or "INTEGER (public schema)"
+                        if " - " in description:
+                            parts = description.split(" - ", 1)
+                            if len(parts) == 2:
+                                desc_part = parts[0].strip()
+                                type_schema_part = parts[1].strip()
+                                
+                                # Check if first part looks like a data type
+                                common_types = ['varchar', 'integer', 'int', 'bigint', 'text', 'char', 'boolean', 'decimal', 'timestamp', 'datetime', 'date']
+                                if any(dtype in desc_part.lower() for dtype in common_types):
+                                    data_type = desc_part.upper()
+                                    description = type_schema_part
+                                else:
+                                    description = desc_part
+                                    if any(dtype in type_schema_part.lower() for dtype in common_types):
+                                        data_type = type_schema_part.upper()
+                else:
+                    # Unknown format
+                    logger.warning("suggest_columns: unexpected column_details format for %s: %s", table_column, type(column_details))
+                    description = str(column_details)
+                    data_type = "UNKNOWN"
+                    schema = suggested_schema
                 
                 # Format the final response for UI (name - description - type)
                 formatted_column = {
