@@ -223,8 +223,7 @@ async def sync_confluence_table_delta(
         logger.info("📋 Sample data entry: %s", data[0])
         logger.info("📋 Data entry keys: %s", list(data[0].keys()) if data else "No data")
     else:
-        logger.warning("⚠️  No data provided to sync_confluence_table_delta - this might be the issue!")
-        return {"delta": [], "updated": None, "message": "No data provided"}
+        logger.warning("⚠️  No data provided to sync_confluence_table_delta - will create empty table if none exists")
     
     logger.info("🔍 Syncing Confluence table delta in %s/%s with %d potential rows", 
                space, title, len(data))
@@ -263,6 +262,18 @@ async def sync_confluence_table_delta(
         
         existing = set()  # No existing keys since table was just created
         logger.info("✅ Created new table with 5-column structure")
+        
+        # If no data provided, just create the table and return
+        if not data:
+            updated_html = str(soup)
+            updated = await confluence.update_page(
+                page_id,
+                title,
+                updated_html,
+                minor_edit=True
+            )
+            logger.info("✅ Created empty table structure on Confluence page")
+            return {"delta": [], "updated": updated, "message": "Created empty table structure"}
     else:
         # Extract existing keys from first <td> in each <tr> (skip header)
         existing = set()
@@ -286,6 +297,11 @@ async def sync_confluence_table_delta(
             td = tr.find('td')
             if td and td.text:
                 existing.add(td.text.strip())
+
+    # Handle case where no data provided but table exists
+    if not data:
+        logger.info("✅ No data to sync, but table structure is confirmed to exist")
+        return {"delta": [], "updated": None, "message": "No data to sync"}
 
     logger.debug("📋 Existing keys in table: %s", existing)
     logger.debug("📋 Incoming data columns: %s", [item.get("column", "<missing>") for item in data])
@@ -953,6 +969,8 @@ async def get_table_delta_keys(
     """
     Return the subset of `columns` that are not present in the
     <table class="relative-table"> on the Confluence page, as a JSON array.
+    
+    If no table exists on the page, returns all columns (since they're all "missing").
 
     Args:
       space (str):     Confluence space key (e.g., "PROJ").
@@ -964,9 +982,10 @@ async def get_table_delta_keys(
       str: JSON‐encoded list of column names that do NOT already appear
            as the first <td> in any row of the existing table, for example:
            '["sales.channel","sales.transaction_ref","sales.loyalty_points","sales.notes"]'.
+           If no table exists, returns all input columns.
 
     Raises:
-      ValueError:      If the target table is not found.
+      Exception: Propagates errors from the Confluence client.
     """
     page_id = await confluence.get_page_id(space, title)
     page = await confluence.get_page_content(page_id, expand="body.storage")
@@ -975,7 +994,9 @@ async def get_table_delta_keys(
     soup = BeautifulSoup(html, "html.parser")
     tbl = soup.find("table", class_="relative-table")
     if not tbl:
-        raise ValueError(f"relative-table not found on '{title}' in '{space}'")
+        # No table exists yet - all columns are "missing" and need to be added
+        logger.info("📋 No existing table found on page '%s' - all %d columns are new", title, len(columns))
+        return json.dumps(columns)
 
     existing = {
         tr.find("td").text.strip()
