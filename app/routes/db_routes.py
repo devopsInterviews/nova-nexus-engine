@@ -1118,6 +1118,29 @@ async def sync_all_tables_with_progress(
         schema_map = json.loads(keys_res.content[0].text)
         logger.debug("sync_all_tables: schema map keys: %s", list(schema_map.keys())[:10])  # Log first 10 schema keys
 
+        # --- Step 2.5: Ensure Confluence table exists before processing columns ---
+        logger.info("🏗️ Ensuring Confluence table structure exists before processing columns")
+        try:
+            table_init_res = await _mcp_session.call_tool(
+                "sync_confluence_table_delta",
+                arguments={
+                    "space": data["space"],
+                    "title": data["title"],
+                    "data": []  # Empty data to trigger table creation if needed
+                },
+                read_timeout_seconds=timedelta(seconds=60),
+            )
+            
+            if table_init_res.content:
+                table_init_info = json.loads(table_init_res.content[0].text)
+                logger.info("✅ Table initialization result: %s", table_init_info.get("message", "Unknown"))
+            else:
+                logger.warning("⚠️ Table initialization returned no content")
+                
+        except Exception as table_init_error:
+            logger.error("❌ Failed to initialize table structure: %s", table_init_error)
+            # Continue anyway - the individual sync calls might still work
+
         # --- Step 3: Process each table ---
         results = []
         total_tables = len(tables)
@@ -1135,23 +1158,32 @@ async def sync_all_tables_with_progress(
 
             # --- Step 3a: Compute delta (which columns are missing from Confluence) ---
             logger.debug("sync_all_tables: computing delta for table %s with %d columns", tbl, len(all_cols))
-            delta_res = await _mcp_session.call_tool(
-                "get_table_delta_keys",
-                arguments={
-                    "space": data["space"],
-                    "title": data["title"],
-                    "columns": [f"{tbl}.{c}" for c in all_cols]
-                },
-                read_timeout_seconds=timedelta(seconds=60),
-            )
-            delta_chunks = [msg.text for msg in delta_res.content]
-            delta_text = "".join(delta_chunks)
-            logger.debug("sync_all_tables: delta JSON for %s: %s", tbl, delta_text[:200])
+            logger.info("🔍 About to call get_table_delta_keys for table %s with columns: %s", tbl, [f"{tbl}.{c}" for c in all_cols][:5])
             
             try:
-                missing = json.loads(delta_text)
-            except Exception as e:
-                logger.warning("sync_all_tables: failed to parse delta JSON for %s: %s", tbl, e)
+                delta_res = await _mcp_session.call_tool(
+                    "get_table_delta_keys",
+                    arguments={
+                        "space": data["space"],
+                        "title": data["title"],
+                        "columns": [f"{tbl}.{c}" for c in all_cols]
+                    },
+                    read_timeout_seconds=timedelta(seconds=60),
+                )
+                delta_chunks = [msg.text for msg in delta_res.content]
+                delta_text = "".join(delta_chunks)
+                logger.info("📊 get_table_delta_keys returned: %s", delta_text[:500])
+                logger.debug("sync_all_tables: delta JSON for %s: %s", tbl, delta_text[:200])
+                
+                try:
+                    missing = json.loads(delta_text)
+                    logger.info("✅ Successfully parsed delta JSON: %d missing columns", len(missing))
+                except Exception as parse_e:
+                    logger.error("❌ Failed to parse delta JSON for %s: %s. Raw response: %s", tbl, parse_e, delta_text[:300])
+                    missing = []
+                    
+            except Exception as tool_e:
+                logger.error("❌ get_table_delta_keys tool failed for %s: %s", tbl, tool_e, exc_info=True)
                 missing = []
 
             if not missing:
@@ -1179,11 +1211,18 @@ async def sync_all_tables_with_progress(
             
             try:
                 descriptions = json.loads(desc_text)
+                logger.info("✅ Parsed descriptions JSON: %d entries", len(descriptions))
+                if descriptions:
+                    logger.debug("📋 Sample description entry: %s", descriptions[0])
             except Exception as e:
                 logger.error("sync_all_tables: failed to parse descriptions JSON for %s: %s", tbl, e)
                 descriptions = []
 
             # --- Step 3c: Sync delta descriptions to Confluence ---
+            logger.info("🔗 About to sync %d descriptions to Confluence for table %s", len(descriptions), tbl)
+            if not descriptions:
+                logger.warning("⚠️  No descriptions to sync for table %s - this might prevent table creation!", tbl)
+            
             logger.debug("sync_all_tables: syncing %d descriptions to Confluence for table %s", len(descriptions), tbl)
             sync_res = await _mcp_session.call_tool(
                 "sync_confluence_table_delta",
@@ -1195,15 +1234,19 @@ async def sync_all_tables_with_progress(
                 read_timeout_seconds=timedelta(seconds=300),
             )
             
+            logger.info("📊 sync_confluence_table_delta completed for table %s", tbl)
+            logger.debug("📋 Raw sync response: %s", sync_res.content[0].text if sync_res.content else "No content")
+            
             sync_info = {"delta": []}
             if sync_res.content:
                 try:
                     sync_info = json.loads(sync_res.content[0].text)
+                    logger.info("✅ Parsed sync response: %s", sync_info)
                 except Exception as e:
                     logger.error("sync_all_tables: failed to parse sync JSON for %s: %s", tbl, e)
 
             synced_columns = sync_info.get("delta", [])
-            logger.info("sync_all_tables: synced %d columns for table %s", len(synced_columns), tbl)
+            logger.info("📈 sync_all_tables: synced %d columns for table %s", len(synced_columns), tbl)
 
             results.append({
                 "table": tbl,
@@ -1365,6 +1408,42 @@ async def sync_all_tables_with_progress_stream(
             schema_map = json.loads(keys_res.content[0].text)
             logger.info("sync_all_tables_with_progress_stream: loaded schema for %d tables", len(schema_map))
 
+            # --- Stage 2.5: Ensure Confluence table exists (12% of progress) ---
+            logger.info("sync_all_tables_with_progress_stream: Stage 2.5 - Ensuring table structure exists")
+            progress_data.update({
+                "stage": "initializing_table",
+                "progress_percentage": 12,
+                "stage_details": "Creating Confluence table structure if needed..."
+            })
+            yield f"data: {json.dumps(progress_data)}\n\n"
+            
+            try:
+                table_init_res = await _mcp_session.call_tool(
+                    "sync_confluence_table_delta",
+                    arguments={
+                        "space": data["space"],
+                        "title": data["title"],
+                        "data": []  # Empty data to trigger table creation if needed
+                    },
+                    read_timeout_seconds=timedelta(seconds=60),
+                )
+                
+                if table_init_res.content:
+                    table_init_info = json.loads(table_init_res.content[0].text)
+                    logger.info("✅ Table initialization result: %s", table_init_info.get("message", "Unknown"))
+                    progress_data["stage_details"] = f"Table structure ready: {table_init_info.get('message', 'Unknown status')}"
+                else:
+                    logger.warning("⚠️ Table initialization returned no content")
+                    progress_data["stage_details"] = "Table structure status unknown"
+                    
+                yield f"data: {json.dumps(progress_data)}\n\n"
+                    
+            except Exception as table_init_error:
+                logger.error("❌ Failed to initialize table structure: %s", table_init_error)
+                progress_data["stage_details"] = f"Table initialization failed: {str(table_init_error)}"
+                yield f"data: {json.dumps(progress_data)}\n\n"
+                # Continue anyway - the individual sync calls might still work
+
             # --- Stage 3: Process each table (85% of progress, distributed among tables) ---
             results = []
             table_progress_increment = 85 / len(tables) if tables else 0
@@ -1397,23 +1476,31 @@ async def sync_all_tables_with_progress_stream(
                 progress_data["stage_details"] = f"Computing delta for table '{tbl}' - checking {len(all_cols)} columns"
                 yield f"data: {json.dumps(progress_data)}\n\n"
                 logger.debug("sync_all_tables_with_progress_stream: computing delta for table %s", tbl)
-                
-                delta_res = await _mcp_session.call_tool(
-                    "get_table_delta_keys",
-                    arguments={
-                        "space": data["space"],
-                        "title": data["title"],
-                        "columns": [f"{tbl}.{c}" for c in all_cols]
-                    },
-                    read_timeout_seconds=timedelta(seconds=60),
-                )
-                delta_chunks = [msg.text for msg in delta_res.content]
-                delta_text = "".join(delta_chunks)
+                logger.info("🔍 About to call get_table_delta_keys for table %s with columns: %s", tbl, [f"{tbl}.{c}" for c in all_cols][:5])
                 
                 try:
-                    missing = json.loads(delta_text)
-                except Exception as e:
-                    logger.warning("sync_all_tables_with_progress_stream: failed to parse delta JSON for %s: %s", tbl, e)
+                    delta_res = await _mcp_session.call_tool(
+                        "get_table_delta_keys",
+                        arguments={
+                            "space": data["space"],
+                            "title": data["title"],
+                            "columns": [f"{tbl}.{c}" for c in all_cols]
+                        },
+                        read_timeout_seconds=timedelta(seconds=60),
+                    )
+                    delta_chunks = [msg.text for msg in delta_res.content]
+                    delta_text = "".join(delta_chunks)
+                    logger.info("📊 get_table_delta_keys returned: %s", delta_text[:500])
+                    
+                    try:
+                        missing = json.loads(delta_text)
+                        logger.info("✅ Successfully parsed delta JSON: %d missing columns", len(missing))
+                    except Exception as parse_e:
+                        logger.error("❌ Failed to parse delta JSON for %s: %s. Raw response: %s", tbl, parse_e, delta_text[:300])
+                        missing = []
+                        
+                except Exception as tool_e:
+                    logger.error("❌ get_table_delta_keys tool failed for %s: %s", tbl, tool_e, exc_info=True)
                     missing = []
 
                 if not missing:
