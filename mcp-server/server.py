@@ -149,17 +149,17 @@ async def list_database_tables(
     database_type: str = "postgres"
 ) -> str:
     """
-    List all user tables in the specified database, for Postgres or MSSQL.
+    List all user tables and views in the specified database, for Postgres or MSSQL.
 
     Returns:
-      A JSON‐encoded array of table names, e.g. '["shops","items","sales"]'.
+      A JSON‐encoded array of table and view names, e.g. '["shops","items","sales","customer_view"]'.
 
     Raises:
       ValueError: If `database_type` is unsupported.
       Otherwise, re-raises any DB client errors so you can see them.
     """
     logger.info(
-        "list_database_tables called against %s:%s/%s as %s (%s)",
+        "🔍 list_database_tables called against %s:%s/%s as %s (%s) - including tables and views",
         host, port, database or "<default>", user, database_type
     )
 
@@ -183,7 +183,9 @@ async def list_database_tables(
     try:
         # 3) Fetch raw list
         tables_list: List[str] = await client.list_tables()
-        logger.debug("Raw tables_list for %s: %r", database_type, tables_list)
+        logger.info("📋 Retrieved %d database objects (tables and views) for %s", 
+                   len(tables_list), database_type)
+        logger.debug("Raw objects list for %s: %r", database_type, tables_list)
 
         # 4) Serialize
         tables_json = json.dumps(tables_list)
@@ -249,7 +251,7 @@ async def list_database_keys(
         On any MSSQL connection or query failure.  # DB-API base exception :contentReference[oaicite:6]{index=6}:contentReference[oaicite:7]{index=7}
     """
     logger.info(
-        "list_database_keys called against %s:%s/%s as %s (%s)",
+        "🔍 list_database_keys called against %s:%s/%s as %s (%s) - including tables and views",
         host, port, database, user, database_type
     )
 
@@ -265,6 +267,7 @@ async def list_database_keys(
     await client.init()
     try:
         keys_map = await client.list_keys()
+        logger.info("📋 Retrieved column mappings for %d database objects (tables and views)", len(keys_map))
         logger.debug("Keys map: %s", keys_map)
         return keys_map
     finally:
@@ -463,7 +466,7 @@ async def describe_columns(
     database_type: str = "postgres"
 ) -> str:
     """
-    Describe only the given `columns` of `table` for Postgres or MSSQL.
+    Describe only the given `columns` of `table` (or view) for Postgres or MSSQL.
 
     1. Connects to the correct database type (PostgresClient or MSSQLClient).
     2. Samples up to `limit` values per column.
@@ -475,6 +478,8 @@ async def describe_columns(
     Raises:
       ValueError: If `database_type` is unsupported.
     """
+    logger.info("🔍 describe_columns called for table/view '%s' in %s:%s/%s (%s)", 
+               table, host, port, database, database_type)
     # 1) Pick the right client
     if database_type == "postgres":
         client = PostgresClient(
