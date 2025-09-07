@@ -1,8 +1,215 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Set
 import asyncpg
+import asyncio
 import logging
+import re
+try:
+    import pytds
+    import pytds.tds_base
+except ImportError:
+    pytds = None
+from atlassian import Confluence
 
 logger = logging.getLogger(__name__)
+
+
+class ConfluenceClient:
+    """
+    Wraps basic operations for reading and updating Confluence pages.
+    """
+
+    # Matches @{anything with spaces or prefixes}
+    MENTION_BRACED = re.compile(r'@\{([^}]+)\}')
+    # Matches plain @username (start-of-line or whitespace before @, avoids emails)
+    MENTION_PLAIN  = re.compile(r'(?<!\S)@([A-Za-z0-9._-]+)')
+
+    def __init__(self, url: str, username: str, password: str, ssl_verify: bool = True):
+
+        # Initialize the Confluence API client
+        self.client = Confluence(
+            url=url,
+            username=username,
+            password=password,
+            verify_ssl=ssl_verify
+        )
+        logger.info("Username: " + username)
+        logger.info("Password: " + password)
+    async def get_page_id(self, space: str, title: str) -> str:
+        """
+        Return the numeric ID of a Confluence page given its space and title.
+        """
+        return self.client.get_page_id(space, title)
+
+    async def get_page_content(self, page_id: str, expand: str = "body.storage,version") -> dict:
+        """
+        Fetch the content payload for a page, including its storage-format body and version.
+        """
+        return self.client.get_page_by_id(page_id, expand=expand)
+
+    async def update_page(self,
+                    page_id: str,
+                    title: str,
+                    new_body: str,
+                    minor_edit: bool = True) -> dict:
+        """
+        Update an existing Confluence page’s body (storage format) and bump its version.
+
+        :param page_id:    ID of the page to update
+        :param title:      Title of the page (must match existing)
+        :param new_body:   The HTML/storage-format content to write
+        :param minor_edit: If True, flags this as a minor edit
+        """
+        # Retrieve current version
+        page = await self.get_page_content(page_id, expand="version")
+        current_version = page["version"]["number"]
+
+        # Perform the update
+        return self.client.update_page(
+            page_id,
+            title,
+            new_body,
+            parent_id=None,
+            type="page",
+            representation="storage",
+            minor_edit=minor_edit,
+            version_comment="Automated update via ConfluenceClient"
+        )
+
+    async def append_to_page(self, page_id: str, html_fragment: str) -> dict:
+        """
+        Append HTML storage-format content to the end of an existing page.
+        """
+        page = await self.get_page_content(page_id, expand="body.storage,version")
+        current_body = page["body"]["storage"]["value"]
+        new_body = current_body + html_fragment
+        return self.update_page(
+            page_id,
+            page["title"],
+            new_body
+        )
+
+    async def _get_userkey_dc(self, username: str) -> Optional[str]:
+        """Resolve Confluence username -> userKey (DC REST via atlassian-python-api)."""
+        try:
+            logger.debug("DC resolve username -> userKey: %r", username)
+            data = await asyncio.to_thread(self.client.get_user_details_by_username, username)
+            if not isinstance(data, dict):
+                logger.warning("get_user_details_by_username returned non-dict for %r: %r", username, type(data))
+                return None
+            userkey = data.get("userKey") or data.get("key")
+            if userkey:
+                logger.debug("Resolved %r to userKey=%r", username, userkey)
+            else:
+                logger.warning("No userKey found for username=%r; keys=%r", username, list(data.keys()))
+            return userkey
+        except Exception as e:
+            logger.exception("Failed DC user lookup for username=%r: %s", username, e)
+            return None
+
+    def _build_user_mention_dc(self, userkey: str) -> str:
+        """Return DC storage-format user mention macro."""
+        return f'<ac:link><ri:user ri:userkey="{userkey}"/></ac:link>'
+
+    async def _inject_mentions(self, text: str) -> Tuple[str, bool]:
+        """
+        Replace @{...} and plain @username with storage-format mentions.
+        Returns (new_text, any_replaced)
+        """
+        if not text:
+            return text, False
+
+        replaced_any = False
+        new_text = text
+
+        # 1) Handle @{...}
+        for m in list(self.MENTION_BRACED.finditer(new_text)):
+            token = m.group(1).strip()
+            logger.debug("Found braced mention token=%r", token)
+            try:
+                macro = None
+                if token.startswith("userkey:"):
+                    macro = self._build_user_mention_dc(token.split(":", 1)[1].strip())
+                else:
+                    # "username:<name>" or just a name -> resolve to userKey
+                    if token.startswith("username:"):
+                        username = token.split(":", 1)[1].strip()
+                    else:
+                        username = token
+                    userkey = await self._get_userkey_dc(username)
+                    if userkey:
+                        macro = self._build_user_mention_dc(userkey)
+
+                if macro:
+                    new_text = new_text.replace(m.group(0), macro)
+                    replaced_any = True
+                    logger.debug("Braced mention resolved -> macro inserted")
+                else:
+                    logger.warning("Could not resolve braced token=%r; leaving as text", token)
+            except Exception as e:
+                logger.exception("Error resolving braced token=%r: %s", token, e)
+
+        # 2) Handle plain @username
+        for m in list(self.MENTION_PLAIN.finditer(new_text)):
+            username = m.group(1)
+            logger.debug("Found plain @username mention: %r", username)
+            try:
+                userkey = await self._get_userkey_dc(username)
+                if not userkey:
+                    logger.warning("Username %r not found; will rely on wiki conversion fallback", username)
+                    continue
+                macro = self._build_user_mention_dc(userkey)
+                new_text = new_text.replace(m.group(0), macro)
+                replaced_any = True
+                logger.debug("Plain @%s resolved -> macro inserted", username)
+            except Exception as e:
+                logger.exception("Error resolving plain @%s: %s", username, e)
+
+        logger.debug("mention injection: replaced_any=%s", replaced_any)
+        return new_text, replaced_any
+
+    async def _wiki_conversion_fallback_dc(self, text: str) -> Optional[str]:
+        """
+        If injection failed, try converting wiki mentions [~username] -> storage via Confluence converter.
+        """
+        try:
+            def repl(m: re.Match) -> str:
+                return f"[~{m.group(1)}]"
+            wiki_candidate = self.MENTION_PLAIN.sub(repl, text)
+            if wiki_candidate == text:
+                return None
+            logger.debug("Attempting wiki->storage conversion fallback")
+            storage = await asyncio.to_thread(self.client.convert_wiki_to_storage, wiki_candidate)
+            logger.debug("Wiki conversion produced %d chars", len(storage) if storage else -1)
+            return storage
+        except Exception as e:
+            logger.exception("Wiki conversion fallback failed: %s", e)
+            return None
+
+    async def post_comment(self, page_id: str, comment: str) -> dict:
+        """
+        Add a comment. Supports @{...} and @username mentions (DC).
+        """
+        logger.debug("post_comment: start page_id=%s len(comment)=%d", page_id, len(comment))
+        try:
+            prepared, replaced_any = await self._inject_mentions(comment)
+
+            if not replaced_any:
+                # DC fallback: try wiki -> storage conversion for [~username]
+                converted = await self._wiki_conversion_fallback_dc(comment)
+                if converted:
+                    prepared = converted
+                    replaced_any = True
+                    logger.debug("Using wiki->storage converted body")
+
+            # Wrap in <p> if there's no block-level tag; DC renders comments more consistently
+            if "<ac:" not in prepared and "<p>" not in prepared:
+                prepared = f"<p>{prepared}</p>"
+
+            logger.debug("post_comment: final length=%d, replaced_any=%s", len(prepared), replaced_any)
+            return await asyncio.to_thread(self.client.add_comment, page_id, prepared)
+        except Exception as e:
+            logger.exception("post_comment: failed posting comment to page_id=%s: %s", page_id, e)
+            raise
 
 
 class PostgresClient:
@@ -394,52 +601,280 @@ class PostgresClient:
                    len(values), schema, table, column)
         return values
 
+    async def get_column_metadata(self, schema: str = None) -> Dict[str, Dict[str, Any]]:
+        """
+        Return detailed metadata for all columns including data types and schema information.
+        
+        If schema is provided, returns metadata from that specific schema.
+        If schema is None (default), returns metadata from all user schemas.
+        
+        :param schema: Optional schema name to filter by. If None, includes all user schemas.
+        :returns: Dict where each key is "schema.table.column" and value contains metadata:
+                 {
+                     "table_name": str,
+                     "column_name": str, 
+                     "data_type": str,
+                     "table_schema": str,
+                     "is_nullable": str,
+                     "column_default": str or None,
+                     "character_maximum_length": int or None
+                 }
+        """
+        assert self._pool is not None, "Connection pool is not initialized"
+        
+        if schema:
+            logger.info("🔍 Getting column metadata from specific schema: '%s'", schema)
+        else:
+            logger.info("🔍 Getting column metadata from ALL user schemas")
+            
+        async with self._pool.acquire() as conn:
+            if schema:
+                # Get column metadata from specific schema
+                rows = await conn.fetch(
+                    """
+                    SELECT table_schema, table_name, column_name, data_type, 
+                           is_nullable, column_default, character_maximum_length,
+                           ordinal_position
+                      FROM information_schema.columns
+                     WHERE table_schema = $1
+                     ORDER BY table_name, ordinal_position;
+                    """,
+                    schema
+                )
+            else:
+                # Get column metadata from all user schemas
+                rows = await conn.fetch(
+                    """
+                    SELECT table_schema, table_name, column_name, data_type,
+                           is_nullable, column_default, character_maximum_length,
+                           ordinal_position
+                      FROM information_schema.columns
+                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+                       AND table_schema NOT LIKE 'pg_temp_%'
+                       AND table_schema NOT LIKE 'pg_toast_temp_%'
+                     ORDER BY table_schema, table_name, ordinal_position;
+                    """
+                )
+        
+        result: Dict[str, Dict[str, Any]] = {}
+        schema_stats: Dict[str, int] = {}  # Track column count per schema
+        
+        for row in rows:
+            table_schema = row["table_schema"]
+            table_name = row["table_name"]
+            column_name = row["column_name"]
+            
+            # Create fully qualified column key
+            full_key = f"{table_schema}.{table_name}.{column_name}"
+            
+            # Store comprehensive metadata
+            result[full_key] = {
+                "table_name": table_name,
+                "column_name": column_name,
+                "data_type": row["data_type"],
+                "table_schema": table_schema,
+                "is_nullable": row["is_nullable"],
+                "column_default": row["column_default"],
+                "character_maximum_length": row["character_maximum_length"]
+            }
+            
+            # Count columns per schema for logging
+            schema_stats[table_schema] = schema_stats.get(table_schema, 0) + 1
+        
+        total_columns = len(result)
+        logger.info("📊 Retrieved metadata for %d columns across %d schemas:", 
+                   total_columns, len(schema_stats))
+        
+        for schema_name, column_count in schema_stats.items():
+            logger.info("  📂 Schema '%s': %d columns with metadata", schema_name, column_count)
+        
+        logger.info("✅ Column metadata collection complete")
+        return result
 
 class MSSQLClient:
     """
-    Placeholder MSSQL client. 
-    
-    This is a stub implementation to support the existing server.py structure
-    that expects both PostgreSQL and MSSQL clients. The actual MSSQL implementation
-    would need to be added here with proper SQL Server connection handling.
+    Async client for Microsoft SQL Server, with dynamic connection parameters
+    and methods to list databases, tables, columns, and execute arbitrary queries.
     """
-    
-    def __init__(self, host: str, port: int, user: str, password: str, database: str = "master"):
-        self.host = host
-        self.port = port
-        self.user = user
-        self.password = password
-        self.database = database
-        
-    async def init(self) -> None:
-        """Initialize MSSQL connection - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
-        
-    async def close(self) -> None:
-        """Close MSSQL connection - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
-        
-    async def list_databases(self) -> List[str]:
-        """List MSSQL databases - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
-        
-    async def list_schemas(self) -> List[str]:
-        """List MSSQL schemas - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
-        
-    async def list_tables(self, schema: str = None) -> List[str]:
-        """List MSSQL tables - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
-        
-    async def list_keys(self, schema: str = None) -> Dict[str, List[str]]:
-        """List MSSQL table keys - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
-        
-    async def execute_query(self, sql: str) -> List[Dict[str, Any]]:
-        """Execute MSSQL query - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
-        
-    async def get_column_values(self, table: str, column: str, limit: int) -> list:
-        """Get MSSQL column values - not implemented."""
-        raise NotImplementedError("MSSQL client not implemented yet")
 
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        user: str,
+        password: str,
+        database: str = "master"
+    ):
+        """
+        :param host:      SQL Server hostname or IP.
+        :param port:      SQL Server port (default: 1433).
+        :param user:      Username for authentication.
+        :param password:  Password for authentication.
+        :param database:  Initial database to connect to (default: 'master').
+        """
+        self._conn_args = {
+            "server": host,
+            "port": port,
+            "database": database,
+            "user": user,
+            "password": password
+        }
+        self._conn: Optional[Any] = None
+
+    async def init(self) -> None:
+        """
+        Initialize the connection to SQL Server.
+
+        This uses pytds.connect() synchronously under the hood,
+        offloading to a worker thread so the event loop remains responsive.
+        """
+        self._conn = await asyncio.to_thread(pytds.connect, **self._conn_args)
+
+    async def close(self) -> None:
+        """
+        Close the SQL Server connection.
+
+        The synchronous .close() call is wrapped in to_thread() to prevent blocking.
+        """
+        if self._conn:
+            await asyncio.to_thread(self._conn.close)
+
+    async def list_databases(self) -> List[str]:
+        """
+        Return a list of all user databases on the server,
+        excluding system DBs (database_id > 4).
+        """
+        assert self._conn, "Connection not initialized"
+
+        def _sync_list_dbs():
+            cur = self._conn.cursor()
+            cur.execute(
+                "SELECT name "
+                "FROM sys.databases "
+                "WHERE database_id > 4;"
+            )
+            rows = cur.fetchall()
+            cur.close()
+            return [r[0] for r in rows]
+
+        return await asyncio.to_thread(_sync_list_dbs)
+
+    async def list_tables(self) -> List[str]:
+        """
+        Return a list of all user tables in the current database’s dbo schema
+        using INFORMATION_SCHEMA.TABLES.
+        """
+        assert self._conn, "Connection not initialized"
+
+        def _sync_list_tables():
+            cur = self._conn.cursor()
+            cur.execute(
+                """
+                SELECT TABLE_NAME
+                  FROM INFORMATION_SCHEMA.TABLES
+                 WHERE TABLE_TYPE = 'BASE TABLE'
+                   AND TABLE_SCHEMA = 'dbo';
+                """
+            )
+            rows = cur.fetchall()
+            cur.close()
+            return [r[0] for r in rows]
+
+        return await asyncio.to_thread(_sync_list_tables)
+
+    async def list_keys(self) -> Dict[str, List[str]]:
+        """
+        Return a mapping of each table to its list of column names
+        by querying INFORMATION_SCHEMA.COLUMNS.
+        """
+        assert self._conn, "Connection not initialized"
+
+        def _sync_list_keys():
+            cur = self._conn.cursor()
+            cur.execute(
+                """
+                SELECT TABLE_NAME, COLUMN_NAME
+                  FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = 'dbo'
+                 ORDER BY TABLE_NAME, ORDINAL_POSITION;
+                """
+            )
+            result: Dict[str, List[str]] = {}
+            for table, column in cur.fetchall():
+                result.setdefault(table, []).append(column)
+            cur.close()
+            return result
+
+        return await asyncio.to_thread(_sync_list_keys)
+
+    async def execute_query(self, sql: str) -> List[Dict[str, Any]]:
+        """
+        Run an arbitrary SQL statement and return rows as list of dicts.
+        """
+        assert self._conn, "Connection not initialized"
+
+        def _sync_execute():
+            cur = self._conn.cursor()
+            cur.execute(sql)
+            cols = [desc[0] for desc in cur.description]
+            rows = cur.fetchall()
+            cur.close()
+            return [dict(zip(cols, row)) for row in rows]
+
+        return await asyncio.to_thread(_sync_execute)
+
+    async def get_column_values(
+        self,
+        table: str,
+        column: str,
+        limit: int
+    ) -> List[Any]:
+        """
+        Return up to `limit` distinct values for `column` in `table`.
+        For XML-typed columns (which can't be DISTINCT-ed), falls back
+        to a plain TOP query or casts the column to NVARCHAR(MAX).
+        """
+        assert self._conn, "Connection not initialized"
+        def _sync():
+            cur = self._conn.cursor()
+            # First, try DISTINCT TOP
+            distinct_sql = f"SELECT DISTINCT TOP {limit} [{column}] FROM [{table}]"
+            try:
+                logger.debug("Executing DISTINCT query: %s", distinct_sql)
+                cur.execute(distinct_sql)
+                rows = cur.fetchall()
+                return [row[0] for row in rows]
+
+            except pytds.tds_base.OperationalError as e:
+                msg = str(e)
+                logger.warning(
+                    "DISTINCT failed on %s.%s: %s. Falling back to plain TOP or CAST",
+                    table, column, msg
+                )
+                # Fallback: plain TOP N
+                try:
+                    plain_sql = f"SELECT TOP {limit} [{column}] FROM [{table}]"
+                    logger.debug("Executing fallback SQL: %s", plain_sql)
+                    cur.execute(plain_sql)
+                    rows = cur.fetchall()
+                    return [row[0] for row in rows]
+                except pytds.tds_base.OperationalError:
+                    # Last resort: cast XML to NVARCHAR(MAX)
+                    cast_sql = (
+                        f"SELECT TOP {limit} "
+                        f"CAST([{column}] AS NVARCHAR(MAX)) "
+                        f"FROM [{table}]"
+                    )
+                    logger.debug("Executing CAST fallback SQL: %s", cast_sql)
+                    cur.execute(cast_sql)
+                    rows = cur.fetchall()
+                    return [row[0] for row in rows]
+            finally:
+                cur.close()
+
+        # Run the blocking DB work in a thread so the event loop stays responsive
+        return await asyncio.to_thread(_sync)
+
+    async def get_column_metadata(self, schema: str = None) -> Dict[str, Dict[str, Any]]:
+        """Get MSSQL column metadata - not implemented."""
+        raise NotImplementedError("MSSQL client not implemented yet")
