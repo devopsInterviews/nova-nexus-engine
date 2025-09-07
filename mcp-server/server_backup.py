@@ -1,23 +1,3 @@
-import json
-import logging
-import re
-from typing import List, Dict, Any
-from bs4 import BeautifulSoup
-
-# Import client classes (these should be available from the app directory)
-from app.clients import PostgresClient, MSSQLClient
-from app import confluence, llm
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Import MCP framework (this should be available in the environment)
-# Note: The actual import will depend on your MCP setup
-# This is a placeholder that represents the MCP framework
-import mcp
-
-
 @mcp.tool()
 async def list_databases(
     host: str,
@@ -67,74 +47,6 @@ async def list_databases(
         dbs = await client.list_databases()
         logger.info("Databases found: %s", dbs)
         return dbs
-    finally:
-        await client.close()
-
-
-@mcp.tool()
-async def list_database_schemas(
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str,
-    database_type: str = "postgres"
-) -> List[str]:
-    """
-    List all schemas in the specified database, for Postgres or MSSQL.
-
-    This tool connects to the specified database and returns all user-defined
-    schemas, excluding system schemas like information_schema, pg_catalog, etc.
-
-    Args:
-      host (str):          IP or hostname of the DB server.
-      port (int):          TCP port (Postgres default 5432, MSSQL default 1433).
-      user (str):          Username with list-permissions.
-      password (str):      Password for the user.
-      database (str):      Database name to inspect for schemas.
-      database_type (str): Either "postgres" or "mssql".
-
-    Returns:
-      List[str]:           List of schema names.
-
-    Raises:
-      ValueError:
-        If `database_type` is unsupported.
-      asyncpg.PostgresError:
-        On any Postgres connection or query failure.
-      mssql_python.Error:
-        On any MSSQL connection or query failure.
-    """
-    logger.info(
-        "list_database_schemas called against %s:%s/%s as %s (%s)",
-        host, port, database, user, database_type
-    )
-
-    if database_type == "postgres":
-        client = PostgresClient(
-            host, port, user, password,
-            database=database, min_size=1, max_size=5
-        )
-    elif database_type == "mssql":
-        client = MSSQLClient(
-            host, port, user, password,
-            database=database
-        )
-    else:
-        raise ValueError(f"Unsupported database_type: {database_type!r}")
-
-    await client.init()
-    try:
-        schemas_list: List[str] = await client.list_schemas()
-        logger.debug("Raw schemas_list for %s: %r", database_type, schemas_list)
-        return schemas_list
-    except Exception as e:
-        logger.error(
-            "❌ list_database_schemas failed for %s://%s:%s/%s as %s",
-            database_type, host, port, database, user,
-            exc_info=True
-        )
-        raise
     finally:
         await client.close()
 
