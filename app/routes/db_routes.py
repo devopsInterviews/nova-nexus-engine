@@ -658,8 +658,14 @@ async def suggest_columns(
             + "\n\n---\n"
             + "KNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
             + json.dumps(key_descriptions, ensure_ascii=False)
-            + "\n\nGuidance: Prefer columns whose names or descriptions semantically match the request. "
-              "Output one column per line in structure: table.column - description - value type."
+            + "\n\nGuidance: Analyze the request and select relevant columns from the KNOWN_COLUMN_DESCRIPTIONS_JSON. "
+              "Output ONLY the selected columns in this exact format, one per line:\n"
+              "table.column - schema\n\n"
+              "Example output:\n"
+              "sales.customer_id - public\n"
+              "products.name - inventory\n"
+              "orders.total_amount - sales\n\n"
+              "No greetings, no punctuation, no additional text, no descriptions - just the format above."
         )
         logger.info(
             "suggest_columns: augmented_user_prompt built (length=%d chars, desc_count=%d)",
@@ -697,68 +703,85 @@ async def suggest_columns(
         full_text = "\n".join(m.text for m in parts2 if getattr(m, "text", None))
         logger.debug("suggest_columns: raw suggestion text length=%d chars", len(full_text))
 
-        keys = [k.strip() for k in full_text.replace(",", "\n").splitlines() if k.strip()]
-        logger.info("suggest_columns: extracted %d suggested key(s)", len(keys))
-        logger.debug("suggest_columns: suggested keys sample=%s", _sample_list(keys))
+        # Parse LLM response - expecting format "table.column - schema"
+        raw_lines = [line.strip() for line in full_text.splitlines() if line.strip()]
+        logger.info("suggest_columns: extracted %d raw line(s) from LLM", len(raw_lines))
+        logger.debug("suggest_columns: raw lines sample=%s", _sample_list(raw_lines))
 
-        # --- Step 4: Format response to match frontend expectations ---
-        # Parse the suggested keys into structured format
+        # --- Step 4: Process LLM selections and lookup details from Confluence data ---
         columns: List[Dict[str, Any]] = []
-        for key in keys:
-            logger.debug("suggest_columns: parsing key: %s", key)
+        
+        for line in raw_lines:
+            logger.debug("suggest_columns: processing line: %s", line)
             
-            # Parse format: "table.column - description - value type"
-            # But also handle cases where type might be at the end of description
-            parts = [p.strip() for p in key.split(" - ")]
-            
-            if len(parts) >= 3:
-                # Standard format: "table.column - description - type"
-                column_name = parts[0]
-                description = parts[1]
-                data_type = parts[2]
-            elif len(parts) == 2:
-                # Format: "table.column - description with type at end"
-                column_name = parts[0]
-                description_with_type = parts[1]
+            try:
+                # Parse format: "table.column - schema"
+                if " - " not in line:
+                    logger.warning("suggest_columns: skipping malformed line (no ' - '): %s", line)
+                    continue
+                    
+                parts = line.split(" - ", 1)
+                if len(parts) != 2:
+                    logger.warning("suggest_columns: skipping malformed line (wrong parts): %s", line)
+                    continue
+                    
+                table_column = parts[0].strip()
+                suggested_schema = parts[1].strip()
                 
-                # Try to extract type from end of description
-                # Look for common database types at the end
-                type_pattern = r'\b(varchar|integer|int|bigint|smallint|text|char|boolean|bool|decimal|numeric|timestamp|datetime|date|time|float|double|real)\b\s*$'
-                type_match = re.search(type_pattern, description_with_type, re.IGNORECASE)
+                # Validate table.column format
+                if "." not in table_column:
+                    logger.warning("suggest_columns: skipping invalid table.column format: %s", table_column)
+                    continue
                 
-                if type_match:
-                    data_type = type_match.group(1).upper()
-                    # Remove the type from description
-                    description = description_with_type[:type_match.start()].strip()
-                    # Remove trailing dash if present
-                    description = description.rstrip(' -')
+                # Look up this column in our Confluence data
+                column_key = None
+                column_details = None
+                
+                # Try exact match first
+                if table_column in key_descriptions:
+                    column_key = table_column
+                    column_details = key_descriptions[table_column]
                 else:
-                    description = description_with_type
-                    data_type = "TEXT"
-            else:
-                # Only column name provided
-                column_name = parts[0] if parts else key
-                description = ""
-                data_type = "TEXT"
-            
-            # Clean up the data type - handle VARCHAR(255) etc.
-            if data_type != "TEXT":
-                type_match = re.match(r'^([A-Z]+)(?:\(\d+\))?', data_type.upper())
-                if type_match:
-                    data_type = type_match.group(1)
-                else:
-                    data_type = data_type.upper()
-            
-            parsed_column = {
-                "name": column_name,
-                "description": description,
-                "data_type": data_type
-            }
-            
-            logger.debug("suggest_columns: parsed column: %s", parsed_column)
-            columns.append(parsed_column)
+                    # Try to find by partial match (in case schema prefix differs)
+                    table_name = table_column.split(".", 1)[0]
+                    column_name = table_column.split(".", 1)[1]
+                    
+                    for key, details in key_descriptions.items():
+                        if key.endswith(f".{column_name}") and table_name in key:
+                            column_key = key
+                            column_details = details
+                            break
+                
+                if not column_details:
+                    logger.warning("suggest_columns: column not found in Confluence data: %s", table_column)
+                    # Add with minimal info
+                    columns.append({
+                        "name": table_column,
+                        "description": "Description not available",
+                        "data_type": "UNKNOWN"
+                    })
+                    continue
+                
+                # Extract details from Confluence data
+                description = column_details.get("description", "")
+                data_type = column_details.get("type", "UNKNOWN")
+                schema = column_details.get("schema", suggested_schema)
+                
+                # Format the final response for UI (name - description - type)
+                formatted_column = {
+                    "name": table_column,
+                    "description": description,
+                    "data_type": data_type
+                }
+                
+                columns.append(formatted_column)
+                logger.debug("suggest_columns: successfully processed column: %s -> %s", table_column, formatted_column)
+                
+            except Exception as e:
+                logger.error("suggest_columns: error processing line '%s': %s", line, e)
+                continue
 
-        logger.info("suggest_columns: parsed %d columns successfully", len(columns))
+        logger.info("suggest_columns: successfully processed %d columns from LLM suggestions", len(columns))
 
         # Create the response format expected by the frontend
         response_data = {
