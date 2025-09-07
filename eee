@@ -1,0 +1,373 @@
+@mcp.tool()
+async def get_confluence_page_content(space: str, title: str) -> str:
+    """
+    Fetches the HTML storage-format body of a Confluence page.
+
+    Args:
+      space (str): The Confluence space key (e.g. "PROJ").
+      title (str): The title of the page to fetch.
+
+    Returns:
+      str: The storage-format HTML content of the page body.
+    """
+
+    # Resolve the page ID
+    page_id = await confluence.get_page_id(space, title)
+    # Fetch full page content (including storage body)
+    page = await confluence.get_page_content(page_id, expand="body.storage")
+    # Return the raw HTML/storage value
+    return page["body"]["storage"]["value"]
+
+@mcp.tool()
+async def append_to_confluence_page(space: str, title: str, html_fragment: str) -> str:
+    """
+    Appends an HTML fragment to the end of an existing Confluence page.
+
+    Args:
+      space (str): The Confluence space key.
+      title (str): The title of the page to update.
+      html_fragment (str): A snippet of HTML (storage format) to append.
+
+    Returns:
+      str: Confirmation message including the page ID.
+    """
+    # Resolve the page ID
+    page_id = await confluence.get_page_id(space, title)
+    # Append the fragment and update the page
+    await confluence.append_to_page(page_id, html_fragment)
+    logger.info(f"Appended content to Confluence page '{title}' (ID: {page_id})")
+
+@mcp.tool()
+async def update_confluence_table(
+    space: str,
+    title: str,
+    data: list[dict]
+) -> dict:
+    """
+    Replace the contents of the first <table class="relative-table"> in a Confluence page
+    with new rows generated from a list of column-description mappings.
+
+    Args:
+        space (str):    Confluence space key (e.g., "PROJ").
+        title (str):    Title of the Confluence page to update.
+        data (list[dict]):
+            A list of dictionaries, each with keys:
+                "column" (str):     Column identifier (e.g., "shops.id").
+                "description" (str): Text description of the column.
+
+    Returns:
+        dict: The full response from Confluence API's update_page call, containing
+              updated page metadata and version information.
+
+    Raises:
+        ValueError: If the target table (<table class="relative-table">) is not found on the page.
+        Exception: Propagates any errors from the Confluence API client.
+
+    Example:
+        >>> new_rows = [
+        ...     {"column": "shops.id", "description": "Unique shop ID"},
+        ...     {"column": "shops.name", "description": "Shop name"}
+        ... ]
+        >>> updated = await update_confluence_table("MALL", "Shop Catalog", new_rows)
+        >>> print(updated["version"]["number"])
+    """
+    # 1) Fetch existing page content in storage format (HTML)
+    page_id = await confluence.get_page_id(space, title)
+    page = await confluence.get_page_content(page_id, expand="body.storage,version")
+    html = page["body"]["storage"]["value"]
+
+    # 2) Parse with BeautifulSoup and locate the target table
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table", class_="relative-table")
+    if not table:
+        raise ValueError(f"Table with class 'relative-table' not found on page {title} in space {space}")
+
+    # 2a) Remove all old rows except the header
+    rows = table.find_all("tr")
+    for old_row in rows[1:]:
+        old_row.extract()
+
+    # 2b) Append new rows from 'data'
+    for entry in data:
+        col_val = entry.get("column", "")
+        desc_val = entry.get("description", "")
+        new_tr = soup.new_tag("tr")
+        td_col = soup.new_tag("td"); td_col.string = col_val
+        td_desc = soup.new_tag("td"); td_desc.string = desc_val
+        new_tr.extend([td_col, td_desc])
+        table.tbody.append(new_tr)
+
+    # 2c) Serialize modified HTML back to a string
+    updated_html = str(soup)
+    logger.info("####")
+    logger.info(updated_html)
+
+    # 3) Push update via Confluence API (auto-bumps version)
+    updated = await confluence.update_page(
+        page_id,
+        title,
+        updated_html,
+        minor_edit=True
+    )
+    return updated
+
+@mcp.tool()
+async def sync_confluence_table_delta(
+    space: str,
+    title: str,
+    data: list[dict]
+) -> dict:
+    """
+    Read the existing <table class="relative-table"> from a Confluence page,
+    compute which entries in `data` are not already present (by column key),
+    append only those delta rows to the table, and push the update.
+
+    Args:
+        space (str):    Confluence space key (e.g., "PROJ").
+        title (str):    Title of the Confluence page to update.
+        data (list[dict]):
+            List of dicts with keys "column" and "description".
+
+    Returns:
+        dict: Full Confluence API response for the update_page call, or
+              an empty dict if no delta rows to append.
+
+    Raises:
+        ValueError: If the target table (<table class="relative-table">) is not found.
+        Exception: Propagates errors from the Confluence client.
+    """
+    # 1) Fetch current page HTML and version
+    page_id = await confluence.get_page_id(space, title)
+    page = await confluence.get_page_content(page_id, expand="body.storage,version")
+    html = page["body"]["storage"]["value"]
+
+    # 2) Parse HTML and extract existing keys
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table", class_="relative-table")
+    if not table:
+        raise ValueError(f"relative-table not found on page '{title}' in space '{space}'")
+
+    # extract existing keys from first <td> in each <tr> (skip header)
+    existing = set()
+    for tr in table.find_all('tr')[1:]:
+        td = tr.find('td')
+        if td and td.text:
+            existing.add(td.text.strip())
+
+    logger.debug(f"The existing keys are: {existing}")
+    logger.debug(f"The scanned keys are: {data}")
+
+    # 3) Determine delta rows
+    delta = [entry for entry in data if entry["column"] not in existing]
+    if not delta:
+        logger.debug("There are no deltas between the exsiting and the new keys")
+        return {"delta": [], "updated": None}
+    
+    logger.debug(f"The delta between exsiting and new is: {delta}")
+
+    # 4) Append delta rows to the table in the soup
+    for entry in delta:
+        col_val = entry.get("column", "")
+        desc_val = entry.get("description", "")
+        new_tr = soup.new_tag("tr")
+        td_col = soup.new_tag("td"); td_col.string = col_val
+        td_desc = soup.new_tag("td"); td_desc.string = desc_val
+        new_tr.extend([td_col, td_desc])
+        table.tbody.append(new_tr)
+
+    updated_html = str(soup)
+
+    # 5) Push update via Confluence API (auto-version)
+    updated = await confluence.update_page(
+        page_id,
+        title,
+        updated_html,
+        minor_edit=True
+    )
+
+    return {
+        "delta":   delta,   # list of {column,description}
+        "updated": updated  # full API response
+    }
+
+@mcp.tool()
+async def get_confluence_page_id(
+    space: str,
+    title: str
+) -> str:
+    """
+    Retrieve the numeric ID of a Confluence page by space and title.
+    """
+    logger.debug("get_confluence_page_id called with space=%s, title=%s", space, title)
+    page_id = await asyncio.to_thread(
+        confluence.get_page_id,
+        space,
+        title
+    )
+    logger.debug("get_confluence_page_id result: page_id=%s", page_id)
+    return page_id
+
+@mcp.tool()
+async def post_confluence_comment(
+    space: str,
+    title: str,
+    comment: str
+) -> Dict[str, Any]:
+    """
+    Add a comment to a Confluence page by ID.
+    Returns the Confluence API response.
+    """
+    page_id = await confluence.get_page_id(space=space,title=title)
+    logger.debug("post_confluence_comment called with page_id=%s, comment=%s", page_id, comment)
+    resp = await confluence.post_comment(page_id,comment)
+    logger.debug("post_confluence_comment result: %s", resp)
+    return resp
+
+@mcp.tool()
+async def collect_db_confluence_key_descriptions(
+    space: str,
+    title: str,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    database: str,
+) -> Dict[str, str]:
+    """
+    Return a mapping of keys that exist BOTH in Confluence and in the DB schema,
+    with their descriptions taken from Confluence.
+    """
+    # --- helpers for safe logging ---
+    def _mask_secret(s: str, show: int = 2) -> str:
+        if s is None:
+            return "None"
+        s = str(s)
+        return (s[:show] + "..." + s[-show:]) if len(s) > (show * 2) else "***"
+
+    def _sample_dict(d: Dict[str, str], n: int = 15) -> Dict[str, str]:
+        keys = list(d.keys())[:n]
+        return {k: d[k] for k in keys}
+
+    def _sample_schema(schema: Dict[str, List[str]], n_tables: int = 10, n_cols: int = 10) -> Dict[str, List[str]]:
+        out = {}
+        for i, (tbl, cols) in enumerate(schema.items()):
+            if i >= n_tables:
+                break
+            out[tbl] = cols[:n_cols]
+        return out
+
+    try:
+        logger.info(
+            "collect_db_confluence_key_descriptions: start space=%r title=%r host=%s port=%s db=%s user=%s",
+            space, title, host, port, database, user
+        )
+
+        # --- 1) Confluence: read storage HTML and pull key->desc from the table ---
+        logger.debug("Confluence: resolving page_id for space=%r title=%r …", space, title)
+        page_id = await confluence.get_page_id(space, title)
+        logger.info("Confluence: got page_id=%s", page_id)
+
+        logger.debug("Confluence: fetching page content expand='body.storage,version' …")
+        page = await confluence.get_page_content(page_id, expand="body.storage,version")
+        html = page["body"]["storage"]["value"]
+        logger.debug("Confluence: storage HTML length=%d chars", len(html))
+
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table", class_="relative-table")
+        if not table:
+            logger.error("Confluence: <table class='relative-table'> not found on page=%r space=%r", title, space)
+            raise ValueError(f"relative-table not found on page '{title}' in space '{space}'")
+
+        rows = table.find_all("tr")
+        logger.debug("Confluence: found %d <tr> rows in relative-table", len(rows))
+
+        conf_map: Dict[str, str] = {}
+        for tr in rows[1:]:  # skip header
+            tds = tr.find_all("td")
+            if not tds:
+                continue
+            key = tds[0].get_text(" ", strip=True) if len(tds) >= 1 else ""
+            desc = tds[1].get_text(" ", strip=True) if len(tds) >= 2 else ""
+            if key:
+                conf_map[key] = desc
+
+        logger.info("Confluence: parsed %d key(s) from table", len(conf_map))
+        logger.debug("Confluence: sample key→desc: %s", _sample_dict(conf_map))
+
+        # --- 2) DB schema: build canonical key set and helpers ---
+        logger.info("DB: connecting to %s:%s db=%s user=%s", host, port, database, user)
+        pg = PostgresClient(host=host, port=port, user=user, password=password, database=database)
+        await pg.init()
+        try:
+            logger.debug("DB: calling list_keys() …")
+            schema: Dict[str, List[str]] = await pg.list_keys()  # {table: [col,...]}
+        finally:
+            logger.debug("DB: closing connection pool …")
+            await pg.close()
+
+        total_tables = len(schema or {})
+        total_cols = sum(len(v) for v in (schema or {}).values())
+        logger.info("DB: schema loaded tables=%d total_columns=%d", total_tables, total_cols)
+        logger.debug("DB: sample schema: %s", _sample_schema(schema or {}))
+
+        db_full_keys: Set[str] = set()
+        lower_to_canonical: Dict[str, str] = {}
+        col_to_tables: Dict[str, Set[str]] = {}
+
+        for tbl, cols in (schema or {}).items():
+            for col in cols:
+                full = f"{tbl}.{col}"
+                db_full_keys.add(full)
+                lower_to_canonical[full.lower()] = full
+                col_to_tables.setdefault(col, set()).add(tbl)
+                col_to_tables.setdefault(col.lower(), set()).add(tbl)
+
+        logger.debug(
+            "DB: canonical keys built count=%d unique_columns=%d",
+            len(db_full_keys), len({c for c in col_to_tables.keys() if isinstance(c, str) and c.islower()})
+        )
+
+        # --- 3) Intersect: keep keys that exist in both sources, prefer canonical table.col ---
+        result: Dict[str, str] = {}
+        matched_exact = 0
+        matched_by_unique_column = 0
+        skipped_ambiguous = 0
+
+        for raw_key, desc in conf_map.items():
+            k = (raw_key or "").strip()
+            if not k:
+                continue
+
+            # a) Exact table.column form (case-insensitive)
+            if "." in k:
+                canon = lower_to_canonical.get(k.lower())
+                if canon:
+                    result[canon] = desc
+                    matched_exact += 1
+                continue
+
+            # b) Column-only form: include only if column is unique across all tables
+            candidates = col_to_tables.get(k) or col_to_tables.get(k.lower()) or set()
+            if len(candidates) == 1:
+                only_tbl = next(iter(candidates))
+                canon = lower_to_canonical.get(f"{only_tbl}.{k}".lower())
+                if canon:
+                    result[canon] = desc
+                    matched_by_unique_column += 1
+            else:
+                if candidates:
+                    skipped_ambiguous += 1  # present in multiple tables
+
+        logger.info(
+            "Intersect: result=%d (exact=%d, unique-col=%d, ambiguous-skipped=%d)",
+            len(result), matched_exact, matched_by_unique_column, skipped_ambiguous
+        )
+        logger.debug("Intersect: sample result: %s", _sample_dict(result))
+        return result
+
+    except Exception as e:
+        logger.exception(
+            "collect_db_confluence_key_descriptions failed for space=%r title=%r host=%s port=%s db=%s user=%s err=%s",
+            space, title, host, port, database, user, e
+        )
+        raise
