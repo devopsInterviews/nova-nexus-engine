@@ -215,6 +215,17 @@ async def sync_confluence_table_delta(
         ValueError: If the target table (<table class="relative-table">) is not found.
         Exception: Propagates errors from the Confluence client.
     """
+    logger.info("🔍 sync_confluence_table_delta called for %s/%s", space, title)
+    logger.info("📊 Received %d data entries to process", len(data))
+    
+    # Log the structure of received data for debugging
+    if data:
+        logger.info("📋 Sample data entry: %s", data[0])
+        logger.info("📋 Data entry keys: %s", list(data[0].keys()) if data else "No data")
+    else:
+        logger.warning("⚠️  No data provided to sync_confluence_table_delta - this might be the issue!")
+        return {"delta": [], "updated": None, "message": "No data provided"}
+    
     logger.info("🔍 Syncing Confluence table delta in %s/%s with %d potential rows", 
                space, title, len(data))
     
@@ -276,17 +287,24 @@ async def sync_confluence_table_delta(
             if td and td.text:
                 existing.add(td.text.strip())
 
-    logger.debug("Existing keys in table: %s", existing)
-    logger.debug("Incoming data keys: %s", [item["column"] for item in data])
+    logger.debug("📋 Existing keys in table: %s", existing)
+    logger.debug("📋 Incoming data columns: %s", [item.get("column", "<missing>") for item in data])
 
     # 3) Determine delta rows
-    delta = [entry for entry in data if entry["column"] not in existing]
+    delta = [entry for entry in data if entry.get("column", "") not in existing]
+    
+    logger.info("📊 Delta analysis: %d existing keys, %d incoming items, %d delta rows", 
+               len(existing), len(data), len(delta))
+    
     if not delta:
         logger.info("✅ No delta rows to add - table is up to date")
-        return {"delta": [], "updated": None}
+        if not existing and data:
+            logger.warning("⚠️  Strange: no existing keys but incoming data didn't create delta. Data format issue?")
+            logger.debug("🔍 First data item structure: %s", data[0] if data else "None")
+        return {"delta": [], "updated": None, "message": "No new columns to sync"}
     
     logger.info("📊 Found %d delta rows to add", len(delta))
-    logger.debug("Delta columns: %s", [item["column"] for item in delta])
+    logger.debug("📋 Delta columns: %s", [item.get("column", "<missing>") for item in delta])
 
     # 4) Append delta rows to the table in the soup
     for entry in delta:
@@ -813,6 +831,119 @@ async def get_database_column_metadata(
     finally:
         await client.close()
 
+
+@mcp.tool()
+async def generate_column_data_for_confluence(
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    database: str,
+    columns: List[str],
+    database_type: str = "postgres"
+) -> List[Dict[str, Any]]:
+    """
+    Generate a complete data structure for Confluence sync from a list of column names.
+    
+    This function takes a simple list of column names (e.g., ["table.column1", "table.column2"])
+    and returns a complete structure with descriptions, types, schemas, and empty owner fields
+    ready for Confluence table synchronization.
+    
+    Args:
+        host (str): Database host
+        port (int): Database port  
+        user (str): Database username
+        password (str): Database password
+        database (str): Database name
+        columns (List[str]): List of column names in "table.column" format
+        database_type (str): Either "postgres" or "mssql"
+    
+    Returns:
+        List[Dict[str, Any]]: List of complete column data structures with:
+            - column: "table.column"
+            - description: Generated description (empty if generation fails)
+            - type: Data type from database metadata
+            - schema: Schema name from database metadata  
+            - owner: Empty string (to be filled later)
+    """
+    logger.info("🔍 generate_column_data_for_confluence called for %d columns", len(columns))
+    logger.debug("📋 Input columns: %s", columns[:5] + ["..."] if len(columns) > 5 else columns)
+    
+    if database_type == "postgres":
+        client = PostgresClient(host, port, user, password,
+                                database=database, min_size=1, max_size=5)
+    elif database_type == "mssql":
+        client = MSSQLClient(host, port, user, password,
+                             database=database)
+    else:
+        raise ValueError(f"Unsupported database_type: {database_type!r}")
+
+    await client.init()
+    try:
+        # Get comprehensive metadata for all columns
+        metadata = await client.get_column_metadata()
+        logger.info("📊 Retrieved metadata for %d total columns in database", len(metadata))
+        
+        result = []
+        for col_spec in columns:
+            try:
+                # Parse table.column format
+                if "." not in col_spec:
+                    logger.warning("⚠️  Column spec '%s' missing table prefix, skipping", col_spec)
+                    continue
+                    
+                table_name = col_spec.split(".", 1)[0]
+                column_name = col_spec.split(".", 1)[1]
+                
+                # Find matching metadata entry
+                metadata_entry = None
+                column_schema = "public"  # default
+                data_type = "unknown"
+                
+                # Try to find exact match with schema
+                for meta_key, meta_data in metadata.items():
+                    if (meta_data["table_name"] == table_name and 
+                        meta_data["column_name"] == column_name):
+                        metadata_entry = meta_data
+                        column_schema = meta_data["table_schema"]
+                        data_type = meta_data["data_type"]
+                        break
+                
+                if not metadata_entry:
+                    logger.warning("⚠️  No metadata found for column %s", col_spec)
+                    column_schema = "public"
+                    data_type = "unknown"
+                
+                # Create complete entry structure
+                entry = {
+                    "column": col_spec,
+                    "description": "",  # Will be filled by describe_columns if needed
+                    "type": data_type,
+                    "schema": column_schema,
+                    "owner": ""
+                }
+                
+                result.append(entry)
+                logger.debug("✅ Processed %s: type=%s, schema=%s", col_spec, data_type, column_schema)
+                
+            except Exception as e:
+                logger.error("❌ Error processing column %s: %s", col_spec, e)
+                # Add entry with minimal info
+                result.append({
+                    "column": col_spec,
+                    "description": f"Error: {e}",
+                    "type": "unknown",
+                    "schema": "unknown", 
+                    "owner": ""
+                })
+        
+        logger.info("✅ Generated %d complete column data entries", len(result))
+        return result
+        
+    finally:
+        await client.close()
+
+
 @mcp.tool()
 async def get_table_delta_keys(
     space: str,
@@ -1094,6 +1225,7 @@ async def describe_columns(
         "description": "...", 
         "type": "data_type",
         "schema": "schema_name",
+        "owner": "",  # Empty for Confluence sync compatibility
         "values": [...] 
       }, …]
 
@@ -1172,6 +1304,7 @@ async def describe_columns(
                     "description": desc.strip(),
                     "type":        data_type,
                     "schema":      column_schema,
+                    "owner":       "",  # Empty owner field for Confluence sync compatibility
                     "values":      vals
                 })
                 
@@ -1188,6 +1321,7 @@ async def describe_columns(
                     "description": f"<error: {inner}>",
                     "type":        "unknown",
                     "schema":      schema_name,
+                    "owner":       "",  # Empty owner field for Confluence sync compatibility
                     "values":      []
                 })
 
