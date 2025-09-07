@@ -1,0 +1,197 @@
+class ConfluenceClient:
+    """
+    Wraps basic operations for reading and updating Confluence pages.
+    """
+
+    # Matches @{anything with spaces or prefixes}
+    MENTION_BRACED = re.compile(r'@\{([^}]+)\}')
+    # Matches plain @username (start-of-line or whitespace before @, avoids emails)
+    MENTION_PLAIN  = re.compile(r'(?<!\S)@([A-Za-z0-9._-]+)')
+
+    def __init__(self, url: str, username: str, password: str, ssl_verify: bool = True):
+
+        # Initialize the Confluence API client
+        self.client = Confluence(
+            url=url,
+            username=username,
+            password=password,
+            verify_ssl=ssl_verify
+        )
+        logger.info("Username: " + username)
+        logger.info("Password: " + password)
+    async def get_page_id(self, space: str, title: str) -> str:
+        """
+        Return the numeric ID of a Confluence page given its space and title.
+        """
+        return self.client.get_page_id(space, title)
+
+    async def get_page_content(self, page_id: str, expand: str = "body.storage,version") -> dict:
+        """
+        Fetch the content payload for a page, including its storage-format body and version.
+        """
+        return self.client.get_page_by_id(page_id, expand=expand)
+
+    async def update_page(self,
+                    page_id: str,
+                    title: str,
+                    new_body: str,
+                    minor_edit: bool = True) -> dict:
+        """
+        Update an existing Confluence page’s body (storage format) and bump its version.
+
+        :param page_id:    ID of the page to update
+        :param title:      Title of the page (must match existing)
+        :param new_body:   The HTML/storage-format content to write
+        :param minor_edit: If True, flags this as a minor edit
+        """
+        # Retrieve current version
+        page = await self.get_page_content(page_id, expand="version")
+        current_version = page["version"]["number"]
+
+        # Perform the update
+        return self.client.update_page(
+            page_id,
+            title,
+            new_body,
+            parent_id=None,
+            type="page",
+            representation="storage",
+            minor_edit=minor_edit,
+            version_comment="Automated update via ConfluenceClient"
+        )
+
+    async def append_to_page(self, page_id: str, html_fragment: str) -> dict:
+        """
+        Append HTML storage-format content to the end of an existing page.
+        """
+        page = await self.get_page_content(page_id, expand="body.storage,version")
+        current_body = page["body"]["storage"]["value"]
+        new_body = current_body + html_fragment
+        return self.update_page(
+            page_id,
+            page["title"],
+            new_body
+        )
+
+    async def _get_userkey_dc(self, username: str) -> Optional[str]:
+        """Resolve Confluence username -> userKey (DC REST via atlassian-python-api)."""
+        try:
+            logger.debug("DC resolve username -> userKey: %r", username)
+            data = await asyncio.to_thread(self.client.get_user_details_by_username, username)
+            if not isinstance(data, dict):
+                logger.warning("get_user_details_by_username returned non-dict for %r: %r", username, type(data))
+                return None
+            userkey = data.get("userKey") or data.get("key")
+            if userkey:
+                logger.debug("Resolved %r to userKey=%r", username, userkey)
+            else:
+                logger.warning("No userKey found for username=%r; keys=%r", username, list(data.keys()))
+            return userkey
+        except Exception as e:
+            logger.exception("Failed DC user lookup for username=%r: %s", username, e)
+            return None
+
+    def _build_user_mention_dc(self, userkey: str) -> str:
+        """Return DC storage-format user mention macro."""
+        return f'<ac:link><ri:user ri:userkey="{userkey}"/></ac:link>'
+
+    async def _inject_mentions(self, text: str) -> Tuple[str, bool]:
+        """
+        Replace @{...} and plain @username with storage-format mentions.
+        Returns (new_text, any_replaced)
+        """
+        if not text:
+            return text, False
+
+        replaced_any = False
+        new_text = text
+
+        # 1) Handle @{...}
+        for m in list(self.MENTION_BRACED.finditer(new_text)):
+            token = m.group(1).strip()
+            logger.debug("Found braced mention token=%r", token)
+            try:
+                macro = None
+                if token.startswith("userkey:"):
+                    macro = self._build_user_mention_dc(token.split(":", 1)[1].strip())
+                else:
+                    # "username:<name>" or just a name -> resolve to userKey
+                    if token.startswith("username:"):
+                        username = token.split(":", 1)[1].strip()
+                    else:
+                        username = token
+                    userkey = await self._get_userkey_dc(username)
+                    if userkey:
+                        macro = self._build_user_mention_dc(userkey)
+
+                if macro:
+                    new_text = new_text.replace(m.group(0), macro)
+                    replaced_any = True
+                    logger.debug("Braced mention resolved -> macro inserted")
+                else:
+                    logger.warning("Could not resolve braced token=%r; leaving as text", token)
+            except Exception as e:
+                logger.exception("Error resolving braced token=%r: %s", token, e)
+
+        # 2) Handle plain @username
+        for m in list(self.MENTION_PLAIN.finditer(new_text)):
+            username = m.group(1)
+            logger.debug("Found plain @username mention: %r", username)
+            try:
+                userkey = await self._get_userkey_dc(username)
+                if not userkey:
+                    logger.warning("Username %r not found; will rely on wiki conversion fallback", username)
+                    continue
+                macro = self._build_user_mention_dc(userkey)
+                new_text = new_text.replace(m.group(0), macro)
+                replaced_any = True
+                logger.debug("Plain @%s resolved -> macro inserted", username)
+            except Exception as e:
+                logger.exception("Error resolving plain @%s: %s", username, e)
+
+        logger.debug("mention injection: replaced_any=%s", replaced_any)
+        return new_text, replaced_any
+
+    async def _wiki_conversion_fallback_dc(self, text: str) -> Optional[str]:
+        """
+        If injection failed, try converting wiki mentions [~username] -> storage via Confluence converter.
+        """
+        try:
+            def repl(m: re.Match) -> str:
+                return f"[~{m.group(1)}]"
+            wiki_candidate = self.MENTION_PLAIN.sub(repl, text)
+            if wiki_candidate == text:
+                return None
+            logger.debug("Attempting wiki->storage conversion fallback")
+            storage = await asyncio.to_thread(self.client.convert_wiki_to_storage, wiki_candidate)
+            logger.debug("Wiki conversion produced %d chars", len(storage) if storage else -1)
+            return storage
+        except Exception as e:
+            logger.exception("Wiki conversion fallback failed: %s", e)
+            return None
+
+    async def post_comment(self, page_id: str, comment: str) -> dict:
+        """
+        Add a comment. Supports @{...} and @username mentions (DC).
+        """
+        logger.debug("post_comment: start page_id=%s len(comment)=%d", page_id, len(comment))
+        try:
+            prepared, replaced_any = await self._inject_mentions(comment)
+
+            if not replaced_any:
+                # DC fallback: try wiki -> storage conversion for [~username]
+                converted = await self._wiki_conversion_fallback_dc(comment)
+                if converted:
+                    prepared = converted
+                    replaced_any = True
+                    logger.debug("Using wiki->storage converted body")
+
+            # Wrap in <p> if there's no block-level tag; DC renders comments more consistently
+            if "<ac:" not in prepared and "<p>" not in prepared:
+                prepared = f"<p>{prepared}</p>"
+
+            logger.debug("post_comment: final length=%d, replaced_any=%s", len(prepared), replaced_any)
+            return await asyncio.to_thread(self.client.add_comment, page_id, prepared)
+        except Exception as e:
+            logger.exception("post_comment: failed posting comment to page_id=%s: %s", page_id, e)
+            raise
