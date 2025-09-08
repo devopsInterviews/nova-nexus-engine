@@ -565,12 +565,16 @@ async def suggest_columns(
     db: Session = Depends(get_db_session)
 ):
     """
-    Suggest columns based on natural language prompt with confluence integration
-    Replicates the working suggest_keys_api function from client.py
+    Suggest columns based on natural language prompt with enhanced schema integration.
+    
+    3 MAIN STEPS:
+    1. Fetch enhanced schema with descriptions and types from MCP
+    2. Build prompt and call LLM for column suggestions  
+    3. Parse LLM response and return selected columns with metadata
     """
     from app.client import _mcp_session  # Import here to avoid circular imports
     
-    # --- Helper functions for safe logging (copied from working client.py) ---
+    # --- Helper functions for safe logging ---
     def _mask_secret(s: str, show: int = 2) -> str:
         if s is None:
             return "None"
@@ -614,91 +618,76 @@ async def suggest_columns(
         log_copy["user_prompt"] = _truncate(log_copy.get("user_prompt"), 200)
         logger.debug("suggest_columns: validated payload (sanitized): %s", log_copy)
 
-        # --- Step 1: Fetch key->description dict from Confluence ---
-        desc_args = {
+        # ==========================================
+        # STEP 1: FETCH ENHANCED SCHEMA FROM MCP
+        # ==========================================
+        logger.info("🔄 STEP 1: Fetching enhanced schema with confluence descriptions and types...")
+        
+        enhanced_args = {
             "space": data["confluenceSpace"],
             "title": data["confluenceTitle"],
             "host": data["host"],
             "port": data["port"],
             "user": data["user"],
-            "password": data["password"],  # not logging this raw
+            "password": data["password"],
             "database": data["database"],
+            "database_type": data.get("database_type", "postgres"),
         }
-        safe_desc_args = dict(desc_args)
-        safe_desc_args["password"] = _mask_secret(desc_args["password"])
-        logger.info("suggest_columns: calling collect_db_confluence_key_descriptions ג€¦ args=%s", safe_desc_args)
+        
+        safe_enhanced_args = dict(enhanced_args)
+        safe_enhanced_args["password"] = _mask_secret(enhanced_args["password"])
+        logger.info("suggest_columns: enhanced schema args (sanitized): %s", safe_enhanced_args)
 
-        desc_res = await _mcp_session.call_tool(
-            "collect_db_confluence_key_descriptions",
-            arguments=desc_args,
+        enhanced_res = await _mcp_session.call_tool(
+            "get_enhanced_schema_with_confluence",
+            arguments=enhanced_args,
             read_timeout_seconds=timedelta(seconds=600)
         )
 
-        parts = getattr(desc_res, "content", []) or []
-        logger.debug("suggest_columns: collect_db_confluence_key_descriptions returned %d content part(s)", len(parts))
+        parts = getattr(enhanced_res, "content", []) or []
+        logger.debug("suggest_columns: get_enhanced_schema_with_confluence returned %d content part(s)", len(parts))
 
-        desc_text_parts = [m.text for m in parts if getattr(m, "text", None)]
-        desc_text = desc_text_parts[0] if desc_text_parts else "{}"
-        logger.debug("suggest_columns: descriptions JSON length=%d chars", len(desc_text))
+        enhanced_text_parts = [m.text for m in parts if getattr(m, "text", None)]
+        enhanced_text = enhanced_text_parts[0] if enhanced_text_parts else "{}"
+        logger.debug("suggest_columns: enhanced schema JSON length=%d chars", len(enhanced_text))
 
         try:
-            confluence_descriptions = json.loads(desc_text)
-            logger.info("suggest_columns: parsed Confluence descriptions entries=%d", len(confluence_descriptions))
-        except json.JSONDecodeError as je:
-            logger.warning("suggest_columns: failed to parse Confluence descriptions JSON (%s), falling back to empty {}", je)
-            confluence_descriptions = {}
-
-        # --- Step 2: Fetch full column metadata with types from database ---
-        db_args = {
-            "host": data["host"],
-            "port": data["port"],
-            "user": data["user"],
-            "password": data["password"],
-            "database": data["database"],
-            "database_type": data.get("database_type", "postgresql"),
-        }
-        logger.info("suggest_columns: fetching full column metadata with types from database")
-        
-        metadata_res = await _mcp_session.call_tool(
-            "get_column_metadata",
-            arguments=db_args,
-            read_timeout_seconds=timedelta(seconds=300)
-        )
-        
-        metadata_parts = getattr(metadata_res, "content", []) or []
-        metadata_text = metadata_parts[0].text if metadata_parts else "{}"
-        
-        try:
-            column_metadata = json.loads(metadata_text)
-            logger.info("suggest_columns: parsed column metadata entries=%d", len(column_metadata))
-        except json.JSONDecodeError as je:
-            logger.warning("suggest_columns: failed to parse column metadata JSON (%s), falling back to empty {}", je)
-            column_metadata = {}
-
-        # --- Step 3: Merge Confluence descriptions with database metadata ---
-        key_descriptions = {}
-        for column_key, metadata in column_metadata.items():
-            # Get description from Confluence, metadata from database
-            confluence_desc = confluence_descriptions.get(column_key, "")
+            enhanced_schema = json.loads(enhanced_text)
+            logger.info("✅ STEP 1 COMPLETE: Parsed enhanced schema with %d schema.table entries", len(enhanced_schema))
             
-            # Create merged entry with both description and type
-            key_descriptions[column_key] = {
-                "description": confluence_desc,
-                "type": metadata.get("data_type", "UNKNOWN"),
-                "schema": metadata.get("schema", "public"),
-                "table": metadata.get("table", ""),
-                "column": metadata.get("column", "")
-            }
+            # Log sample for debugging
+            if enhanced_schema:
+                sample_key = list(enhanced_schema.keys())[0]
+                sample_columns = enhanced_schema[sample_key][:3]  # First 3 columns
+                logger.debug("suggest_columns: sample enhanced schema entry '%s': %s", sample_key, sample_columns)
+                
+        except json.JSONDecodeError as je:
+            logger.warning("suggest_columns: failed to parse enhanced schema JSON (%s), falling back to empty {}", je)
+            enhanced_schema = {}
 
-        logger.debug("suggest_columns: merged data - columns with types and descriptions:\n%s", json.dumps(key_descriptions, indent=2))
-
-        # --- Step 4: Build an AUGMENTED *USER* PROMPT (not system prompt) with descriptions ---
+        # ==========================================
+        # STEP 2: BUILD PROMPT AND CALL LLM  
+        # ==========================================
+        logger.info("🔄 STEP 2: Building enhanced user prompt and calling LLM...")
+        
+        # Convert enhanced schema to a format suitable for LLM
+        formatted_schema_info = []
+        for schema_table, columns in enhanced_schema.items():
+            formatted_schema_info.append(f"\n{schema_table}:")
+            for col in columns:
+                col_name = col.get("name", "")
+                col_desc = col.get("description", "No description")
+                col_type = col.get("type", "UNKNOWN")
+                formatted_schema_info.append(f"  - {col_name} ({col_type}): {col_desc}")
+        
+        schema_text = "\n".join(formatted_schema_info)
+        
         augmented_user_prompt = (
             (data.get("user_prompt") or "").rstrip()
             + "\n\n---\n"
-            + "KNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
-            + json.dumps(key_descriptions, ensure_ascii=False)
-            + "\n\nIMPORTANT: Select relevant columns from the KNOWN_COLUMN_DESCRIPTIONS_JSON above. "
+            + "AVAILABLE COLUMNS WITH DESCRIPTIONS AND TYPES:\n"
+            + schema_text
+            + "\n\nIMPORTANT: Select relevant columns from the list above. "
               "Return ONLY the column names in this exact format (one per line):\n\n"
               "table.column - schema\n\n"
               "Examples:\n"
@@ -712,29 +701,28 @@ async def suggest_columns(
               "- No descriptions or comments\n"
               "- Just the column identifiers in the exact format shown"
         )
+        
         logger.info(
-            "suggest_columns: augmented_user_prompt built (length=%d chars, desc_count=%d)",
-            len(augmented_user_prompt), len(key_descriptions)
+            "suggest_columns: augmented_user_prompt built (length=%d chars, schema_entries=%d)",
+            len(augmented_user_prompt), len(enhanced_schema)
         )
         logger.debug("suggest_columns: augmented_user_prompt (truncated): %s", _truncate(augmented_user_prompt))
 
-        # --- Step 5: Call the MCP tool for suggestions with SYSTEM prompt and augmented USER prompt ---
+        # Call the MCP tool for suggestions
         tool_args = {
-            "space": data["confluenceSpace"],
-            "title": data["confluenceTitle"],
             "host": data["host"],
             "port": data["port"],
             "user": data["user"],
-            "password": data["password"],  # not logging this raw
+            "password": data["password"],
             "database": data["database"],
-            "system_prompt": BI_ANALYTICS_PROMPT,     # CRITICAL: This was missing!
-            "user_prompt": augmented_user_prompt,     # descriptions moved here
+            "system_prompt": BI_ANALYTICS_PROMPT,
+            "user_prompt": augmented_user_prompt,
         }
         safe_tool_args = dict(tool_args)
         safe_tool_args["password"] = _mask_secret(safe_tool_args["password"])
         safe_tool_args["user_prompt"] = f"<redacted user prompt, {len(augmented_user_prompt)} chars>"
         safe_tool_args["system_prompt"] = f"<BI_ANALYTICS_PROMPT, {len(BI_ANALYTICS_PROMPT)} chars>"
-        logger.info("suggest_columns: calling suggest_keys_for_analytics ג€¦ args=%s", safe_tool_args)
+        logger.info("suggest_columns: calling suggest_keys_for_analytics ‡ args=%s", safe_tool_args)
 
         result = await _mcp_session.call_tool(
             "suggest_keys_for_analytics",
@@ -746,8 +734,13 @@ async def suggest_columns(
         logger.debug("suggest_columns: suggest_keys_for_analytics returned %d content part(s)", len(parts2))
 
         full_text = "\n".join(m.text for m in parts2 if getattr(m, "text", None))
-        logger.debug("suggest_columns: raw suggestion text length=%d chars", len(full_text))
+        logger.info("✅ STEP 2 COMPLETE: LLM returned response (%d chars)", len(full_text))
         logger.debug("suggest_columns: full LLM response:\n%s", full_text)
+
+        # ==========================================
+        # STEP 3: PARSE LLM RESPONSE AND RETURN  
+        # ==========================================
+        logger.info("🔄 STEP 3: Parsing LLM response and building final column list...")
 
         # Parse LLM response - expecting format "table.column - schema"
         raw_lines = [line.strip() for line in full_text.splitlines() if line.strip()]
@@ -758,7 +751,7 @@ async def suggest_columns(
         for i, line in enumerate(raw_lines):
             logger.debug("suggest_columns: line %d: %r", i+1, line)
 
-        # --- Step 6: Process LLM selections and lookup details from merged data ---
+        # Process LLM selections and lookup details from enhanced schema
         columns: List[Dict[str, Any]] = []
         
         for line in raw_lines:
@@ -786,36 +779,22 @@ async def suggest_columns(
                 logger.debug("suggest_columns: parsed line '%s' -> table_column='%s', schema='%s'", 
                            line, table_column, suggested_schema)
                 
-                # Look up this column in our Confluence data
-                # Confluence stores data as "table.column" keys with schema info in the value
-                column_key = None
+                # Look up this column in enhanced schema
+                table_name = table_column.split(".", 1)[0]
+                column_name = table_column.split(".", 1)[1]
+                
+                schema_table_key = f"{suggested_schema}.{table_name}"
                 column_details = None
                 
-                # Look for table.column format in Confluence data
-                if table_column in key_descriptions:
-                    # Found exact match for table.column
-                    column_key = table_column
-                    column_details = key_descriptions[table_column]
-                    logger.debug("suggest_columns: found exact match for %s", table_column)
-                else:
-                    # No exact match - log available keys for debugging
-                    available_keys = list(key_descriptions.keys())
-                    logger.debug("suggest_columns: no exact match for %s. Available keys sample: %s", 
-                               table_column, available_keys[:10])
-                    
-                    # Try to find by partial match (table and column name)
-                    table_name = table_column.split(".", 1)[0]
-                    column_name = table_column.split(".", 1)[1]
-                    
-                    for key in key_descriptions.keys():
-                        if key == f"{table_name}.{column_name}":
-                            column_key = key
-                            column_details = key_descriptions[key]
-                            logger.debug("suggest_columns: found partial match %s for %s", key, table_column)
+                # Find the column in enhanced schema
+                if schema_table_key in enhanced_schema:
+                    for col in enhanced_schema[schema_table_key]:
+                        if col.get("name") == column_name:
+                            column_details = col
                             break
                 
                 if not column_details:
-                    logger.warning("suggest_columns: column not found in Confluence data: %s", table_column)
+                    logger.warning("suggest_columns: column %s not found in enhanced schema", table_column)
                     # Add with minimal info
                     columns.append({
                         "name": table_column,
@@ -824,16 +803,14 @@ async def suggest_columns(
                     })
                     continue
                 
-                # SIMPLIFIED: Extract data from merged Confluence + database metadata
+                # Extract data from enhanced schema
                 logger.debug("suggest_columns: found column_details for %s: %s", table_column, column_details)
                 
-                # Now column_details is a structured dict with description, type, schema
                 description = column_details.get("description", "Description not available")
-                data_type = column_details.get("type", "UNKNOWN") 
-                actual_schema = column_details.get("schema", suggested_schema)
+                data_type = column_details.get("type", "UNKNOWN")
                 
-                logger.info("suggest_columns: extracted for %s - description='%s', type='%s', schema='%s'", 
-                          table_column, description, data_type, actual_schema)
+                logger.info("suggest_columns: extracted for %s - description='%s', type='%s'", 
+                          table_column, description, data_type)
                 
                 # Create the response
                 formatted_column = {
@@ -849,7 +826,7 @@ async def suggest_columns(
                 logger.error("suggest_columns: error processing line '%s': %s", line, e)
                 continue
 
-        logger.info("suggest_columns: successfully processed %d columns from LLM suggestions", len(columns))
+        logger.info("✅ STEP 3 COMPLETE: Successfully processed %d columns from LLM suggestions", len(columns))
 
         # Create the response format expected by the frontend
         response_data = {
@@ -865,7 +842,7 @@ async def suggest_columns(
             }
         }
 
-        logger.info("suggest_columns: successfully processed %d columns, returning response", len(columns))
+        logger.info("🎉 suggest_columns: COMPLETE - returning %d columns to frontend", len(columns))
         return JSONResponse(response_data)
                 
     except Exception as e:
