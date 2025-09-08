@@ -689,8 +689,8 @@ async def suggest_columns(
                 "table": metadata.get("table", ""),
                 "column": metadata.get("column", "")
             }
-        
-        logger.info("suggest_columns: merged data - %d columns with types and descriptions", len(key_descriptions))
+
+        logger.debug("suggest_columns: merged data - columns with types and descriptions:\n%s", json.dumps(key_descriptions, indent=2))
 
         # --- Step 4: Build an AUGMENTED *USER* PROMPT (not system prompt) with descriptions ---
         augmented_user_prompt = (
