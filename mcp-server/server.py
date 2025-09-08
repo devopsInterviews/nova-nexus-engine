@@ -857,13 +857,14 @@ async def get_enhanced_schema_with_confluence(
     user: str,
     password: str,
     database: str,
+    columns: List[str],
     database_type: str = "postgres"
 ) -> Dict[str, List[Dict[str, str]]]:
     """
-    Create enhanced schema structure with descriptions from Confluence and types from database.
+    Create enhanced schema structure ONLY for the specified columns.
     
-    Returns schema.table -> list of column dicts with name, description, type.
-    This is what you need for the UI rendering.
+    Takes a list of specific columns (table.column format) and returns only those
+    with descriptions from Confluence and types from database.
     
     Args:
         space (str): Confluence space
@@ -873,6 +874,7 @@ async def get_enhanced_schema_with_confluence(
         user (str): Database username
         password (str): Database password
         database (str): Database name
+        columns (List[str]): Specific columns to fetch (e.g., ["shops.id", "shops.name"])
         database_type (str): Either "postgres" or "mssql"
     
     Returns:
@@ -885,9 +887,10 @@ async def get_enhanced_schema_with_confluence(
             ...
         }
     """
-    logger.info("🔍 get_enhanced_schema_with_confluence called for %s/%s", space, title)
+    logger.info("🔍 get_enhanced_schema_with_confluence called for %d specific columns", len(columns))
+    logger.debug("📋 Requested columns: %s", columns[:10])  # Log first 10 columns
     
-    # 1. Get basic schema structure (schema.table -> [columns])
+    # 1. Get database metadata for ALL columns (we'll filter later)
     if database_type == "postgres":
         client = PostgresClient(host, port, user, password,
                                 database=database, min_size=1, max_size=5)
@@ -899,19 +902,14 @@ async def get_enhanced_schema_with_confluence(
 
     await client.init()
     try:
-        # Get basic table->columns mapping  
-        basic_schema = await client.list_keys()
-        
         # Get detailed column metadata with types
         column_metadata = await client.get_column_metadata()
-        
-        logger.info("📊 Got basic schema for %d tables and metadata for %d columns", 
-                   len(basic_schema), len(column_metadata))
+        logger.info("📊 Got metadata for %d total columns from database", len(column_metadata))
         
     finally:
         await client.close()
     
-    # 2. Get Confluence descriptions
+    # 2. Get Confluence descriptions for the specific columns
     logger.info("📋 Fetching Confluence descriptions from %s/%s", space, title)
     try:
         confluence_descriptions = await collect_db_confluence_key_descriptions(
@@ -928,47 +926,59 @@ async def get_enhanced_schema_with_confluence(
         logger.warning("⚠️ Failed to get Confluence descriptions: %s", e)
         confluence_descriptions = {}
     
-    # 3. Build enhanced schema structure
+    # 3. Build enhanced schema structure ONLY for requested columns
     enhanced_schema = {}
+    processed_columns = 0
     
-    for table, columns in basic_schema.items():
-        # Find the schema for this table by checking metadata
+    for column_spec in columns:
+        if "." not in column_spec:
+            logger.warning("⚠️ Invalid column format '%s' - skipping", column_spec)
+            continue
+            
+        table_name = column_spec.split(".", 1)[0]
+        column_name = column_spec.split(".", 1)[1]
+        
+        # Find the schema and metadata for this specific column
         table_schema = "public"  # default
+        data_type = "UNKNOWN"
+        
+        # Look for this column in database metadata
         for meta_key, meta_data in column_metadata.items():
-            if meta_data["table_name"] == table:
+            if (meta_data["table_name"] == table_name and 
+                meta_data["column_name"] == column_name):
                 table_schema = meta_data["table_schema"]
+                data_type = meta_data["data_type"]
                 break
         
-        schema_table_key = f"{table_schema}.{table}"
-        enhanced_columns = []
+        schema_table_key = f"{table_schema}.{table_name}"
         
-        for column in columns:
-            # Build the full column key
-            full_column_key = f"{table}.{column}"
-            meta_column_key = f"{table_schema}.{table}.{column}"
-            
-            # Get description from Confluence
-            description = confluence_descriptions.get(full_column_key, "")
-            
-            # Get type from database metadata
-            data_type = "UNKNOWN"
-            if meta_column_key in column_metadata:
-                data_type = column_metadata[meta_column_key]["data_type"]
-            
-            enhanced_columns.append({
-                "name": column,
-                "description": description,
-                "type": data_type
-            })
+        # Get description from Confluence for this specific column
+        description = confluence_descriptions.get(column_spec, "")
         
-        enhanced_schema[schema_table_key] = enhanced_columns
+        # Create the column entry
+        column_entry = {
+            "name": column_name,
+            "description": description,
+            "type": data_type
+        }
+        
+        # Add to enhanced schema
+        if schema_table_key not in enhanced_schema:
+            enhanced_schema[schema_table_key] = []
+        
+        enhanced_schema[schema_table_key].append(column_entry)
+        processed_columns += 1
+        
+        logger.debug("✅ Processed %s -> schema=%s, type=%s, desc_len=%d", 
+                    column_spec, table_schema, data_type, len(description))
     
-    logger.info("✅ Built enhanced schema for %d schema.table entries", len(enhanced_schema))
+    logger.info("✅ Built enhanced schema for %d columns across %d schema.table entries", 
+               processed_columns, len(enhanced_schema))
     
     # Log sample for debugging  
     if enhanced_schema:
         sample_key = list(enhanced_schema.keys())[0]
-        sample_columns = enhanced_schema[sample_key][:3]  # First 3 columns
+        sample_columns = enhanced_schema[sample_key][:2]  # First 2 columns
         logger.debug("📋 Sample enhanced schema entry '%s': %s", sample_key, sample_columns)
     
     return enhanced_schema
