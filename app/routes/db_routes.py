@@ -588,6 +588,35 @@ async def suggest_columns(
         s = s or ""
         return s if len(s) <= n else (s[:n] + f"... <+{len(s)-n} chars>")
     
+    def _normalize_column_reference(column_ref: str) -> str:
+        """
+        Normalize column reference to table.column format.
+        
+        Handles cases where LLM returns:
+        - table.column (correct format) 
+        - schema.table.column (needs normalization to table.column)
+        
+        Args:
+            column_ref (str): Column reference from LLM
+            
+        Returns:
+            str: Normalized table.column format
+        """
+        if not column_ref or "." not in column_ref:
+            return column_ref
+            
+        parts = column_ref.split(".")
+        if len(parts) == 2:
+            # Already in table.column format
+            return column_ref
+        elif len(parts) == 3:
+            # schema.table.column format - return table.column
+            return f"{parts[1]}.{parts[2]}"
+        else:
+            # Unexpected format - return as-is
+            logger.warning("_normalize_column_reference: unexpected format '%s'", column_ref)
+            return column_ref
+    
     try:
         # Parse and validate request data
         data = await request.json()
@@ -826,17 +855,25 @@ async def suggest_columns(
                 table_column = parts[0].strip()
                 suggested_schema = parts[1].strip()
                 
-                # Validate table.column format
-                if "." not in table_column:
-                    logger.warning("suggest_columns: skipping invalid table.column format: %s", table_column)
+                # Normalize column reference (handle schema.table.column -> table.column)
+                normalized_column = _normalize_column_reference(table_column)
+                
+                # Validate normalized format
+                if "." not in normalized_column:
+                    logger.warning("suggest_columns: skipping invalid column format after normalization: '%s' (original: '%s')", 
+                                 normalized_column, table_column)
                     continue
+                
+                if normalized_column != table_column:
+                    logger.debug("suggest_columns: normalized column reference: '%s' -> '%s'", 
+                               table_column, normalized_column)
                     
-                logger.debug("suggest_columns: parsed line '%s' -> table_column='%s', schema='%s'", 
-                           line, table_column, suggested_schema)
+                logger.debug("suggest_columns: parsed line '%s' -> normalized_column='%s', schema='%s'", 
+                           line, normalized_column, suggested_schema)
                 
                 # Look up this column in enhanced schema
-                table_name = table_column.split(".", 1)[0]
-                column_name = table_column.split(".", 1)[1]
+                table_name = normalized_column.split(".", 1)[0]
+                column_name = normalized_column.split(".", 1)[1]
                 
                 schema_table_key = f"{suggested_schema}.{table_name}"
                 column_details = None
@@ -849,27 +886,28 @@ async def suggest_columns(
                             break
                 
                 if not column_details:
-                    logger.warning("suggest_columns: column %s not found in enhanced schema", table_column)
+                    logger.warning("suggest_columns: column %s not found in enhanced schema (searched key: %s)", 
+                                 normalized_column, schema_table_key)
                     # Add with minimal info
                     columns.append({
-                        "name": table_column,
+                        "name": normalized_column,
                         "description": "Description not available",
                         "data_type": "UNKNOWN"
                     })
                     continue
                 
                 # Extract data from enhanced schema
-                logger.debug("suggest_columns: found column_details for %s: %s", table_column, column_details)
+                logger.debug("suggest_columns: found column_details for %s: %s", normalized_column, column_details)
                 
                 description = column_details.get("description", "Description not available")
                 data_type = column_details.get("type", "UNKNOWN")
                 
                 logger.info("suggest_columns: extracted for %s - description='%s', type='%s'", 
-                          table_column, description, data_type)
+                          normalized_column, description, data_type)
                 
                 # Create the response
                 formatted_column = {
-                    "name": table_column,
+                    "name": normalized_column,
                     "description": description,
                     "data_type": data_type
                 }
