@@ -930,13 +930,34 @@ async def get_enhanced_schema_with_confluence(
     enhanced_schema = {}
     processed_columns = 0
     
+    def _normalize_column_spec(column_spec: str) -> str:
+        """Normalize column spec to table.column format in case schema.table.column is passed."""
+        if not column_spec or "." not in column_spec:
+            return column_spec
+            
+        parts = column_spec.split(".")
+        if len(parts) == 2:
+            # Already in table.column format
+            return column_spec
+        elif len(parts) == 3:
+            # schema.table.column format - return table.column
+            logger.debug("Normalizing column spec: %s -> %s.%s", column_spec, parts[1], parts[2])
+            return f"{parts[1]}.{parts[2]}"
+        else:
+            # Unexpected format - return as-is
+            logger.warning("Unexpected column spec format: %s", column_spec)
+            return column_spec
+    
     for column_spec in columns:
-        if "." not in column_spec:
-            logger.warning("⚠️ Invalid column format '%s' - skipping", column_spec)
+        # Normalize the column specification
+        normalized_spec = _normalize_column_spec(column_spec)
+        
+        if "." not in normalized_spec:
+            logger.warning("⚠️ Invalid column format '%s' (original: '%s') - skipping", normalized_spec, column_spec)
             continue
             
-        table_name = column_spec.split(".", 1)[0]
-        column_name = column_spec.split(".", 1)[1]
+        table_name = normalized_spec.split(".", 1)[0]
+        column_name = normalized_spec.split(".", 1)[1]
         
         # Find the schema and metadata for this specific column
         table_schema = "public"  # default
@@ -953,7 +974,7 @@ async def get_enhanced_schema_with_confluence(
         schema_table_key = f"{table_schema}.{table_name}"
         
         # Get description from Confluence for this specific column
-        description = confluence_descriptions.get(column_spec, "")
+        description = confluence_descriptions.get(normalized_spec, "")
         
         # Create the column entry
         column_entry = {
@@ -970,7 +991,7 @@ async def get_enhanced_schema_with_confluence(
         processed_columns += 1
         
         logger.debug("✅ Processed %s -> schema=%s, type=%s, desc_len=%d", 
-                    column_spec, table_schema, data_type, len(description))
+                    normalized_spec, table_schema, data_type, len(description))
     
     logger.info("✅ Built enhanced schema for %d columns across %d schema.table entries", 
                processed_columns, len(enhanced_schema))
@@ -1230,11 +1251,14 @@ async def suggest_keys_for_analytics(
 
     # 2) Prepare enhanced context for LLM with schema information
     context_parts = [
-        "Database schema information with schema qualifiers:",
+        f"PostgreSQL database '{database}' schema information with schema qualifiers:",
         json.dumps(schema_context, indent=2),
         "",
-        "Note: When suggesting columns, please include schema qualifiers (e.g., 'public.table.column') "
-        "to ensure the LLM understands which schema to use for each table."
+        f"IMPORTANT: All tables are within the SINGLE database named '{database}'.",
+        "The format 'schema.table' refers to SCHEMA.TABLE within the same database.",
+        "When suggesting columns, use format 'schema.table.column' (e.g., 'public.users.id').",
+        "Do NOT suggest database.table.column format - only schema.table.column.",
+        "All schemas shown are within the same PostgreSQL database."
     ]
     context = "\n".join(context_parts)
 
@@ -1324,10 +1348,18 @@ async def run_analytics_query_on_database(
 
     # 2) Enhanced context with schema and type information
     context_parts = [
-        "Database schema with types and schema qualifiers:",
+        f"PostgreSQL database '{database}' schema with types and schema qualifiers:",
         json.dumps(enhanced_schema, indent=2),
         "",
-        "Important: Use schema-qualified table names (e.g., 'public.table_name') in your SQL queries.",
+        f"CRITICAL: You are working within a SINGLE database named '{database}'.",
+        "The format 'schema.table' refers to SCHEMA.TABLE within the same database, NOT different databases.",
+        "Example valid PostgreSQL queries:",
+        "- SELECT * FROM public.users;",
+        "- SELECT * FROM analytics.sales JOIN public.users ON sales.user_id = users.id;",
+        "- SELECT count(*) FROM inventory.products;",
+        "",
+        "NEVER use database.table format - only use schema.table format.",
+        "All tables shown are within the same PostgreSQL database.",
         "Column types are shown in parentheses for reference."
     ]
     context = "\n".join(context_parts)
@@ -1353,8 +1385,6 @@ async def run_analytics_query_on_database(
     except Exception as query_error:
         logger.error("❌ SQL execution failed: %s", str(query_error))
         logger.error("Failed SQL query was:\n%s", sql)
-        # Re-raise to let caller handle the error
-        raise
     finally:
         logger.debug("Closing DB pool …")
         await pg.close()
