@@ -614,7 +614,7 @@ async def suggest_columns(
         log_copy["user_prompt"] = _truncate(log_copy.get("user_prompt"), 200)
         logger.debug("suggest_columns: validated payload (sanitized): %s", log_copy)
 
-        # --- Step 1: Fetch key->description dict from MCP first ---
+        # --- Step 1: Fetch key->description dict from Confluence ---
         desc_args = {
             "space": data["confluenceSpace"],
             "title": data["confluenceTitle"],
@@ -640,49 +640,77 @@ async def suggest_columns(
         desc_text_parts = [m.text for m in parts if getattr(m, "text", None)]
         desc_text = desc_text_parts[0] if desc_text_parts else "{}"
         logger.debug("suggest_columns: descriptions JSON length=%d chars", len(desc_text))
-        logger.debug("suggest_columns: raw Confluence data from LLM: %s", desc_text[:1000])  # Log first 1000 chars
 
         try:
-            key_descriptions = json.loads(desc_text)
-            logger.info("suggest_columns: parsed descriptions entries=%d", len(key_descriptions))
-            logger.debug(
-                "suggest_columns: sample descriptions keys=%s",
-                _sample_list(list(key_descriptions.keys()))
-            )
-            
-            # Debug: check what type the values are 
-            if key_descriptions:
-                sample_key = next(iter(key_descriptions.keys()))
-                sample_value = key_descriptions[sample_key]
-                logger.debug("suggest_columns: sample key=%s, value type=%s, value=%s", 
-                           sample_key, type(sample_value), sample_value)
-                           
+            confluence_descriptions = json.loads(desc_text)
+            logger.info("suggest_columns: parsed Confluence descriptions entries=%d", len(confluence_descriptions))
         except json.JSONDecodeError as je:
-            logger.warning("suggest_columns: failed to parse descriptions JSON (%s), falling back to empty {}", je)
-            key_descriptions = {}
+            logger.warning("suggest_columns: failed to parse Confluence descriptions JSON (%s), falling back to empty {}", je)
+            confluence_descriptions = {}
 
-        # --- Step 2: Build an AUGMENTED *USER* PROMPT (not system prompt) with descriptions ---
+        # --- Step 2: Fetch full column metadata with types from database ---
+        db_args = {
+            "host": data["host"],
+            "port": data["port"],
+            "user": data["user"],
+            "password": data["password"],
+            "database": data["database"],
+            "database_type": data.get("database_type", "postgresql"),
+        }
+        logger.info("suggest_columns: fetching full column metadata with types from database")
+        
+        metadata_res = await _mcp_session.call_tool(
+            "get_column_metadata",
+            arguments=db_args,
+            read_timeout_seconds=timedelta(seconds=300)
+        )
+        
+        metadata_parts = getattr(metadata_res, "content", []) or []
+        metadata_text = metadata_parts[0].text if metadata_parts else "{}"
+        
+        try:
+            column_metadata = json.loads(metadata_text)
+            logger.info("suggest_columns: parsed column metadata entries=%d", len(column_metadata))
+        except json.JSONDecodeError as je:
+            logger.warning("suggest_columns: failed to parse column metadata JSON (%s), falling back to empty {}", je)
+            column_metadata = {}
+
+        # --- Step 3: Merge Confluence descriptions with database metadata ---
+        key_descriptions = {}
+        for column_key, metadata in column_metadata.items():
+            # Get description from Confluence, metadata from database
+            confluence_desc = confluence_descriptions.get(column_key, "")
+            
+            # Create merged entry with both description and type
+            key_descriptions[column_key] = {
+                "description": confluence_desc,
+                "type": metadata.get("data_type", "UNKNOWN"),
+                "schema": metadata.get("schema", "public"),
+                "table": metadata.get("table", ""),
+                "column": metadata.get("column", "")
+            }
+        
+        logger.info("suggest_columns: merged data - %d columns with types and descriptions", len(key_descriptions))
+
+        # --- Step 4: Build an AUGMENTED *USER* PROMPT (not system prompt) with descriptions ---
         augmented_user_prompt = (
             (data.get("user_prompt") or "").rstrip()
             + "\n\n---\n"
             + "KNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
             + json.dumps(key_descriptions, ensure_ascii=False)
             + "\n\nIMPORTANT: Select relevant columns from the KNOWN_COLUMN_DESCRIPTIONS_JSON above. "
-              "Return ONLY the column names in one of these formats (one per line):\n\n"
-              "FORMAT 1 (preferred): table.column - schema\n"
-              "FORMAT 2 (alternative): table.column\n"
-              "FORMAT 3 (alternative): schema.table.column\n\n"
+              "Return ONLY the column names in this exact format (one per line):\n\n"
+              "table.column - schema\n\n"
               "Examples:\n"
               "sales.customer_id - public\n"
               "products.name - inventory\n"
-              "orders.total_amount\n"
-              "public.users.email\n\n"
-              "DO NOT include:\n"
-              "- Greetings or explanations\n"
-              "- Descriptions or comments\n"
-              "- Punctuation marks\n"
-              "- Any text other than the column identifiers\n\n"
-              "Just return the column identifiers, one per line."
+              "orders.total_amount - sales\n\n"
+              "STRICT REQUIREMENTS:\n"
+              "- Use EXACTLY the format: table.column - schema\n"
+              "- One column per line\n"
+              "- No greetings, explanations, or additional text\n"
+              "- No descriptions or comments\n"
+              "- Just the column identifiers in the exact format shown"
         )
         logger.info(
             "suggest_columns: augmented_user_prompt built (length=%d chars, desc_count=%d)",
@@ -690,7 +718,7 @@ async def suggest_columns(
         )
         logger.debug("suggest_columns: augmented_user_prompt (truncated): %s", _truncate(augmented_user_prompt))
 
-        # --- Step 3: Call the MCP tool for suggestions with SYSTEM prompt and augmented USER prompt ---
+        # --- Step 5: Call the MCP tool for suggestions with SYSTEM prompt and augmented USER prompt ---
         tool_args = {
             "space": data["confluenceSpace"],
             "title": data["confluenceTitle"],
@@ -730,44 +758,29 @@ async def suggest_columns(
         for i, line in enumerate(raw_lines):
             logger.debug("suggest_columns: line %d: %r", i+1, line)
 
-        # --- Step 4: Process LLM selections and lookup details from Confluence data ---
+        # --- Step 6: Process LLM selections and lookup details from merged data ---
         columns: List[Dict[str, Any]] = []
         
         for line in raw_lines:
             logger.debug("suggest_columns: processing line: %s", line)
             
             try:
-                # Parse different possible formats from LLM
-                table_column = None
-                suggested_schema = "public"  # default schema
-                
-                # Format 1: "table.column - schema"
-                if " - " in line:
-                    parts = line.split(" - ", 1)
-                    if len(parts) == 2:
-                        table_column = parts[0].strip()
-                        suggested_schema = parts[1].strip()
-                
-                # Format 2: "schema.table.column" (fully qualified)
-                elif line.count(".") >= 2:
-                    parts = line.split(".", 2)
-                    if len(parts) == 3:
-                        suggested_schema = parts[0].strip()
-                        table_column = f"{parts[1].strip()}.{parts[2].strip()}"
-                
-                # Format 3: "table.column" (no schema specified)
-                elif "." in line and line.count(".") == 1:
-                    table_column = line.strip()
-                    suggested_schema = "public"  # default
-                
-                # Format 4: Just the column name without table (skip these)
-                else:
-                    logger.warning("suggest_columns: skipping unrecognized format: %s", line)
+                # Parse the required format: "table.column - schema"
+                if " - " not in line:
+                    logger.warning("suggest_columns: skipping malformed line (no ' - '): %s", line)
                     continue
+                    
+                parts = line.split(" - ", 1)
+                if len(parts) != 2:
+                    logger.warning("suggest_columns: skipping malformed line (wrong parts): %s", line)
+                    continue
+                    
+                table_column = parts[0].strip()
+                suggested_schema = parts[1].strip()
                 
-                # Validate that we extracted table.column format
-                if not table_column or "." not in table_column:
-                    logger.warning("suggest_columns: could not extract table.column from line: %s", line)
+                # Validate table.column format
+                if "." not in table_column:
+                    logger.warning("suggest_columns: skipping invalid table.column format: %s", table_column)
                     continue
                     
                 logger.debug("suggest_columns: parsed line '%s' -> table_column='%s', schema='%s'", 
@@ -811,74 +824,26 @@ async def suggest_columns(
                     })
                     continue
                 
-                # Debug: check what type column_details is
-                logger.debug("suggest_columns: column_details type for %s: %s", table_column, type(column_details))
-                logger.debug("suggest_columns: column_details content: %s", column_details)
+                # SIMPLIFIED: Extract data from merged Confluence + database metadata
+                logger.debug("suggest_columns: found column_details for %s: %s", table_column, column_details)
                 
-                # Extract details from Confluence data
-                description = ""
-                data_type = "UNKNOWN"
-                actual_schema = suggested_schema  # fallback to LLM suggestion
+                # Now column_details is a structured dict with description, type, schema
+                description = column_details.get("description", "Description not available")
+                data_type = column_details.get("type", "UNKNOWN") 
+                actual_schema = column_details.get("schema", suggested_schema)
                 
-                if isinstance(column_details, dict):
-                    # Already a dictionary - use directly
-                    description = column_details.get("description", "")
-                    data_type = column_details.get("type", "UNKNOWN")
-                    actual_schema = column_details.get("schema", suggested_schema)
-                elif isinstance(column_details, str):
-                    # String - could be JSON or plain description
-                    try:
-                        # Try to parse as JSON first
-                        parsed_details = json.loads(column_details)
-                        if isinstance(parsed_details, dict):
-                            description = parsed_details.get("description", column_details)
-                            data_type = parsed_details.get("type", "UNKNOWN")
-                            actual_schema = parsed_details.get("schema", suggested_schema)
-                        else:
-                            # JSON but not a dict - treat as description
-                            description = str(parsed_details)
-                    except json.JSONDecodeError:
-                        # Not JSON - treat as plain description
-                        description = column_details
-                        
-                        # Try to extract type/schema info from description string
-                        # Look for patterns like "VARCHAR - public" or "INTEGER (public schema)"
-                        if " - " in description:
-                            parts = description.split(" - ", 1)
-                            if len(parts) == 2:
-                                desc_part = parts[0].strip()
-                                type_schema_part = parts[1].strip()
-                                
-                                # Check if first part looks like a data type
-                                common_types = ['varchar', 'integer', 'int', 'bigint', 'text', 'char', 'boolean', 'decimal', 'timestamp', 'datetime', 'date']
-                                if any(dtype in desc_part.lower() for dtype in common_types):
-                                    data_type = desc_part.upper()
-                                    description = type_schema_part
-                                else:
-                                    description = desc_part
-                                    if any(dtype in type_schema_part.lower() for dtype in common_types):
-                                        data_type = type_schema_part.upper()
-                else:
-                    # Unknown format
-                    logger.warning("suggest_columns: unexpected column_details format for %s: %s", table_column, type(column_details))
-                    description = str(column_details)
-                    data_type = "UNKNOWN"
-                    actual_schema = suggested_schema
+                logger.info("suggest_columns: extracted for %s - description='%s', type='%s', schema='%s'", 
+                          table_column, description, data_type, actual_schema)
                 
-                # Validate schema match (if we have schema info from Confluence)
-                if actual_schema != suggested_schema:
-                    logger.warning("suggest_columns: schema mismatch for %s - LLM suggested '%s' but Confluence has '%s'", 
-                                 table_column, suggested_schema, actual_schema)
-                
-                # Format the final response for UI using the actual schema from Confluence
+                # Create the response
                 formatted_column = {
-                    "name": f"{actual_schema}.{table_column}" if actual_schema and actual_schema != suggested_schema else table_column,
+                    "name": table_column,
                     "description": description,
                     "data_type": data_type
                 }
                 
                 columns.append(formatted_column)
-                logger.debug("suggest_columns: successfully processed column: %s -> %s", table_column, formatted_column)
+                logger.debug("suggest_columns: added column: %s", formatted_column)
                 
             except Exception as e:
                 logger.error("suggest_columns: error processing line '%s': %s", line, e)
