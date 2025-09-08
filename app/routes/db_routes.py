@@ -619,13 +619,12 @@ async def suggest_columns(
         logger.debug("suggest_columns: validated payload (sanitized): %s", log_copy)
 
         # ==========================================
-        # STEP 1: FETCH ENHANCED SCHEMA FROM MCP
+        # STEP 1: GET ACTUAL DATABASE COLUMNS
         # ==========================================
-        logger.info("🔄 STEP 1: Fetching enhanced schema with confluence descriptions and types...")
+        logger.info("🔄 STEP 1: Getting actual database columns that exist...")
         
-        enhanced_args = {
-            "space": data["confluenceSpace"],
-            "title": data["confluenceTitle"],
+        # First get all database columns that actually exist
+        db_columns_args = {
             "host": data["host"],
             "port": data["port"],
             "user": data["user"],
@@ -634,36 +633,92 @@ async def suggest_columns(
             "database_type": data.get("database_type", "postgres"),
         }
         
-        safe_enhanced_args = dict(enhanced_args)
-        safe_enhanced_args["password"] = _mask_secret(enhanced_args["password"])
-        logger.info("suggest_columns: enhanced schema args (sanitized): %s", safe_enhanced_args)
+        safe_db_args = dict(db_columns_args)
+        safe_db_args["password"] = _mask_secret(db_columns_args["password"])
+        logger.info("suggest_columns: getting DB columns with args (sanitized): %s", safe_db_args)
 
-        enhanced_res = await _mcp_session.call_tool(
-            "get_enhanced_schema_with_confluence",
-            arguments=enhanced_args,
+        # Get all table->columns mapping from database
+        db_schema_res = await _mcp_session.call_tool(
+            "list_database_keys",
+            arguments=db_columns_args,
             read_timeout_seconds=timedelta(seconds=600)
         )
 
-        parts = getattr(enhanced_res, "content", []) or []
-        logger.debug("suggest_columns: get_enhanced_schema_with_confluence returned %d content part(s)", len(parts))
+        db_parts = getattr(db_schema_res, "content", []) or []
+        logger.debug("suggest_columns: list_database_keys returned %d content part(s)", len(db_parts))
 
-        enhanced_text_parts = [m.text for m in parts if getattr(m, "text", None)]
-        enhanced_text = enhanced_text_parts[0] if enhanced_text_parts else "{}"
-        logger.debug("suggest_columns: enhanced schema JSON length=%d chars", len(enhanced_text))
-
+        db_text_parts = [m.text for m in db_parts if getattr(m, "text", None)]
+        db_text = db_text_parts[0] if db_text_parts else "{}"
+        
         try:
-            enhanced_schema = json.loads(enhanced_text)
-            logger.info("✅ STEP 1 COMPLETE: Parsed enhanced schema with %d schema.table entries", len(enhanced_schema))
+            db_schema = json.loads(db_text)
+            logger.info("✅ STEP 1A COMPLETE: Got database schema with %d tables", len(db_schema))
             
-            # Log sample for debugging
-            if enhanced_schema:
-                sample_key = list(enhanced_schema.keys())[0]
-                sample_columns = enhanced_schema[sample_key][:3]  # First 3 columns
-                logger.debug("suggest_columns: sample enhanced schema entry '%s': %s", sample_key, sample_columns)
+            # Convert table->columns to flat list of table.column
+            db_columns = []
+            for table, columns in db_schema.items():
+                for column in columns:
+                    db_columns.append(f"{table}.{column}")
+            
+            logger.info("suggest_columns: found %d total columns in database", len(db_columns))
+            logger.debug("suggest_columns: sample DB columns: %s", _sample_list(db_columns, 10))
                 
         except json.JSONDecodeError as je:
-            logger.warning("suggest_columns: failed to parse enhanced schema JSON (%s), falling back to empty {}", je)
+            logger.warning("suggest_columns: failed to parse DB schema JSON (%s), falling back to empty list", je)
+            db_columns = []
+
+        # ==========================================
+        # STEP 1B: FETCH ENHANCED SCHEMA FOR DB COLUMNS ONLY
+        # ==========================================
+        logger.info("🔄 STEP 1B: Fetching enhanced schema for %d DB columns only...", len(db_columns))
+        
+        if not db_columns:
+            logger.warning("suggest_columns: no DB columns found, using empty enhanced schema")
             enhanced_schema = {}
+        else:
+            enhanced_args = {
+                "space": data["confluenceSpace"],
+                "title": data["confluenceTitle"],
+                "host": data["host"],
+                "port": data["port"],
+                "user": data["user"],
+                "password": data["password"],
+                "database": data["database"],
+                "columns": db_columns,  # Only pass actual DB columns
+                "database_type": data.get("database_type", "postgres"),
+            }
+            
+            safe_enhanced_args = dict(enhanced_args)
+            safe_enhanced_args["password"] = _mask_secret(enhanced_args["password"])
+            safe_enhanced_args["columns"] = f"[{len(db_columns)} columns]"
+            logger.info("suggest_columns: enhanced schema args (sanitized): %s", safe_enhanced_args)
+
+            enhanced_res = await _mcp_session.call_tool(
+                "get_enhanced_schema_with_confluence",
+                arguments=enhanced_args,
+                read_timeout_seconds=timedelta(seconds=600)
+            )
+
+            parts = getattr(enhanced_res, "content", []) or []
+            logger.debug("suggest_columns: get_enhanced_schema_with_confluence returned %d content part(s)", len(parts))
+
+            enhanced_text_parts = [m.text for m in parts if getattr(m, "text", None)]
+            enhanced_text = enhanced_text_parts[0] if enhanced_text_parts else "{}"
+            logger.debug("suggest_columns: enhanced schema JSON length=%d chars", len(enhanced_text))
+
+            try:
+                enhanced_schema = json.loads(enhanced_text)
+                logger.info("✅ STEP 1B COMPLETE: Parsed enhanced schema with %d schema.table entries", len(enhanced_schema))
+                
+                # Log sample for debugging
+                if enhanced_schema:
+                    sample_key = list(enhanced_schema.keys())[0]
+                    sample_columns = enhanced_schema[sample_key][:3]  # First 3 columns
+                    logger.debug("suggest_columns: sample enhanced schema entry '%s': %s", sample_key, sample_columns)
+                    
+            except json.JSONDecodeError as je:
+                logger.warning("suggest_columns: failed to parse enhanced schema JSON (%s), falling back to empty {}", je)
+                enhanced_schema = {}
 
         # ==========================================
         # STEP 2: BUILD PROMPT AND CALL LLM  
