@@ -1161,15 +1161,28 @@ async def analytics_query(
 
         query_start_time = time.time()
         
-        result = await _mcp_session.call_tool(
-            "run_analytics_query_on_database",
-            arguments=tool_args,
-            read_timeout_seconds=timedelta(seconds=600)
-        )
-        
-        query_execution_time = time.time() - query_start_time
-        logger.info("✅ STEP 2 COMPLETE: SQL query executed successfully in %.2fs", query_execution_time)
-        logger.debug(f"MCP tool returned {len(getattr(result, 'content', []) or [])} content parts")
+        try:
+            result = await _mcp_session.call_tool(
+                "run_analytics_query_on_database",
+                arguments=tool_args,
+                read_timeout_seconds=timedelta(seconds=600)
+            )
+            
+            query_execution_time = time.time() - query_start_time
+            logger.info("✅ STEP 2 COMPLETE: SQL query executed successfully in %.2fs", query_execution_time)
+            logger.debug(f"MCP tool returned {len(getattr(result, 'content', []) or [])} content parts")
+
+        except Exception as mcp_error:
+            query_execution_time = time.time() - query_start_time
+            logger.error("❌ MCP tool execution failed after %.2fs: %s", query_execution_time, str(mcp_error))
+            logger.error("Failed analytics prompt (first 500 chars): %s", analytics_prompt[:500])
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "error": f"SQL generation/execution failed: {str(mcp_error)}"
+                }
+            )
 
         # --- Step 3: Process the response ---
         logger.info("🔄 STEP 3: Processing query results...")
@@ -1195,13 +1208,33 @@ async def analytics_query(
                         f"SQL query: {'present' if sql_query else 'missing'}"
                     )
                     if sql_query:
-                        logger.debug(f"Generated SQL: {sql_query[:200]}{'...' if len(sql_query) > 200 else ''}")
+                        logger.info("🔍 Full generated SQL query:\n%s", sql_query)
+                    else:
+                        logger.warning("⚠️ No SQL query found in response - this may indicate LLM generation failure")
                     break  # We found the main response, no need to process other parts
                 else:
                     logger.debug(f"Response part {i+1} contains JSON but not in expected format")
             except json.JSONDecodeError:
                 # Not JSON, might be additional text from the AI
                 logger.debug(f"Response part {i+1} is not JSON (length: {len(msg_text)})")
+                # Log the raw text in case it contains error information
+                if "error" in msg_text.lower() or "exception" in msg_text.lower():
+                    logger.warning(f"Possible error in response part {i+1}: {msg_text}")
+
+        # Check for empty results and log detailed information
+        if not rows and not sql_query:
+            logger.error("❌ Both rows and sql_query are empty/null - this indicates a problem")
+            logger.error("Raw MCP response content:")
+            for i, msg in enumerate(result.content):
+                logger.error(f"  Part {i+1}: {getattr(msg, 'text', '')}")
+            
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error", 
+                    "error": "No SQL query or results generated - LLM may have failed to process the request"
+                }
+            )
 
         logger.info("✅ STEP 3 COMPLETE: Analytics query processing complete - %d rows returned", len(rows))
         if isinstance(rows, list) and len(rows) > 0:
@@ -1227,6 +1260,12 @@ async def analytics_query(
 
         # Return the results
         logger.info("🎉 analytics_query: COMPLETE - returning %d rows to frontend", len(rows) if isinstance(rows, list) else 0)
+        
+        if sql_query:
+            logger.info("✅ SQL query successfully generated and executed")
+        else:
+            logger.warning("⚠️ No SQL query in final response - this may indicate an issue")
+            
         return JSONResponse({
             "status": "success",
             "data": {
