@@ -1341,19 +1341,25 @@ async def run_analytics_query_on_database(
     )
     logger.info("Generated SQL (raw) length=%d", len(sql_raw or 0))
     sql = _strip_sql_fences(sql_raw)
-    logger.debug("Generated SQL (cleaned):\n%s", sql)
+    logger.info("🔍 Generated SQL (full query):\n%s", sql)
 
-    # 4) Execute
+    # 4) Execute with proper error handling
+    rows = []
     try:
         rows = await pg.execute_query(sql)
-        logger.info("Query OK: rows=%d", len(rows or []))
+        logger.info("✅ Query executed successfully: rows=%d", len(rows or []))
         if rows:
             logger.debug("First row sample=%s", rows[0])
+    except Exception as query_error:
+        logger.error("❌ SQL execution failed: %s", str(query_error))
+        logger.error("Failed SQL query was:\n%s", sql)
+        # Re-raise to let caller handle the error
+        raise
     finally:
         logger.debug("Closing DB pool …")
         await pg.close()
 
-    return {"rows" : rows, "sql" : sql}
+    return {"rows": rows, "sql": sql}
 
 
 @mcp.tool()
