@@ -917,10 +917,15 @@ async def analytics_query(
     db: Session = Depends(get_db_session)
 ):
     """
-    Execute an analytics query with AI assistance and comprehensive logging
+    Execute an analytics query with AI assistance and enhanced schema integration.
     
-    This endpoint replicates the working analytics_query_api function from client.py
-    with enhanced logging for debugging and monitoring
+    3 MAIN STEPS:
+    1. Get actual database columns and fetch enhanced schema with Confluence metadata
+    2. Build enhanced prompt with schema information and call LLM for SQL generation
+    3. Execute generated SQL and return results
+    
+    This endpoint uses the same pattern as suggest_columns - first get DB reality,
+    then enhance with Confluence descriptions, then let LLM work with complete information.
     
     Args:
         request (Request): HTTP request containing query parameters and connection info
@@ -930,7 +935,7 @@ async def analytics_query(
         
     Logs:
         - INFO: Query execution start with connection details
-        - DEBUG: Confluence integration and prompt augmentation
+        - DEBUG: Enhanced schema integration and prompt augmentation
         - INFO: MCP tool execution timing and results
         - WARNING: Missing required fields or invalid parameters
         - ERROR: Query execution failures with detailed stack traces
@@ -988,14 +993,68 @@ async def analytics_query(
         log_copy["system_prompt"] = _truncate(log_copy.get("system_prompt"), 100)
         logger.debug(f"Validated payload (sanitized): {log_copy}")
 
-        # --- Step 1: (Optional) Get Confluence descriptions and augment prompt ---
-        analytics_prompt = data["analytics_prompt"]
+        # ==========================================
+        # STEP 1: GET ACTUAL DATABASE COLUMNS
+        # ==========================================
+        logger.info("🔄 STEP 1: Getting actual database columns for analytics query...")
+        
+        # First get all database columns that actually exist
+        db_columns_args = {
+            "host": data["host"],
+            "port": data["port"],
+            "user": data["user"],
+            "password": data["password"],
+            "database": data["database"],
+            "database_type": data.get("database_type", "postgres"),
+        }
+        
+        safe_db_args = dict(db_columns_args)
+        safe_db_args["password"] = _mask_secret(db_columns_args["password"])
+        logger.info("analytics_query: getting DB columns with args (sanitized): %s", safe_db_args)
+
+        # Get all table->columns mapping from database
+        db_schema_res = await _mcp_session.call_tool(
+            "list_database_keys",
+            arguments=db_columns_args,
+            read_timeout_seconds=timedelta(seconds=600)
+        )
+
+        db_parts = getattr(db_schema_res, "content", []) or []
+        logger.debug("analytics_query: list_database_keys returned %d content part(s)", len(db_parts))
+
+        db_text_parts = [m.text for m in db_parts if getattr(m, "text", None)]
+        db_text = db_text_parts[0] if db_text_parts else "{}"
+        
+        try:
+            db_schema = json.loads(db_text)
+            logger.info("✅ STEP 1A COMPLETE: Got database schema with %d tables", len(db_schema))
+            
+            # Convert table->columns to flat list of table.column
+            db_columns = []
+            for table, columns in db_schema.items():
+                for column in columns:
+                    db_columns.append(f"{table}.{column}")
+            
+            logger.info("analytics_query: found %d total columns in database", len(db_columns))
+            logger.debug("analytics_query: sample DB columns: %s", db_columns[:10])
+                
+        except json.JSONDecodeError as je:
+            logger.warning("analytics_query: failed to parse DB schema JSON (%s), falling back to empty list", je)
+            db_columns = []
+
+        # ==========================================
+        # STEP 1B: GET ENHANCED SCHEMA WITH CONFLUENCE METADATA
+        # ==========================================
+        logger.info("🔄 STEP 1B: Fetching enhanced schema with Confluence metadata for %d DB columns...", len(db_columns))
+        
         space = data.get("confluenceSpace")
         title = data.get("confluenceTitle")
+        analytics_prompt = data["analytics_prompt"]
         
-        if space and title:
-            logger.info(f"Fetching Confluence descriptions from space '{space}', title '{title}'")
-            desc_args = {
+        if space and title and db_columns:
+            logger.info(f"Getting enhanced schema from space '{space}', title '{title}'")
+            
+            enhanced_args = {
                 "space": space,
                 "title": title,
                 "host": data["host"],
@@ -1003,54 +1062,93 @@ async def analytics_query(
                 "user": data["user"],
                 "password": data["password"],
                 "database": data["database"],
+                "columns": db_columns,  # Only pass actual DB columns
+                "database_type": data.get("database_type", "postgres"),
             }
             
+            safe_enhanced_args = dict(enhanced_args)
+            safe_enhanced_args["password"] = _mask_secret(enhanced_args["password"])
+            safe_enhanced_args["columns"] = f"[{len(db_columns)} columns]"
+            logger.info("analytics_query: enhanced schema args (sanitized): %s", safe_enhanced_args)
+
             try:
-                logger.debug("Executing collect_db_confluence_key_descriptions MCP tool")
-                desc_start_time = time.time()
+                enhanced_start_time = time.time()
                 
-                desc_res = await _mcp_session.call_tool(
-                    "collect_db_confluence_key_descriptions",
-                    arguments=desc_args,
+                enhanced_res = await _mcp_session.call_tool(
+                    "get_enhanced_schema_with_confluence",
+                    arguments=enhanced_args,
                     read_timeout_seconds=timedelta(seconds=600)
                 )
                 
-                desc_execution_time = time.time() - desc_start_time
-                logger.debug(f"Confluence descriptions fetched in {desc_execution_time:.2f}s")
-                
-                desc_text = next((m.text for m in (getattr(desc_res, "content", []) or []) if getattr(m, "text", None)), "{}")
-                logger.debug(f"Descriptions JSON length: {len(desc_text)} characters")
-                
+                enhanced_execution_time = time.time() - enhanced_start_time
+                logger.debug(f"Enhanced schema fetched in {enhanced_execution_time:.2f}s")
+
+                parts = getattr(enhanced_res, "content", []) or []
+                logger.debug("analytics_query: get_enhanced_schema_with_confluence returned %d content part(s)", len(parts))
+
+                enhanced_text_parts = [m.text for m in parts if getattr(m, "text", None)]
+                enhanced_text = enhanced_text_parts[0] if enhanced_text_parts else "{}"
+                logger.debug("analytics_query: enhanced schema JSON length=%d chars", len(enhanced_text))
+
                 try:
-                    key_desc = json.loads(desc_text)
-                    logger.info(f"Successfully parsed {len(key_desc)} column descriptions from Confluence")
+                    enhanced_schema = json.loads(enhanced_text)
+                    logger.info("✅ STEP 1B COMPLETE: Parsed enhanced schema with %d schema.table entries", len(enhanced_schema))
                     
-                    # Augment analytics prompt with descriptions
+                    # Convert enhanced schema to structured format for LLM
+                    schema_info = []
+                    total_columns_with_descriptions = 0
+                    
+                    for schema_table, columns in enhanced_schema.items():
+                        schema_info.append(f"\n{schema_table}:")
+                        for col in columns:
+                            col_name = col.get("name", "")
+                            col_desc = col.get("description", "No description")
+                            col_type = col.get("type", "UNKNOWN")
+                            schema_info.append(f"  - {col_name} ({col_type}): {col_desc}")
+                            if col_desc and col_desc != "No description":
+                                total_columns_with_descriptions += 1
+                    
+                    schema_text = "\n".join(schema_info)
+                    
+                    # Augment analytics prompt with enhanced schema
                     original_length = len(analytics_prompt)
                     analytics_prompt = (
                         analytics_prompt.rstrip()
-                        + "\n\n---\nKNOWN_COLUMN_DESCRIPTIONS_JSON:\n"
-                        + json.dumps(key_desc, ensure_ascii=False)
+                        + "\n\n---\n"
+                        + "AVAILABLE DATABASE SCHEMA WITH DESCRIPTIONS AND TYPES:\n"
+                        + schema_text
+                        + "\n\nIMPORTANT: Use the column names, types, and descriptions above when building SQL queries. "
+                          "This information comes directly from the database schema and Confluence documentation."
                     )
-                    logger.debug(
-                        f"Analytics prompt augmented with descriptions: "
-                        f"{original_length} -> {len(analytics_prompt)} characters"
-                    )
-                except json.JSONDecodeError:
-                    logger.warning("Confluence descriptions not valid JSON; proceeding without augmentation")
                     
-            except Exception as confluence_error:
-                logger.warning(f"Failed to fetch Confluence descriptions: {str(confluence_error)}")
-                logger.debug("Proceeding with analytics query without Confluence augmentation")
+                    logger.info(
+                        f"Analytics prompt enhanced with schema: {original_length} -> {len(analytics_prompt)} characters, "
+                        f"{total_columns_with_descriptions} columns have descriptions"
+                    )
+                    logger.debug("analytics_query: enhanced prompt (truncated): %s", _truncate(analytics_prompt))
+                    
+                except json.JSONDecodeError as je:
+                    logger.warning("analytics_query: failed to parse enhanced schema JSON (%s), using original prompt", je)
+                    
+            except Exception as enhanced_error:
+                logger.warning(f"Failed to fetch enhanced schema: {str(enhanced_error)}")
+                logger.debug("Proceeding with analytics query without enhanced schema")
+        else:
+            if not space or not title:
+                logger.info("No Confluence space/title provided, skipping enhanced schema")
+            if not db_columns:
+                logger.warning("No DB columns found, skipping enhanced schema")
 
-        # --- Step 2: Call MCP tool to run analytics query ---
+        # --- Step 2: Call MCP tool to run analytics query with enhanced schema ---
+        logger.info("🔄 STEP 2: Calling LLM to generate and execute SQL query...")
+        
         tool_args = {
             "host": data["host"],
             "port": data["port"],
             "user": data["user"],
             "password": data["password"],
             "database": data["database"],
-            "analytics_prompt": analytics_prompt,  # may be augmented
+            "analytics_prompt": analytics_prompt,  # may be enhanced with schema
             "system_prompt": data["system_prompt"]
         }
         
@@ -1070,10 +1168,12 @@ async def analytics_query(
         )
         
         query_execution_time = time.time() - query_start_time
-        logger.info(f"Analytics query executed successfully in {query_execution_time:.2f}s")
+        logger.info("✅ STEP 2 COMPLETE: SQL query executed successfully in %.2fs", query_execution_time)
         logger.debug(f"MCP tool returned {len(getattr(result, 'content', []) or [])} content parts")
 
         # --- Step 3: Process the response ---
+        logger.info("🔄 STEP 3: Processing query results...")
+        
         rows = []
         sql_query = None
         
@@ -1103,7 +1203,7 @@ async def analytics_query(
                 # Not JSON, might be additional text from the AI
                 logger.debug(f"Response part {i+1} is not JSON (length: {len(msg_text)})")
 
-        logger.info(f"Analytics query processing complete: {len(rows)} rows returned")
+        logger.info("✅ STEP 3 COMPLETE: Analytics query processing complete - %d rows returned", len(rows))
         if isinstance(rows, list) and len(rows) > 0:
             logger.debug(f"Sample result columns: {list(rows[0].keys()) if rows[0] else 'N/A'}")
 
@@ -1126,6 +1226,7 @@ async def analytics_query(
             # Don't fail the request if activity tracking fails
 
         # Return the results
+        logger.info("🎉 analytics_query: COMPLETE - returning %d rows to frontend", len(rows) if isinstance(rows, list) else 0)
         return JSONResponse({
             "status": "success",
             "data": {
