@@ -3,9 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, FileJson, X, CheckCircle2, AlertCircle, FileText } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Upload, FileJson, X, CheckCircle2, AlertCircle, FileText, Eye, EyeOff, Code2, Play, Loader2, Copy, Brain, Zap, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { useConnectionContext } from "@/context/connection-context";
 import { dbService } from "@/lib/api-service";
+import { ConnectionStatusCard } from "./ConnectionStatusCard";
 
 interface DbtFile {
   name: string;
@@ -14,14 +20,58 @@ interface DbtFile {
   type: string;
 }
 
+interface QueryResult {
+  sql_query?: string;
+  rows: Record<string, any>[];
+  executionTime?: number;
+  rowCount?: number;
+}
+
+interface IterativeResult {
+  status: 'success' | 'error';
+  error?: string;
+  final_depth?: number;
+  tables_used?: string[];
+  sql_query?: string;
+  results?: Array<Record<string, any>>;
+  row_count?: number;
+  iteration_count?: number;
+  process_log?: Array<{
+    depth: number;
+    table_count: number;
+    tables: string[];
+    ai_decision: 'yes' | 'no';
+    ai_reasoning: string;
+    sql_generated?: string;
+    execution_successful?: boolean;
+    error_message?: string;
+  }>;
+}
+
 export function SqlBuilderDbtTab() {
   const { toast } = useToast();
+  const { currentConnection } = useConnectionContext();
   
-  // State management
+  // File upload state
   const [selectedFile, setSelectedFile] = useState<DbtFile | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showJsonContent, setShowJsonContent] = useState(true);
+
+  // SQL query state
+  const [userPrompt, setUserPrompt] = useState("");
+  const [confluenceSpace, setConfluenceSpace] = useState("AAA");
+  const [confluenceTitle, setConfluenceTitle] = useState("Demo - database keys description");
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<QueryResult | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
+
+  // Iterative analysis state
+  const [isIterativeLoading, setIsIterativeLoading] = useState(false);
+  const [iterativeResult, setIterativeResult] = useState<IterativeResult | null>(null);
+  const [iterativeError, setIterativeError] = useState<string | null>(null);
+  const [showProcessLog, setShowProcessLog] = useState(false);
 
   // Handle file selection via input
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,6 +158,200 @@ export function SqlBuilderDbtTab() {
     }
   };
 
+  // Handle Generate & Execute SQL
+  const handleGenerateAndExecute = async () => {
+    if (!currentConnection) {
+      toast({
+        variant: "destructive",
+        title: "No Connection",
+        description: "Please select a database connection first."
+      });
+      return;
+    }
+
+    if (!userPrompt.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Prompt",
+        description: "Please enter a natural language prompt for your query."
+      });
+      return;
+    }
+
+    if (!confluenceSpace.trim() || !confluenceTitle.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Confluence Details",
+        description: "Please provide both Confluence space and title."
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setQueryError(null);
+    setResult(null);
+
+    try {
+      const startTime = Date.now();
+      
+      console.log("🔄 Starting analytics query from dbt tab...");
+      
+      // Call the analytics query API with confluence integration
+      const response = await dbService.runAnalyticsQuery({
+        ...currentConnection,
+        analytics_prompt: userPrompt,
+        system_prompt: `You are a BI assistant working with dbt models and database schemas. Given a JSON schema of tables and their columns,
+and a user's analytics request, write a valid PostgreSQL query that
+joins the relevant tables, filters by the appropriate date range,
+and aggregates any measures. Consider dbt model patterns and naming conventions. Return ONLY the SQL statement. No greetings, no extra words.`,
+        confluenceSpace,
+        confluenceTitle
+      });
+
+      console.log("📥 Analytics query response received");
+      const executionTime = Date.now() - startTime;
+
+      if (response.status === 'success' && response.data) {
+        const rows = response.data.rows || [];
+        const sql_query = response.data.sql;
+        
+        setResult({
+          rows,
+          sql_query,
+          executionTime,
+          rowCount: rows.length
+        });
+        
+        toast({
+          title: "Query Executed Successfully",
+          description: `Retrieved ${rows.length} rows in ${executionTime}ms${sql_query ? ' with SQL' : ' (no SQL)'}`
+        });
+      } else {
+        console.error("❌ Query failed:", response);
+        throw new Error(response.error || 'Query execution failed');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+      setQueryError(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "Query Failed",
+        description: errorMessage
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Copy SQL Query
+  const handleCopySQL = () => {
+    if (!result?.sql_query) return;
+    
+    navigator.clipboard.writeText(result.sql_query);
+    toast({
+      title: "SQL Copied",
+      description: "SQL query copied to clipboard"
+    });
+  };
+
+  // Handle Iterative dbt Analysis
+  const handleIterativeAnalysis = async () => {
+    if (!currentConnection) {
+      toast({
+        variant: "destructive",
+        title: "No Connection",
+        description: "Please select a database connection first."
+      });
+      return;
+    }
+
+    if (!selectedFile?.content) {
+      toast({
+        variant: "destructive",
+        title: "No dbt File",
+        description: "Please upload a dbt configuration file first."
+      });
+      return;
+    }
+
+    if (!userPrompt.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Prompt",
+        description: "Please enter a natural language prompt for your analysis."
+      });
+      return;
+    }
+
+    if (!confluenceSpace.trim() || !confluenceTitle.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Confluence Details",
+        description: "Please provide both Confluence space and title."
+      });
+      return;
+    }
+
+    setIsIterativeLoading(true);
+    setIterativeError(null);
+    setIterativeResult(null);
+
+    try {
+      const startTime = Date.now();
+      
+      console.log("🧠 Starting iterative dbt analysis...");
+      
+      // Call the iterative dbt query API
+      const response = await dbService.iterativeDbtQuery({
+        ...currentConnection,
+        dbt_file_content: selectedFile.content,
+        analytics_prompt: userPrompt,
+        confluence_space: confluenceSpace,
+        confluence_title: confluenceTitle
+      });
+
+      console.log("📥 Iterative analysis response received");
+      const executionTime = Date.now() - startTime;
+
+      if (response.status === 'success' && response.data) {
+        setIterativeResult(response.data);
+        
+        const final_depth = response.data.final_depth;
+        const iteration_count = response.data.iteration_count;
+        const row_count = response.data.row_count || 0;
+        
+        toast({
+          title: "Iterative Analysis Complete",
+          description: `✅ Successful at depth ${final_depth} after ${iteration_count} iterations (${row_count} rows, ${executionTime}ms)`
+        });
+      } else {
+        console.error("❌ Iterative analysis failed:", response);
+        throw new Error(response.error || 'Iterative analysis failed');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+      setIterativeError(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "Iterative Analysis Failed",
+        description: errorMessage
+      });
+    } finally {
+      setIsIterativeLoading(false);
+    }
+  };
+
+  // Handle Copy Iterative SQL
+  const handleCopyIterativeSQL = () => {
+    if (!iterativeResult?.sql_query) return;
+    
+    navigator.clipboard.writeText(iterativeResult.sql_query);
+    toast({
+      title: "SQL Copied",
+      description: "Iterative analysis SQL query copied to clipboard"
+    });
+  };
+
   // Handle drag and drop events
   const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -142,6 +386,16 @@ export function SqlBuilderDbtTab() {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Format JSON content for pretty display
+  const formatJsonContent = (content: string): string => {
+    try {
+      const parsed = JSON.parse(content);
+      return JSON.stringify(parsed, null, 2); // 2 spaces for indentation
+    } catch {
+      return content; // Return original if not valid JSON
+    }
   };
 
   // Try to parse and validate dbt model structure
@@ -183,6 +437,9 @@ export function SqlBuilderDbtTab() {
 
   return (
     <div className="space-y-6">
+      {/* Connection Status */}
+      <ConnectionStatusCard />
+
       {/* Header */}
       <Card className="glass border-border/50">
         <CardHeader>
@@ -309,50 +566,549 @@ export function SqlBuilderDbtTab() {
         </Alert>
       )}
 
+      {/* AI-Powered SQL Generator & Executor */}
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Code2 className="w-5 h-5 text-primary" />
+            AI-Powered SQL Generator & Executor
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Confluence Configuration */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Confluence Space
+                {!confluenceSpace.trim() && <span className="text-red-500 ml-1">*</span>}
+              </label>
+              <Input 
+                placeholder="e.g., DATA, ANALYTICS"
+                value={confluenceSpace}
+                onChange={(e) => setConfluenceSpace(e.target.value)}
+                className="bg-surface-elevated"
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Confluence Title
+                {!confluenceTitle.trim() && <span className="text-red-500 ml-1">*</span>}
+              </label>
+              <Input 
+                placeholder="e.g., Database Schema Documentation"
+                value={confluenceTitle}
+                onChange={(e) => setConfluenceTitle(e.target.value)}
+                className="bg-surface-elevated"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          {/* Natural Language Prompt */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Natural Language Query
+              {!userPrompt.trim() && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <Textarea 
+              placeholder="e.g., Show me the top 10 customers by total order value in the last 6 months, including their contact information and number of orders..."
+              className="bg-surface-elevated min-h-[120px]"
+              value={userPrompt}
+              onChange={(e) => setUserPrompt(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+          
+          {/* Action Button */}
+          <div className="flex gap-3">
+            <Button 
+              className="bg-gradient-primary flex items-center gap-2"
+              onClick={handleGenerateAndExecute}
+              disabled={isLoading || !currentConnection}
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              {isLoading ? "Generating & Executing..." : "Generate & Execute SQL"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Iterative dbt Analysis */}
+      <Card className="glass border-border/50 bg-gradient-to-br from-blue-50/10 to-purple-50/10 border-blue-500/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="w-5 h-5 text-blue-500" />
+            <Zap className="w-4 h-4 text-yellow-500" />
+            Iterative dbt Analysis (AI-Powered)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-gradient-to-r from-blue-50/20 to-purple-50/20 rounded-lg p-4 border border-blue-200/30">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-100/50 rounded-lg">
+                <Brain className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h4 className="font-medium text-blue-900 mb-2">Smart Depth-Based Analysis</h4>
+                <p className="text-sm text-blue-700 leading-relaxed">
+                  This advanced feature analyzes your dbt file structure and iteratively builds SQL queries starting from the highest depth tables. 
+                  The AI evaluates table sufficiency at each depth level and automatically reduces complexity until it finds the optimal query scope.
+                </p>
+                <div className="mt-3 text-xs text-blue-600 space-y-1">
+                  <div>• Starts with depth 4 tables (most detailed)</div>
+                  <div>• AI decides if tables are sufficient for your query</div>
+                  <div>• Automatically reduces depth if needed (4→3→2→1→0)</div>
+                  <div>• Generates and executes optimal SQL query</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {selectedFile ? (
+            <div className="space-y-4">
+              <div className="text-sm text-green-600 bg-green-50/50 rounded-lg p-3 border border-green-200/50">
+                ✅ <strong>dbt file loaded:</strong> {selectedFile.name} ({(() => {
+                  const validation = validateDbtContent(selectedFile.content);
+                  return validation.summary;
+                })()})
+              </div>
+              
+              <div className="flex gap-3">
+                <Button 
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
+                  onClick={handleIterativeAnalysis}
+                  disabled={isIterativeLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim()}
+                >
+                  {isIterativeLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Brain className="w-4 h-4" />
+                      <Zap className="w-3 h-3" />
+                    </>
+                  )}
+                  {isIterativeLoading ? "Analyzing..." : "Start Iterative Analysis"}
+                </Button>
+                
+                {isIterativeLoading && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    AI is analyzing table depths and building optimal queries...
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-orange-600 bg-orange-50/50 rounded-lg p-3 border border-orange-200/50">
+              ⚠️ <strong>Upload required:</strong> Please upload a dbt configuration file first to enable iterative analysis.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Query Error Display */}
+      {queryError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{queryError}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Iterative Analysis Error Display */}
+      {iterativeError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Iterative Analysis Failed:</strong> {iterativeError}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Iterative Analysis Results */}
+      {iterativeResult && (
+        <>
+          {/* Success Summary */}
+          {iterativeResult.status === 'success' && (
+            <Card className="glass border-border/50 bg-gradient-to-br from-green-50/10 to-blue-50/10 border-green-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-green-700">
+                  <CheckCircle2 className="w-5 h-5" />
+                  Iterative Analysis Complete
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                  <div className="bg-green-50/50 rounded-lg p-3 border border-green-200/50">
+                    <div className="text-sm text-green-600 font-medium">Final Depth</div>
+                    <div className="text-lg font-bold text-green-800">{iterativeResult.final_depth}</div>
+                  </div>
+                  <div className="bg-blue-50/50 rounded-lg p-3 border border-blue-200/50">
+                    <div className="text-sm text-blue-600 font-medium">Iterations</div>
+                    <div className="text-lg font-bold text-blue-800">{iterativeResult.iteration_count}</div>
+                  </div>
+                  <div className="bg-purple-50/50 rounded-lg p-3 border border-purple-200/50">
+                    <div className="text-sm text-purple-600 font-medium">Tables Used</div>
+                    <div className="text-lg font-bold text-purple-800">{iterativeResult.tables_used?.length || 0}</div>
+                  </div>
+                  <div className="bg-orange-50/50 rounded-lg p-3 border border-orange-200/50">
+                    <div className="text-sm text-orange-600 font-medium">Results</div>
+                    <div className="text-lg font-bold text-orange-800">{iterativeResult.row_count || 0} rows</div>
+                  </div>
+                </div>
+
+                {iterativeResult.tables_used && iterativeResult.tables_used.length > 0 && (
+                  <div className="bg-blue-50/30 rounded-lg p-3 border border-blue-200/30">
+                    <div className="text-sm text-blue-700 font-medium mb-2">Tables Selected by AI:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {iterativeResult.tables_used.map((table, index) => (
+                        <span 
+                          key={index}
+                          className="px-2 py-1 bg-blue-100/70 text-blue-800 text-xs rounded-md border border-blue-200/50"
+                        >
+                          {table}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Process Log */}
+          {iterativeResult.process_log && iterativeResult.process_log.length > 0 && (
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle 
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => setShowProcessLog(!showProcessLog)}
+                >
+                  <div className="flex items-center gap-2">
+                    AI Decision Process Log
+                    <span className="text-sm font-normal text-muted-foreground">
+                      ({iterativeResult.process_log.length} iterations)
+                    </span>
+                  </div>
+                  {showProcessLog ? (
+                    <ChevronDown className="w-5 h-5" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5" />
+                  )}
+                </CardTitle>
+              </CardHeader>
+              {showProcessLog && (
+                <CardContent>
+                  <div className="space-y-4">
+                    {iterativeResult.process_log.map((logEntry, index) => (
+                      <div 
+                        key={index}
+                        className={`border rounded-lg p-4 ${
+                          logEntry.ai_decision === 'yes' 
+                            ? 'bg-green-50/30 border-green-200/50' 
+                            : 'bg-orange-50/30 border-orange-200/50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded-md text-xs font-medium ${
+                              logEntry.ai_decision === 'yes' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              Depth {logEntry.depth}
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              {logEntry.table_count} tables
+                            </span>
+                          </div>
+                          <div className={`flex items-center gap-1 text-sm font-medium ${
+                            logEntry.ai_decision === 'yes' ? 'text-green-700' : 'text-orange-700'
+                          }`}>
+                            {logEntry.ai_decision === 'yes' ? '✅ Sufficient' : '❌ Insufficient'}
+                          </div>
+                        </div>
+                        
+                        <div className="text-sm text-foreground mb-2">
+                          <strong>AI Reasoning:</strong> {logEntry.ai_reasoning}
+                        </div>
+                        
+                        {logEntry.tables && logEntry.tables.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            <strong>Tables:</strong> {logEntry.tables.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          )}
+
+          {/* Generated SQL Query from Iterative Analysis */}
+          {iterativeResult.sql_query && (
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  Optimized SQL Query (Iterative Analysis)
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={handleCopyIterativeSQL}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy SQL
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-surface-elevated rounded-lg p-4 border border-border/50">
+                  <pre className="text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+                    {iterativeResult.sql_query}
+                  </pre>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Iterative Analysis Query Results */}
+          {iterativeResult.results && iterativeResult.results.length > 0 && (
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle>Iterative Analysis Results</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4 text-sm mb-4">
+                  <span className="text-muted-foreground">
+                    Rows: {iterativeResult.row_count}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Optimal depth: {iterativeResult.final_depth}
+                  </span>
+                  <span className="text-muted-foreground">
+                    AI iterations: {iterativeResult.iteration_count}
+                  </span>
+                </div>
+
+                {/* Results Table */}
+                <div className="overflow-x-auto border border-border/50 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface-elevated/50">
+                      <tr className="border-b border-border">
+                        {Object.keys(iterativeResult.results[0]).map((header) => (
+                          <th key={header} className="text-left p-3 font-medium">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {iterativeResult.results.slice(0, 100).map((row, index) => (
+                        <tr
+                          key={index}
+                          className="border-b border-border/50 hover:bg-surface-elevated/30 transition-colors"
+                        >
+                          {Object.keys(iterativeResult.results![0]).map((header) => (
+                            <td key={header} className="p-3">
+                              {typeof row[header] === 'number' ? (
+                                <span className="font-mono text-primary">
+                                  {row[header].toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-foreground">
+                                  {String(row[header] ?? '')}
+                                </span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* Query Results Display */}
+      {result && (
+        <>
+          {/* Generated SQL Query Display */}
+          {result.sql_query ? (
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  Generated SQL Query
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={handleCopySQL}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy SQL
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-surface-elevated rounded-lg p-4 border border-border/50">
+                  <pre className="text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+                    {result.sql_query}
+                  </pre>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="glass border-border/50 border-orange-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-orange-600">
+                  <AlertCircle className="w-5 h-5" />
+                  SQL Query Not Available
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-orange-50/50 rounded-lg p-4 border border-orange-200/50">
+                  <p className="text-sm text-orange-700">
+                    The SQL query could not be extracted from the AI response. 
+                    This might happen if the AI returned results in a different format.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Query Results */}
+          <Card className="glass border-border/50">
+            <CardHeader>
+              <CardTitle>Query Results</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4 text-sm mb-4">
+                <span className="text-muted-foreground">
+                  Rows: {result.rowCount}
+                </span>
+                <span className="text-muted-foreground">
+                  Execution time: ~{result.executionTime}ms
+                </span>
+              </div>
+
+              {/* Results Table */}
+              {result.rows.length > 0 ? (
+                <div className="overflow-x-auto border border-border/50 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface-elevated/50">
+                      <tr className="border-b border-border">
+                        {Object.keys(result.rows[0]).map((header) => (
+                          <th key={header} className="text-left p-3 font-medium">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.rows.slice(0, 100).map((row, index) => (
+                        <tr
+                          key={index}
+                          className="border-b border-border/50 hover:bg-surface-elevated/30 transition-colors"
+                        >
+                          {Object.keys(result.rows[0]).map((header) => (
+                            <td key={header} className="p-3">
+                              {typeof row[header] === 'number' ? (
+                                <span className="font-mono text-primary">
+                                  {row[header].toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-foreground">
+                                  {String(row[header] ?? '')}
+                                </span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No data returned from the query
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
       {/* File Content Preview */}
       {selectedFile && (
         <Card className="glass border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              File Content Preview
-              <span className="text-sm font-normal text-muted-foreground">
-                {selectedFile.content.split('\n').length} lines
-              </span>
+              <div className="flex items-center gap-2">
+                File Content Preview
+                <span className="text-sm font-normal text-muted-foreground">
+                  {selectedFile.content.split('\n').length} lines
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="show-json"
+                  checked={showJsonContent}
+                  onCheckedChange={(checked) => setShowJsonContent(checked as boolean)}
+                />
+                <Label 
+                  htmlFor="show-json"
+                  className="text-sm font-normal cursor-pointer flex items-center gap-1"
+                >
+                  {showJsonContent ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  Show content
+                </Label>
+              </div>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-96 w-full rounded-md border border-border/50">
-              <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                {selectedFile.content}
-              </pre>
-            </ScrollArea>
-            
-            {/* File Actions */}
-            <div className="flex gap-2 mt-4">
-              <Button
-                variant="outline"
-                onClick={() => navigator.clipboard.writeText(selectedFile.content)}
-              >
-                Copy Content
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const blob = new Blob([selectedFile.content], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = selectedFile.name;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                }}
-              >
-                Download File
-              </Button>
-            </div>
-          </CardContent>
+          {showJsonContent && (
+            <CardContent>
+              <ScrollArea className="h-96 w-full rounded-md border border-border/50">
+                <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap">
+                  {formatJsonContent(selectedFile.content)}
+                </pre>
+              </ScrollArea>
+              
+              {/* File Actions */}
+              <div className="flex gap-2 mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => navigator.clipboard.writeText(formatJsonContent(selectedFile.content))}
+                >
+                  Copy Formatted JSON
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigator.clipboard.writeText(selectedFile.content)}
+                >
+                  Copy Original
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const blob = new Blob([formatJsonContent(selectedFile.content)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = selectedFile.name.replace('.json', '_formatted.json');
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Download Formatted
+                </Button>
+              </div>
+            </CardContent>
+          )}
         </Card>
       )}
     </div>

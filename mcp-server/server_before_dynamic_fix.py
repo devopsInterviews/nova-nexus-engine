@@ -1576,30 +1576,38 @@ async def analyze_dbt_file_for_iterative_query(
         logger.info("📄 Step 1: Parsing dbt file content")
         try:
             dbt_data = json.loads(dbt_file_content)
-            logger.info(f"✅ Successfully parsed dbt JSON file")
+            relations = dbt_data.get("relations", [])
+            logger.info(f"✅ Successfully parsed dbt file with {len(relations)} relations")
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse dbt JSON: {e}")
             return {"status": "error", "error": f"Invalid JSON in dbt file: {e}"}
         
-        # Step 2: Dynamically analyze dbt structure and extract depth information
-        logger.info("🔍 Step 2: Dynamically analyzing dbt structure for table depths")
-        tables_by_depth, max_depth, dbt_context = await _analyze_dbt_structure_dynamic(dbt_data)
+        # Step 2: Group tables by depth and find max depth
+        logger.info("🔍 Step 2: Analyzing table depths")
+        tables_by_depth = {}
+        max_depth = -1
         
-        if max_depth < 0:
-            logger.error("❌ No valid table structure found in dbt file")
-            return {
-                "status": "error", 
-                "error": "No valid table structure found in dbt file",
-                "dbt_context": dbt_context
+        for relation in relations:
+            depth = relation.get("depth", 0)
+            if depth not in tables_by_depth:
+                tables_by_depth[depth] = []
+            
+            table_info = {
+                "schema": relation.get("schema"),
+                "identifier": relation.get("identifier"), 
+                "kind": relation.get("kind"),
+                "materialization": relation.get("materialization"),
+                "unique_id": relation.get("unique_id")
             }
+            tables_by_depth[depth].append(table_info)
+            max_depth = max(max_depth, depth)
         
-        logger.info(f"📊 Found {sum(len(tables) for tables in tables_by_depth.values())} tables")
-        logger.info(f"🏔️  Maximum depth detected: {max_depth}")
-        logger.info(f"📋 dbt Context: {dbt_context['description']}")
+        logger.info(f"📊 Found tables at depths: {sorted(tables_by_depth.keys())}")
+        logger.info(f"🏔️  Maximum depth: {max_depth}")
         
         for depth in sorted(tables_by_depth.keys()):
             count = len(tables_by_depth[depth])
-            logger.info(f"   Depth {depth}: {count} tables")
+            logger.info(f"   Depth {depth}: {count} tables/views")
         
         # Step 3: Start iterative process from max depth
         current_depth = max_depth
@@ -1608,16 +1616,17 @@ async def analyze_dbt_file_for_iterative_query(
         while current_depth >= 0:
             logger.info(f"🔄 Step 3.{max_depth - current_depth + 1}: Trying depth {current_depth}")
             
-            # Get tables from current depth only (not cumulative)
-            current_tables = tables_by_depth.get(current_depth, [])
+            # Get all tables from current depth and below
+            current_tables = []
+            for depth in range(current_depth + 1):
+                if depth in tables_by_depth:
+                    current_tables.extend(tables_by_depth[depth])
             
-            if not current_tables:
-                logger.info(f"⏭️  No tables at depth {current_depth}, moving to next depth")
-                current_depth -= 1
-                continue
+            logger.info(f"📋 Using {len(current_tables)} tables from depths 0-{current_depth}")
             
-            logger.info(f"📋 Using {len(current_tables)} tables at depth {current_depth}")
-            logger.debug(f"🏷️  Tables in scope: {current_tables}")
+            # Log the tables being used
+            table_names = [f"{t['schema']}.{t['identifier']}" for t in current_tables]
+            logger.debug(f"🏷️  Tables in scope: {table_names}")
             
             try:
                 # Get column metadata for current tables
@@ -1630,11 +1639,13 @@ async def analyze_dbt_file_for_iterative_query(
                 # Filter metadata to only include our current tables
                 filtered_metadata = {}
                 for key, meta in column_metadata.items():
-                    table_schema = meta.get("table_schema", "public")
+                    table_schema = meta.get("table_schema")
                     table_name = meta.get("table_name")
                     
                     # Check if this table is in our current scope
-                    if table_name in current_tables or f"{table_schema}.{table_name}" in current_tables:
+                    for table in current_tables:
+                        if (table["schema"] == table_schema and 
+                            table["identifier"] == table_name):
                             filtered_metadata[key] = meta
                             break
                 
@@ -1647,8 +1658,7 @@ async def analyze_dbt_file_for_iterative_query(
                     column_metadata=filtered_metadata,
                     analytics_prompt=analytics_prompt,
                     current_depth=current_depth,
-                    max_depth=max_depth,
-                    dbt_context=dbt_context
+                    max_depth=max_depth
                 )
                 
                 process_log.append({
@@ -1660,51 +1670,41 @@ async def analyze_dbt_file_for_iterative_query(
                 })
                 
                 if decision["decision"].lower().strip() == "yes":
-                    logger.info(f"✅ AI says YES at depth {current_depth}! Proceeding with enhanced analysis")
+                    logger.info(f"✅ AI says YES at depth {current_depth}! Proceeding with full query generation")
                     
-                    # Step A: Get filtered column keys for approved tables
-                    logger.info("� Step A: Getting filtered database keys for approved tables")
-                    try:
-                        approved_keys = await list_database_keys_filtered_by_depth(
-                            host=host, port=port, user=user, password=password,
-                            database=database, approved_tables=current_tables,
-                            database_type=database_type
-                        )
-                        logger.info(f"✅ Retrieved keys for {len(approved_keys)} approved tables")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Failed to get filtered keys: {e}")
-                        approved_keys = {}
+                    # Generate and execute the full SQL query
+                    logger.info("🔧 Generating and executing full SQL query")
+                    final_result = await run_analytics_query_on_database(
+                        host=host, port=port, user=user, password=password,
+                        database=database,
+                        analytics_prompt=analytics_prompt,
+                        system_prompt=f"""You are a BI assistant working with dbt models and stadium management data.
+You have access to tables at depth levels 0 through {current_depth}.
+
+Available tables and their relationships:
+{json.dumps(table_names, indent=2)}
+
+Given the user's analytics request, write a valid PostgreSQL query that:
+1. Uses the most appropriate tables from the available depth levels
+2. Joins tables correctly based on their relationships
+3. Filters by appropriate date ranges and conditions
+4. Aggregates measures as needed
+5. Returns meaningful business insights
+
+Return ONLY the SQL statement. No greetings, no explanations."""
+                    )
                     
-                    # Step B: Execute analytics query with approved tables only
-                    logger.info("📊 Step B: Executing analytics query on approved tables")
-                    try:
-                        analytics_result = await run_analytics_query_on_approved_tables(
-                            host=host, port=port, user=user, password=password,
-                            database=database, analytics_prompt=analytics_prompt,
-                            approved_tables=current_tables, database_type=database_type,
-                            confluence_space=confluence_space, confluence_title=confluence_title
-                        )
-                        logger.info("✅ Analytics query completed successfully")
-                    except Exception as e:
-                        logger.error(f"❌ Analytics query failed: {e}")
-                        analytics_result = {"error": str(e)}
-                    
-                    # Return comprehensive results
                     return {
                         "status": "success",
                         "final_depth": current_depth,
                         "max_depth": max_depth,
-                        "approved_tables": current_tables,
+                        "tables_used": table_names,
                         "column_count": len(filtered_metadata),
                         "process_log": process_log,
-                        "approved_table_keys": approved_keys,
-                        "analytics_result": analytics_result,
-                        "sql_query": analytics_result.get("sql", ""),
-                        "rows": analytics_result.get("rows", []),
-                        "row_count": len(analytics_result.get("rows", [])),
-                        "iteration_count": max_depth - current_depth + 1,
-                        "dbt_context": dbt_context,
-                        "filtering_applied": True
+                        "sql_query": final_result.get("sql", ""),
+                        "rows": final_result.get("rows", []),
+                        "row_count": len(final_result.get("rows", [])),
+                        "iteration_count": max_depth - current_depth + 1
                     }
                 
                 else:
@@ -1759,260 +1759,9 @@ async def analyze_dbt_file_for_iterative_query(
         }
 
 
-async def _analyze_dbt_structure_dynamic(dbt_data: Dict[str, Any]) -> Tuple[Dict[int, List[str]], int, Dict[str, Any]]:
-    """
-    Dynamically analyze dbt file structure to extract tables by depth and determine context.
-    
-    Returns:
-        - tables_by_depth: Dict mapping depth level to list of table names
-        - max_depth: Maximum depth found in the structure  
-        - dbt_context: Dictionary with file type, description, and metadata
-    """
-    tables_by_depth: Dict[int, List[str]] = {}
-    max_depth = -1
-    
-    # Initialize context information
-    dbt_context = {
-        "type": "Unknown dbt file",
-        "description": "dbt configuration",
-        "total_tables": 0,
-        "depth_distribution": {}
-    }
-    
-    try:
-        # Case 1: Explicit depth structure (like stadium.json)
-        if isinstance(dbt_data, dict) and any(key.startswith("depth") for key in dbt_data.keys()):
-            logger.info("🔍 Found explicit depth structure")
-            
-            for key, value in dbt_data.items():
-                if key.startswith("depth") and isinstance(value, list):
-                    try:
-                        depth_num = int(re.search(r'\d+', key).group())
-                        tables_by_depth[depth_num] = value
-                        max_depth = max(max_depth, depth_num)
-                    except (AttributeError, ValueError):
-                        pass
-            
-            total_tables = sum(len(tables) for tables in tables_by_depth.values())
-            dbt_context.update({
-                "type": "depth-organized structure",
-                "description": f"depth-organized structure with {total_tables} tables across {max_depth + 1} depth levels",
-                "total_tables": total_tables
-            })
-        
-        # Case 2: dbt relations structure (manifest-like)
-        elif isinstance(dbt_data, dict) and "relations" in dbt_data:
-            logger.info("🔍 Found dbt relations structure")
-            relations = dbt_data["relations"]
-            
-            # Store full relation metadata while extracting depth info
-            relation_metadata = []
-            
-            for relation in relations:
-                # Preserve ALL permanent keys in the relation
-                relation_copy = dict(relation)  # Keep all original keys
-                
-                # Extract key information for depth analysis
-                depth = relation.get("depth", 0)
-                table_name = relation.get("identifier", relation.get("name", relation.get("table_name", "unknown")))
-                
-                # If no explicit depth, infer from table name
-                if depth == 0 and table_name != "unknown":
-                    depth = _infer_table_depth_dynamic(str(table_name))
-                    relation_copy["inferred_depth"] = depth  # Mark as inferred
-                
-                # Store in depth mapping
-                if depth not in tables_by_depth:
-                    tables_by_depth[depth] = []
-                tables_by_depth[depth].append(table_name)
-                max_depth = max(max_depth, depth)
-                
-                # Preserve full relation metadata
-                relation_metadata.append(relation_copy)
-            
-            total_tables = sum(len(tables) for tables in tables_by_depth.values())
-            dbt_context.update({
-                "type": "dbt relations",
-                "description": f"dbt relations structure with {total_tables} relations across {max_depth + 1} depth levels",
-                "total_tables": total_tables,
-                "relations_metadata": relation_metadata,  # Preserve ALL relation data
-                "permanent_keys_preserved": True
-            })
-        
-        # Case 3: dbt models file
-        elif isinstance(dbt_data, dict) and ("models" in dbt_data or "model" in dbt_data):
-            logger.info("🔍 Found dbt models structure")
-            models = dbt_data.get("models", dbt_data.get("model", {}))
-            
-            if isinstance(models, dict):
-                tables_list = list(models.keys())
-            else:
-                tables_list = []
-            
-            # Infer depths from model names
-            for table in tables_list:
-                depth = _infer_table_depth_dynamic(str(table))
-                if depth not in tables_by_depth:
-                    tables_by_depth[depth] = []
-                tables_by_depth[depth].append(table)
-                max_depth = max(max_depth, depth)
-            
-            dbt_context.update({
-                "type": "dbt models",
-                "description": f"dbt models configuration with {len(tables_list)} models",
-                "total_tables": len(tables_list)
-            })
-        
-        # Case 4: dbt sources file
-        elif "sources" in dbt_data:
-            logger.info("🔍 Found dbt sources structure")
-            sources = dbt_data["sources"]
-            
-            tables_list = []
-            if isinstance(sources, dict):
-                for source_name, source_data in sources.items():
-                    if isinstance(source_data, dict) and "tables" in source_data:
-                        tables_list.extend(source_data["tables"])
-            
-            # Infer depths from source table names
-            for table in tables_list:
-                depth = _infer_table_depth_dynamic(str(table))
-                if depth not in tables_by_depth:
-                    tables_by_depth[depth] = []
-                tables_by_depth[depth].append(table)
-                max_depth = max(max_depth, depth)
-            
-            dbt_context.update({
-                "type": "dbt sources",
-                "description": f"dbt sources configuration with {len(tables_list)} source tables",
-                "total_tables": len(tables_list)
-            })
-        
-        # Case 5: dbt manifest file  
-        elif "nodes" in dbt_data:
-            logger.info("🔍 Found dbt manifest structure")
-            nodes = dbt_data["nodes"]
-            
-            tables_list = []
-            if isinstance(nodes, dict):
-                for node_name, node_data in nodes.items():
-                    if isinstance(node_data, dict) and node_data.get("resource_type") == "model":
-                        table_name = node_data.get("name", node_name.split(".")[-1])
-                        tables_list.append(table_name)
-            
-            # Infer depths from node names
-            for table in tables_list:
-                depth = _infer_table_depth_dynamic(str(table))
-                if depth not in tables_by_depth:
-                    tables_by_depth[depth] = []
-                tables_by_depth[depth].append(table)
-                max_depth = max(max_depth, depth)
-            
-            dbt_context.update({
-                "type": "dbt manifest",
-                "description": f"dbt manifest with {len(tables_list)} model nodes",
-                "total_tables": len(tables_list)
-            })
-        
-        # Case 6: Generic array or object
-        else:
-            logger.info("🔍 Analyzing generic structure")
-            tables_list = []
-            
-            if isinstance(dbt_data, list):
-                # Array format
-                for item in dbt_data:
-                    if isinstance(item, dict):
-                        name = item.get("name") or item.get("table_name") or item.get("table")
-                        if name:
-                            tables_list.append(name)
-                    elif isinstance(item, str):
-                        tables_list.append(item)
-                
-                dbt_context.update({
-                    "type": "table list",
-                    "description": f"table list with {len(tables_list)} entries"
-                })
-            
-            elif isinstance(dbt_data, dict):
-                # Generic object - look for table information
-                for key, value in dbt_data.items():
-                    if isinstance(value, list):
-                        tables_list.extend([str(item) for item in value if isinstance(item, (str, int))])
-                    elif isinstance(value, dict):
-                        for subkey, subvalue in value.items():
-                            if isinstance(subvalue, list):
-                                tables_list.extend([str(item) for item in subvalue if isinstance(item, (str, int))])
-                
-                dbt_context.update({
-                    "type": "generic structure",
-                    "description": f"generic structure with {len(tables_list)} extracted table references"
-                })
-            
-            # Infer depths for generic structures
-            for table in tables_list:
-                depth = _infer_table_depth_dynamic(str(table))
-                if depth not in tables_by_depth:
-                    tables_by_depth[depth] = []
-                tables_by_depth[depth].append(table)
-                max_depth = max(max_depth, depth)
-            
-            dbt_context["total_tables"] = len(tables_list)
-        
-        # Update final context
-        dbt_context["depth_distribution"] = {f"depth_{k}": len(v) for k, v in tables_by_depth.items()}
-        
-        logger.info(f"📊 Final analysis: {dbt_context['description']}")
-        logger.info(f"🎯 Depth distribution: {dbt_context['depth_distribution']}")
-        
-        return tables_by_depth, max_depth, dbt_context
-        
-    except Exception as e:
-        logger.error(f"❌ Error analyzing dbt structure: {e}")
-        return {}, -1, dbt_context
-
-
-def _infer_table_depth_dynamic(table_name: str) -> int:
-    """
-    Dynamically infer table depth from naming patterns and conventions.
-    
-    Higher numbers = more detailed/specific tables
-    Lower numbers = more aggregated/summary tables
-    """
-    table_lower = table_name.lower()
-    
-    # Fact tables and detailed transaction tables (highest depth)
-    if any(keyword in table_lower for keyword in [
-        'fact_', 'facts_', 'transaction', 'detail', 'raw_', 'staging_', 'stg_', 'src_'
-    ]):
-        return 4
-    
-    # Dimension tables and reference data
-    elif any(keyword in table_lower for keyword in [
-        'dim_', 'dimension', 'ref_', 'lookup', 'master', 'bridge_'
-    ]):
-        return 3
-    
-    # Aggregated/summary tables
-    elif any(keyword in table_lower for keyword in [
-        'agg_', 'summary', 'sum_', 'rollup', 'daily', 'monthly', 'weekly', 'mart_'
-    ]):
-        return 2
-    
-    # High-level summary/dashboard tables
-    elif any(keyword in table_lower for keyword in [
-        'dashboard', 'kpi', 'metric', 'report', 'executive', 'overview'
-    ]):
-        return 1
-    
-    # Default depth for unclassified tables (middle ground)
-    else:
-        return 2
-
-
 @mcp.tool()
 async def ask_ai_sufficiency_decision(
-    tables: List[str],
+    tables: List[Dict[str, Any]],
     column_metadata: Dict[str, Dict[str, Any]], 
     analytics_prompt: str,
     current_depth: int,
@@ -2025,17 +1774,16 @@ async def ask_ai_sufficiency_decision(
     This tool presents the AI with:
     1. The available tables and their metadata
     2. The user's analytics question
-    3. Context about the current depth level and dbt structure
+    3. Context about the current depth level
     
     The AI must respond with exactly "yes" or "no" plus reasoning.
     
     Args:
-        tables (List[str]): Current table names available at this depth level
+        tables (List[Dict]): Current tables available at this depth level
         column_metadata (Dict): Column metadata for the current tables
         analytics_prompt (str): The user's analytics question
         current_depth (int): Current depth level being evaluated
         max_depth (int): Maximum depth available in the dataset
-        dbt_context (Dict): Dynamic context about the dbt file structure
     
     Returns:
         Dict[str, Any]: AI decision (yes/no) and reasoning
@@ -2045,11 +1793,13 @@ async def ask_ai_sufficiency_decision(
     
     # Build table summary for AI
     table_summary = []
-    for table_name in tables:
+    for table in tables:
+        schema_table = f"{table['schema']}.{table['identifier']}"
         table_columns = []
         
         for col_key, col_meta in column_metadata.items():
-            if col_meta.get("table_name") == table_name:
+            if (col_meta.get("table_schema") == table["schema"] and 
+                col_meta.get("table_name") == table["identifier"]):
                 table_columns.append({
                     "name": col_meta.get("column_name"),
                     "type": col_meta.get("data_type"),
@@ -2057,7 +1807,9 @@ async def ask_ai_sufficiency_decision(
                 })
         
         table_summary.append({
-            "table": table_name,
+            "table": schema_table,
+            "kind": table["kind"],
+            "materialization": table["materialization"],
             "columns": table_columns,
             "column_count": len(table_columns)
         })
@@ -2142,252 +1894,6 @@ REASONING: [your explanation]"""
             "error": str(e),
             "depth_evaluated": current_depth
         }
-
-
-@mcp.tool()
-async def list_database_keys_filtered_by_depth(
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str,
-    approved_tables: List[str],
-    database_type: str = "postgres"
-) -> Dict[str, List[str]]:
-    """
-    List column names ("keys") only for tables that are in the approved depth list.
-    
-    This is a filtered version of list_database_keys that only returns columns
-    for tables that have been approved in the iterative dbt analysis.
-    
-    Args:
-      host (str):          DB host.
-      port (int):          DB port.
-      user (str):          Username.
-      password (str):      Password.
-      database (str):      Database to inspect.
-      approved_tables (List[str]): List of table names that were approved in iterative analysis.
-      database_type (str): Either "postgres" or "mssql".
-
-    Returns:
-      Dict[str, List[str]]:
-        e.g. {
-          "approved_table1": ["col1", "col2", ...],
-          "approved_table2": ["col1", "col2", ...]
-        }
-        Only includes tables from approved_tables list.
-    """
-    logger.info(
-        f"🔍 list_database_keys_filtered_by_depth called for {len(approved_tables)} approved tables: {approved_tables}"
-    )
-
-    if database_type == "postgres":
-        client = PostgresClient(host, port, user, password,
-                                database=database, min_size=1, max_size=5)
-    elif database_type == "mssql":
-        client = MSSQLClient(host, port, user, password,
-                             database=database)
-    else:
-        raise ValueError(f"Unsupported database_type: {database_type!r}")
-
-    await client.init()
-    try:
-        # Get all keys first
-        all_keys = await client.list_keys()
-        
-        # Filter to only include approved tables
-        filtered_keys = {}
-        approved_set = set(approved_tables)
-        
-        for table_name, columns in all_keys.items():
-            if table_name in approved_set:
-                filtered_keys[table_name] = columns
-                logger.info(f"✅ Included table '{table_name}' with {len(columns)} columns")
-            else:
-                logger.debug(f"🚫 Skipped table '{table_name}' (not in approved list)")
-        
-        logger.info(f"📊 Filtered results: {len(filtered_keys)} tables from {len(all_keys)} total")
-        return filtered_keys
-        
-    except Exception as e:
-        logger.error(f"❌ Error in list_database_keys_filtered_by_depth: {e}", exc_info=True)
-        raise
-    finally:
-        await client.close()
-
-
-@mcp.tool()
-async def run_analytics_query_on_approved_tables(
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str,
-    analytics_prompt: str,
-    approved_tables: List[str],
-    database_type: str = "postgres",
-    confluence_space: str = "",
-    confluence_title: str = ""
-) -> Dict[str, Any]:
-    """
-    Execute an analytics query only on tables that are in the approved depth list.
-    
-    This is a filtered version of run_analytics_query_on_database that only considers
-    tables that have been approved in the iterative dbt analysis.
-    
-    Args:
-      host (str):          DB host.
-      port (int):          DB port.
-      user (str):          Username.
-      password (str):      Password.
-      database (str):      Database to inspect.
-      analytics_prompt (str): The analytics question/prompt.
-      approved_tables (List[str]): List of table names that were approved in iterative analysis.
-      database_type (str): Either "postgres" or "mssql".
-      confluence_space (str): Confluence space for context (optional).
-      confluence_title (str): Confluence page title for context (optional).
-
-    Returns:
-      Dict[str, Any]: Query results including SQL, data, and metadata.
-    """
-    logger.info(
-        f"🔍 run_analytics_query_on_approved_tables called for {len(approved_tables)} approved tables"
-    )
-    logger.info(f"📊 Analytics prompt: {analytics_prompt[:100]}...")
-    logger.info(f"✅ Approved tables: {approved_tables}")
-
-    if database_type == "postgres":
-        client = PostgresClient(host, port, user, password,
-                                database=database, min_size=1, max_size=5)
-    elif database_type == "mssql":
-        client = MSSQLClient(host, port, user, password,
-                             database=database)
-    else:
-        raise ValueError(f"Unsupported database_type: {database_type!r}")
-
-    await client.init()
-    try:
-        # Get schema information only for approved tables
-        logger.info("🔍 Getting schema information for approved tables...")
-        
-        # Get all tables/views first
-        all_tables = await client.list_tables_and_views()
-        
-        # Filter to only approved tables
-        approved_schemas = []
-        approved_set = set(approved_tables)
-        
-        for table_info in all_tables:
-            table_name = table_info.get("table_name", table_info.get("name", ""))
-            if table_name in approved_set:
-                approved_schemas.append(table_info)
-                logger.info(f"✅ Included table schema for '{table_name}'")
-            else:
-                logger.debug(f"🚫 Skipped table schema for '{table_name}' (not approved)")
-        
-        logger.info(f"📊 Filtered schema: {len(approved_schemas)} tables from {len(all_tables)} total")
-        
-        # Get column information only for approved tables
-        logger.info("🔍 Getting column information for approved tables...")
-        approved_columns = []
-        
-        for table_info in approved_schemas:
-            table_name = table_info.get("table_name", table_info.get("name", ""))
-            schema_name = table_info.get("schema", "public")
-            
-            try:
-                columns = await client.list_columns(table_name, schema_name)
-                for col in columns:
-                    col["table_name"] = table_name  # Ensure table name is included
-                    approved_columns.append(col)
-                
-                logger.info(f"✅ Got {len(columns)} columns for table '{table_name}'")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to get columns for table '{table_name}': {e}")
-        
-        logger.info(f"📊 Total approved columns: {len(approved_columns)}")
-        
-        # Build enhanced schema context only with approved tables
-        enhanced_schema_context = ""
-        if confluence_space and confluence_title:
-            try:
-                enhanced_result = await get_enhanced_schema_with_confluence(
-                    host, port, user, password, database, 
-                    confluence_space, confluence_title, database_type
-                )
-                
-                if enhanced_result and "content" in enhanced_result:
-                    enhanced_content = enhanced_result["content"][0]["text"]
-                    # Parse and filter the enhanced schema to only include approved tables
-                    try:
-                        enhanced_data = json.loads(enhanced_content)
-                        if "tables" in enhanced_data:
-                            filtered_tables = []
-                            for table in enhanced_data["tables"]:
-                                table_name = table.get("name", "")
-                                if table_name in approved_set:
-                                    filtered_tables.append(table)
-                            
-                            enhanced_data["tables"] = filtered_tables
-                            enhanced_schema_context = json.dumps(enhanced_data, indent=2)
-                            logger.info(f"✅ Filtered enhanced schema to {len(filtered_tables)} approved tables")
-                    except json.JSONDecodeError:
-                        logger.warning("⚠️ Could not parse enhanced schema for filtering")
-                        enhanced_schema_context = enhanced_content
-                        
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to get enhanced schema context: {e}")
-        
-        # Build the analytics prompt with only approved table context
-        filtered_context = {
-            "approved_tables": approved_tables,
-            "table_schemas": approved_schemas,
-            "column_details": approved_columns,
-            "total_approved_tables": len(approved_schemas),
-            "total_approved_columns": len(approved_columns)
-        }
-        
-        enhanced_prompt = f"""
-{analytics_prompt}
-
-CONTEXT (APPROVED TABLES ONLY):
-You have access to {len(approved_schemas)} approved tables with {len(approved_columns)} total columns.
-
-Approved Tables: {', '.join(approved_tables)}
-
-Table Schemas:
-{json.dumps(approved_schemas, indent=2)}
-
-Column Details:
-{json.dumps(approved_columns, indent=2)}
-
-{f"Enhanced Documentation Context: {enhanced_schema_context}" if enhanced_schema_context else ""}
-
-IMPORTANT: Only use tables from the approved list: {approved_tables}
-Do not reference any tables outside of this approved set.
-"""
-        
-        # Execute the analytics query with filtered context
-        logger.info("🚀 Executing analytics query with approved tables context...")
-        result = await client.run_query_with_ai(enhanced_prompt)
-        
-        # Add metadata about filtering
-        if isinstance(result, dict):
-            result["filtering_info"] = {
-                "approved_tables": approved_tables,
-                "total_approved_tables": len(approved_schemas),
-                "total_approved_columns": len(approved_columns),
-                "filtering_applied": True
-            }
-        
-        logger.info("✅ Analytics query completed successfully with filtered context")
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ Error in run_analytics_query_on_approved_tables: {e}", exc_info=True)
-        raise
-    finally:
-        await client.close()
 
 
 if __name__ == "__main__":

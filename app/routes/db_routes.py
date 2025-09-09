@@ -2134,3 +2134,140 @@ async def log_dbt_file_upload(
     except Exception as e:
         logger.error(f"Error logging dbt file upload: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to log file upload: {str(e)}")
+
+
+@router.post("/iterative-dbt-query")
+async def iterative_dbt_query(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Analyze a dbt file and iteratively build SQL queries starting from the highest depth tables.
+    
+    This endpoint orchestrates the iterative query building process:
+    1. Receives dbt file content and analytics prompt
+    2. Calls the MCP tool to analyze depths and build queries
+    3. Returns the final SQL query and results, along with the iteration log
+    
+    Expected payload:
+    {
+        "dbt_file_content": "JSON content of the dbt file",
+        "analytics_prompt": "User's analytics question",
+        "confluence_space": "SPACE",
+        "confluence_title": "Page Title",
+        "connection": {database connection details}
+    }
+    
+    Returns complete results including SQL, data, and process log.
+    """
+    try:
+        logger.info(f"🚀 Iterative dbt query started by user: {current_user.username}")
+        
+        # Parse request
+        data = await request.json()
+        
+        # Extract parameters
+        dbt_file_content = data.get("dbt_file_content", "")
+        analytics_prompt = data.get("analytics_prompt", "")
+        confluence_space = data.get("confluence_space", "")
+        confluence_title = data.get("confluence_title", "")
+        
+        # Extract connection details
+        connection = data.get("connection", {})
+        
+        logger.info(f"📊 Analytics prompt: {analytics_prompt[:100]}...")
+        logger.info(f"📋 Confluence context: {confluence_space}/{confluence_title}")
+        logger.info(f"🔗 Database: {connection.get('host', 'unknown')}:{connection.get('port', 'unknown')}")
+        
+        # Validate required fields
+        if not dbt_file_content:
+            logger.error("❌ Missing dbt file content")
+            raise HTTPException(status_code=400, detail="dbt_file_content is required")
+            
+        if not analytics_prompt:
+            logger.error("❌ Missing analytics prompt")
+            raise HTTPException(status_code=400, detail="analytics_prompt is required")
+            
+        if not confluence_space or not confluence_title:
+            logger.error("❌ Missing confluence details")
+            raise HTTPException(status_code=400, detail="confluence_space and confluence_title are required")
+        
+        # Validate connection details
+        required_conn_fields = ["host", "port", "user", "password", "database", "database_type"]
+        for field in required_conn_fields:
+            if field not in connection or not connection[field]:
+                logger.error(f"❌ Missing connection field: {field}")
+                raise HTTPException(status_code=400, detail=f"Connection field '{field}' is required")
+        
+        logger.info("✅ All required parameters validated")
+        
+        # Import MCP client for calling tools
+        from app.client import _mcp_session
+        
+        if not _mcp_session:
+            logger.error("❌ MCP session not available")
+            raise HTTPException(status_code=500, detail="MCP service not available")
+        
+        logger.info("🔧 Calling MCP tool for iterative analysis")
+        
+        # Call the MCP tool
+        result = await _mcp_session.call_tool(
+            "analyze_dbt_file_for_iterative_query",
+            arguments={
+                "dbt_file_content": dbt_file_content,
+                "host": connection["host"],
+                "port": int(connection["port"]),
+                "user": connection["user"],
+                "password": connection["password"],
+                "database": connection["database"],
+                "analytics_prompt": analytics_prompt,
+                "confluence_space": confluence_space,
+                "confluence_title": confluence_title,
+                "database_type": connection.get("database_type", "postgres")
+            }
+        )
+        
+        logger.info(f"📥 MCP tool completed with status: {result.get('status', 'unknown')}")
+        
+        # Log the process details
+        if result.get("process_log"):
+            logger.info("📊 Iteration Process Log:")
+            for i, log_entry in enumerate(result["process_log"], 1):
+                depth = log_entry.get("depth", "unknown")
+                decision = log_entry.get("ai_decision", "unknown")
+                table_count = log_entry.get("table_count", 0)
+                logger.info(f"  Step {i}: Depth {depth}, Tables: {table_count}, AI Decision: {decision}")
+                if log_entry.get("ai_reasoning"):
+                    logger.info(f"    Reasoning: {log_entry['ai_reasoning'][:100]}...")
+        
+        # Log final results
+        if result.get("status") == "success":
+            final_depth = result.get("final_depth", "unknown")
+            tables_used = result.get("tables_used", [])
+            row_count = result.get("row_count", 0)
+            iterations = result.get("iteration_count", 0)
+            
+            logger.info(f"✅ Query successful at depth {final_depth}")
+            logger.info(f"📊 Used {len(tables_used)} tables, returned {row_count} rows")
+            logger.info(f"🔄 Required {iterations} iterations")
+            logger.info(f"🏷️  Tables used: {', '.join(tables_used[:5])}{'...' if len(tables_used) > 5 else ''}")
+        else:
+            error_msg = result.get("error", "Unknown error")
+            logger.error(f"❌ Query failed: {error_msg}")
+        
+        return JSONResponse({
+            "status": "success",
+            "data": result,
+            "user": current_user.username,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except json.JSONDecodeError:
+        logger.error("❌ Invalid JSON in request body")
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in iterative dbt query: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process iterative query: {str(e)}")

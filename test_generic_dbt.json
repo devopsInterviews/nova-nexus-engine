@@ -1,0 +1,8 @@
+{
+  "tables": [
+    "fact_sales_transactions",
+    "dim_customer_profiles", 
+    "agg_monthly_revenue",
+    "dashboard_executive_summary"
+  ]
+}
