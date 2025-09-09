@@ -1690,6 +1690,25 @@ async def analyze_dbt_file_for_iterative_query(
                         analytics_result = {"error": str(e)}
                     
                     # Return comprehensive results
+                    # Ensure analytics_result is a dictionary
+                    if hasattr(analytics_result, 'get'):
+                        # It's already a dictionary
+                        result_dict = analytics_result
+                    elif hasattr(analytics_result, 'content') and analytics_result.content:
+                        # It might be a CallToolResult object
+                        try:
+                            if isinstance(analytics_result.content, list) and len(analytics_result.content) > 0:
+                                if hasattr(analytics_result.content[0], 'text'):
+                                    result_dict = json.loads(analytics_result.content[0].text)
+                                else:
+                                    result_dict = analytics_result.content[0] if isinstance(analytics_result.content[0], dict) else {}
+                            else:
+                                result_dict = {}
+                        except (json.JSONDecodeError, AttributeError, IndexError):
+                            result_dict = {}
+                    else:
+                        result_dict = {}
+                    
                     return {
                         "status": "success",
                         "final_depth": current_depth,
@@ -1698,10 +1717,10 @@ async def analyze_dbt_file_for_iterative_query(
                         "column_count": len(filtered_metadata),
                         "process_log": process_log,
                         "approved_table_keys": approved_keys,
-                        "analytics_result": analytics_result,
-                        "sql_query": analytics_result.get("sql", ""),
-                        "rows": analytics_result.get("rows", []),
-                        "row_count": len(analytics_result.get("rows", [])),
+                        "analytics_result": result_dict,
+                        "sql_query": result_dict.get("sql", ""),
+                        "rows": result_dict.get("rows", []),
+                        "row_count": len(result_dict.get("rows", [])),
                         "iteration_count": max_depth - current_depth + 1,
                         "dbt_context": dbt_context,
                         "filtering_applied": True
@@ -2369,16 +2388,62 @@ Do not reference any tables outside of this approved set.
         
         # Execute the analytics query with filtered context
         logger.info("🚀 Executing analytics query with approved tables context...")
-        result = await client.run_query_with_ai(enhanced_prompt)
         
-        # Add metadata about filtering
-        if isinstance(result, dict):
-            result["filtering_info"] = {
+        # Use LLM to generate SQL with the enhanced prompt
+        sql_raw = await llm.call_remote_llm(
+            context=enhanced_prompt,
+            prompt="Generate SQL query based on the provided context and analytics request.",
+            system_prompt="You are a PostgreSQL expert. Generate efficient SQL queries based on the provided database schema and requirements. Return only the SQL query without explanation."
+        )
+        
+        # Clean the SQL (strip code fences)
+        def _strip_sql_fences_local(txt: str) -> str:
+            if not txt:
+                return txt
+            t = re.sub(r"</?code[^>]*>", "", txt, flags=re.I)
+            m = re.search(r"```(?:sql)?\s*(.*?)```", t, flags=re.S | re.I)
+            if m:
+                t = m.group(1)
+            t = t.replace("```", "").strip()
+            return t
+        
+        sql = _strip_sql_fences_local(sql_raw)
+        logger.info("🔍 Generated SQL for approved tables:\n%s", sql)
+        
+        # Execute the query
+        rows = []
+        try:
+            rows = await client.execute_query(sql)
+            logger.info("✅ Query executed successfully: rows=%d", len(rows or []))
+            if rows:
+                logger.debug("First row sample=%s", rows[0])
+        except Exception as query_error:
+            logger.error("❌ SQL execution failed: %s", str(query_error))
+            logger.error("Failed SQL query was:\n%s", sql)
+            # Return error result instead of raising
+            return {
+                "error": str(query_error),
+                "sql": sql,
+                "rows": [],
+                "filtering_info": {
+                    "approved_tables": approved_tables,
+                    "total_approved_tables": len(approved_schemas),
+                    "total_approved_columns": len(approved_columns),
+                    "filtering_applied": True
+                }
+            }
+        
+        # Build result with filtering metadata
+        result = {
+            "rows": rows, 
+            "sql": sql,
+            "filtering_info": {
                 "approved_tables": approved_tables,
                 "total_approved_tables": len(approved_schemas),
                 "total_approved_columns": len(approved_columns),
                 "filtering_applied": True
             }
+        }
         
         logger.info("✅ Analytics query completed successfully with filtered context")
         return result
