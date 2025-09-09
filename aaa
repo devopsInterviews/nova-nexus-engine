@@ -1,0 +1,11 @@
+WARNING - Possible error in response part 1: Error executing tool analyze_dbt_file_for_iterative_query: 1 validation error for analyze_dbt_file_for_iterative_queryArguments
+dbt_file_content
+  Input should be a valid string [type=string_type, input_value={'relations': [{'unique_i...cs.stadium_ops_kpis']}]}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/string_type
+2025-09-09 09:55:28 - ERROR - ❌ No valid response data found
+2025-09-09 09:55:28 - ERROR - Raw MCP response content:
+2025-09-09 09:55:28 - ERROR -   Part 1: Error executing tool analyze_dbt_file_for_iterative_query: 1 validation error for analyze_dbt_file_for_iterative_queryArguments
+dbt_file_content
+  Input should be a valid string [type=string_type, input_value={'relations': [{'unique_i...cs.stadium_ops_kpis']}]}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/string_type
+2025-09-09 09:55:28 - INFO - POST /api/iterative-dbt-query -> 500
