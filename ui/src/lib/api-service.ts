@@ -438,6 +438,19 @@ export const dbService = {
       return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
+
+  // Log dbt file upload from SQL Builder - dbt tab
+  logDbtFileUpload: async (fileData: {
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+    contentPreview: string;
+  }): Promise<ApiResponse<{ fileName: string; fileSize: number; logged_at: string }>> => {
+    return fetchApi('/api/log-dbt-file-upload', {
+      method: 'POST',
+      body: JSON.stringify(fileData),
+    });
+  },
 };
 
 // Separate object for analytics-related API calls

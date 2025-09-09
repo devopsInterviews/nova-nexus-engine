@@ -2056,3 +2056,81 @@ async def get_api_endpoints():
             status_code=500,
             content={"status": "error", "error": f"Failed to get endpoints: {str(e)}"}
         )
+
+
+@router.post("/log-dbt-file-upload")
+async def log_dbt_file_upload(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Log dbt file upload for the SQL Builder - dbt tab.
+    
+    This endpoint receives file upload information and logs it using logger.debug
+    as requested. The file content is processed client-side and only metadata
+    and a preview are sent to the backend for logging purposes.
+    
+    Expected payload:
+    {
+        "fileName": "dbt_models.json",
+        "fileSize": 1024,
+        "fileType": "application/json", 
+        "contentPreview": "first 500 characters of file content..."
+    }
+    """
+    try:
+        # Parse the request body
+        data = await request.json()
+        
+        # Extract file information
+        file_name = data.get("fileName", "unknown")
+        file_size = data.get("fileSize", 0)
+        file_type = data.get("fileType", "unknown")
+        content_preview = data.get("contentPreview", "")
+        
+        # Log the file upload with debug level as requested
+        logger.debug(f"DBT File Upload - User: {current_user.username}, "
+                    f"File: {file_name}, Size: {file_size} bytes, "
+                    f"Type: {file_type}")
+        
+        logger.debug(f"DBT File Content Preview (first 500 chars): {content_preview}")
+        
+        # Log additional useful information
+        logger.debug(f"DBT File Upload Timestamp: {datetime.now().isoformat()}")
+        
+        # Validate file type (should be JSON for dbt files)
+        if not (file_name.endswith('.json') or file_type == 'application/json'):
+            logger.warning(f"Non-JSON file uploaded to dbt tab: {file_name} ({file_type})")
+        
+        # Check file size (warn if very large)
+        if file_size > 5 * 1024 * 1024:  # 5MB
+            logger.warning(f"Large dbt file uploaded: {file_name} ({file_size} bytes)")
+        
+        # Try to parse content preview to validate JSON structure
+        try:
+            if content_preview.strip():
+                # Only try to parse if we have content
+                preview_json = json.loads(content_preview)
+                logger.debug(f"DBT File appears to be valid JSON with keys: {list(preview_json.keys())[:10]}")
+        except json.JSONDecodeError:
+            logger.debug(f"DBT File content preview is not valid JSON (might be truncated)")
+        except Exception as parse_error:
+            logger.debug(f"Error analyzing dbt file content: {parse_error}")
+        
+        # Return success response
+        return JSONResponse({
+            "status": "success",
+            "message": "File upload logged successfully",
+            "data": {
+                "fileName": file_name,
+                "fileSize": file_size,
+                "logged_at": datetime.now().isoformat()
+            }
+        })
+        
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON in dbt file upload request")
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+    except Exception as e:
+        logger.error(f"Error logging dbt file upload: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to log file upload: {str(e)}")
