@@ -2201,111 +2201,73 @@ async def iterative_dbt_query(
         
         logger.info("✅ All required parameters validated")
         
-        # Import MCP client for calling tools
-        from app.client import _mcp_session
+        # Import client-side dbt analysis service
+        from app.services.dbt_analysis_service import analyze_dbt_file_for_iterative_query
         
-        if not _mcp_session:
-            logger.error("❌ MCP session not available")
-            raise HTTPException(status_code=500, detail="MCP service not available")
+        logger.info("🔧 Calling client-side dbt analysis service")
         
-        logger.info("🔧 Calling MCP tool for iterative analysis")
-        
-        # Ensure dbt_file_content is a string (convert if it's a dict/object)
-        if isinstance(dbt_file_content, dict):
-            dbt_file_content_str = json.dumps(dbt_file_content)
-            logger.info("🔄 Converted dbt_file_content from dict to JSON string")
-        elif isinstance(dbt_file_content, str):
-            dbt_file_content_str = dbt_file_content
-            logger.info("✅ dbt_file_content is already a string")
+        # Ensure dbt_file_content is a dict (convert if it's a string)
+        if isinstance(dbt_file_content, str):
+            try:
+                dbt_file_data = json.loads(dbt_file_content)
+                logger.info("🔄 Parsed dbt_file_content from JSON string to dict")
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Failed to parse dbt_file_content as JSON: {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid JSON in dbt_file_content: {e}")
+        elif isinstance(dbt_file_content, dict):
+            dbt_file_data = dbt_file_content
+            logger.info("✅ dbt_file_content is already a dict")
         else:
-            # Try to convert to string
-            dbt_file_content_str = str(dbt_file_content)
-            logger.warning(f"⚠️ dbt_file_content was {type(dbt_file_content)}, converted to string")
+            logger.error(f"❌ dbt_file_content has unexpected type: {type(dbt_file_content)}")
+            raise HTTPException(status_code=400, detail=f"dbt_file_content must be a JSON object or string, got {type(dbt_file_content)}")
         
-        logger.info(f"📄 dbt_file_content length: {len(dbt_file_content_str)} characters")
+        logger.info(f"📄 dbt_file_data contains {len(dbt_file_data)} top-level keys")
         
-        # Prepare tool arguments
-        tool_args = {
-            "dbt_file_content": dbt_file_content_str,
-            "host": connection["host"],
-            "port": int(connection["port"]),
-            "user": connection["user"],
-            "password": connection["password"],
-            "database": connection["database"],
-            "analytics_prompt": analytics_prompt,
-            "confluence_space": confluence_space,
-            "confluence_title": confluence_title,
-            "database_type": connection.get("database_type", "postgres")
-        }
-        
-        # Log sanitized version for debugging
-        safe_tool_args = dict(tool_args)
-        safe_tool_args["password"] = _mask_secret(safe_tool_args["password"])
-        safe_tool_args["dbt_file_content"] = f"<{len(dbt_file_content_str)} chars>"
-        safe_tool_args["analytics_prompt"] = f"<{len(analytics_prompt)} chars>"
-        logger.info("🔧 Calling MCP tool for iterative analysis")
-        logger.debug(f"Tool arguments (sanitized): {safe_tool_args}")
-        
-        # Call the MCP tool with proper error handling
         query_start_time = time.time()
         
         try:
-            result = await _mcp_session.call_tool(
-                "analyze_dbt_file_for_iterative_query",
-                arguments=tool_args,
-                read_timeout_seconds=timedelta(seconds=600)
+            result_data = await analyze_dbt_file_for_iterative_query(
+                dbt_file_data=dbt_file_data,
+                connection=connection,
+                analytics_prompt=analytics_prompt,
+                confluence_space=confluence_space,
+                confluence_title=confluence_title,
+                database_type=connection.get("database_type", "postgres")
             )
             
             query_execution_time = time.time() - query_start_time
-            logger.info("✅ MCP tool completed successfully in %.2fs", query_execution_time)
-            logger.debug(f"MCP tool returned {len(getattr(result, 'content', []) or [])} content parts")
+            logger.info("✅ Client-side iterative analysis completed successfully in %.2fs", query_execution_time)
 
-        except Exception as mcp_error:
+        except Exception as analysis_error:
             query_execution_time = time.time() - query_start_time
-            logger.error("❌ MCP tool execution failed after %.2fs: %s", query_execution_time, str(mcp_error))
+            logger.error("❌ Client-side analysis failed after %.2fs: %s", query_execution_time, str(analysis_error))
             logger.error("Failed analytics prompt (first 500 chars): %s", analytics_prompt[:500])
-            raise HTTPException(
+            return JSONResponse(
                 status_code=500,
-                detail=f"Iterative dbt analysis failed: {str(mcp_error)}"
+                content={
+                    "status": "error",
+                    "error": f"Iterative dbt analysis failed: {str(analysis_error)}"
+                }
             )
+
+        # --- Process the response - EXACTLY like other MCP calls ---
+        logger.info("� Processing iterative analysis results...")
         
-        # Parse the CallToolResult content to extract the actual result data
-        logger.info("📥 Processing MCP response...")
-        response_data = {}
+        # --- Process the response - Direct function result ---
+        logger.info("📊 Processing client-side analysis results...")
         
-        logger.debug("Processing MCP tool response content")
-        
-        for i, msg in enumerate(result.content):
-            msg_text = getattr(msg, 'text', '')
-            logger.debug(f"Processing response part {i+1}/{len(result.content)} (length: {len(msg_text)})")
-            
-            # The MCP server returns the iterative analysis result as JSON
-            try:
-                parsed_data = json.loads(msg_text)
-                if isinstance(parsed_data, dict):
-                    # This is the structured response from MCP server
-                    response_data = parsed_data
-                    logger.info(f"Parsed iterative analysis response: status={parsed_data.get('status', 'unknown')}")
-                    break  # We found the main response
-                else:
-                    logger.debug(f"Response part {i+1} contains JSON but not in expected format")
-            except json.JSONDecodeError:
-                # Not JSON, might be additional text from the AI
-                logger.debug(f"Response part {i+1} is not JSON (length: {len(msg_text)})")
-                # Log the raw text in case it contains error information
-                if "error" in msg_text.lower() or "exception" in msg_text.lower():
-                    logger.warning(f"Possible error in response part {i+1}: {msg_text}")
-        
-        # Check if we got valid response data
+        response_data = result_data  # Direct result from our function
+
+        # Check for empty results and log detailed information
         if not response_data:
-            logger.error("❌ No valid response data found")
-            logger.error("Raw MCP response content:")
-            for i, msg in enumerate(result.content):
-                logger.error(f"  Part {i+1}: {getattr(msg, 'text', '')}")
+            logger.error("❌ No valid response data found - this indicates a problem")
             
-            raise HTTPException(
-                status_code=500, 
-                detail="No valid response from iterative analysis - MCP tool may have failed"
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error", 
+                    "error": "No valid response from iterative analysis - function may have failed"
+                }
             )
         
         # Log the process details
