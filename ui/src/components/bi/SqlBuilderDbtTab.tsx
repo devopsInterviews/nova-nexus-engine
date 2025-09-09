@@ -566,15 +566,48 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
         </Alert>
       )}
 
-      {/* AI-Powered SQL Generator & Executor */}
+      {/* AI-Powered SQL Builder with dbt Integration */}
       <Card className="glass border-border/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Code2 className="w-5 h-5 text-primary" />
-            AI-Powered SQL Generator & Executor
+            <Brain className="w-5 h-5 text-blue-500" />
+            AI-Powered SQL Builder with dbt Integration
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
+          {/* Feature Description */}
+          <div className="bg-gradient-to-r from-blue-50/20 to-purple-50/20 rounded-lg p-4 border border-blue-200/30">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-100/50 rounded-lg">
+                <Brain className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h4 className="font-medium text-blue-900 mb-2">Smart dbt-Aware Analysis</h4>
+                <p className="text-sm text-blue-700 leading-relaxed mb-3">
+                  This AI-powered feature intelligently analyzes your dbt file structure and builds optimal SQL queries. 
+                  When a dbt file is uploaded, it automatically performs iterative depth-based analysis, starting from the most detailed tables 
+                  and working toward higher-level aggregations until the AI finds the perfect scope for your query.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-blue-600">
+                  <div className="space-y-1">
+                    <div><strong>Without dbt file:</strong></div>
+                    <div>• Standard AI SQL generation</div>
+                    <div>• Uses database schema</div>
+                    <div>• Confluence-enhanced context</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div><strong>With dbt file:</strong></div>
+                    <div>• Dynamic depth detection</div>
+                    <div>• AI iterative evaluation</div>
+                    <div>• Optimal table selection</div>
+                    <div>• Enhanced query generation</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Confluence Configuration */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -587,7 +620,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                 value={confluenceSpace}
                 onChange={(e) => setConfluenceSpace(e.target.value)}
                 className="bg-surface-elevated"
-                disabled={isLoading}
+                disabled={isLoading || isIterativeLoading}
               />
             </div>
             <div className="space-y-2">
@@ -600,7 +633,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                 value={confluenceTitle}
                 onChange={(e) => setConfluenceTitle(e.target.value)}
                 className="bg-surface-elevated"
-                disabled={isLoading}
+                disabled={isLoading || isIterativeLoading}
               />
             </div>
           </div>
@@ -616,73 +649,31 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
               className="bg-surface-elevated min-h-[120px]"
               value={userPrompt}
               onChange={(e) => setUserPrompt(e.target.value)}
-              disabled={isLoading}
+              disabled={isLoading || isIterativeLoading}
             />
           </div>
           
-          {/* Action Button */}
-          <div className="flex gap-3">
-            <Button 
-              className="bg-gradient-primary flex items-center gap-2"
-              onClick={handleGenerateAndExecute}
-              disabled={isLoading || !currentConnection}
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              {isLoading ? "Generating & Executing..." : "Generate & Execute SQL"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Iterative dbt Analysis */}
-      <Card className="glass border-border/50 bg-gradient-to-br from-blue-50/10 to-purple-50/10 border-blue-500/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-blue-500" />
-            <Zap className="w-4 h-4 text-yellow-500" />
-            Iterative dbt Analysis (AI-Powered)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="bg-gradient-to-r from-blue-50/20 to-purple-50/20 rounded-lg p-4 border border-blue-200/30">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-blue-100/50 rounded-lg">
-                <Brain className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <h4 className="font-medium text-blue-900 mb-2">Smart Depth-Based Analysis</h4>
-                <p className="text-sm text-blue-700 leading-relaxed">
-                  This advanced feature analyzes your dbt file structure and iteratively builds SQL queries starting from the highest depth tables. 
-                  The AI evaluates table sufficiency at each depth level and automatically reduces complexity until it finds the optimal query scope.
-                </p>
-                <div className="mt-3 text-xs text-blue-600 space-y-1">
-                  <div>• Starts with depth 4 tables (most detailed)</div>
-                  <div>• AI decides if tables are sufficient for your query</div>
-                  <div>• Automatically reduces depth if needed (4→3→2→1→0)</div>
-                  <div>• Generates and executes optimal SQL query</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {selectedFile ? (
-            <div className="space-y-4">
+          {/* dbt File Status and Action Buttons */}
+          <div className="space-y-4">
+            {selectedFile ? (
               <div className="text-sm text-green-600 bg-green-50/50 rounded-lg p-3 border border-green-200/50">
-                ✅ <strong>dbt file loaded:</strong> {selectedFile.name} ({(() => {
+                ✅ <strong>dbt file loaded:</strong> {selectedFile.name} - Will use iterative depth-based analysis ({(() => {
                   const validation = validateDbtContent(selectedFile.content);
                   return validation.summary;
                 })()})
               </div>
-              
-              <div className="flex gap-3">
+            ) : (
+              <div className="text-sm text-blue-600 bg-blue-50/50 rounded-lg p-3 border border-blue-200/50">
+                ℹ️ <strong>No dbt file:</strong> Will use standard AI SQL generation with database schema analysis
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              {selectedFile ? (
                 <Button 
                   className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
                   onClick={handleIterativeAnalysis}
-                  disabled={isIterativeLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim()}
+                  disabled={isIterativeLoading || isLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim()}
                 >
                   {isIterativeLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -692,22 +683,34 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                       <Zap className="w-3 h-3" />
                     </>
                   )}
-                  {isIterativeLoading ? "Analyzing..." : "Start Iterative Analysis"}
+                  {isIterativeLoading ? "Analyzing dbt Structure..." : "Generate SQL with dbt Analysis"}
                 </Button>
-                
-                {isIterativeLoading && (
-                  <div className="flex items-center gap-2 text-sm text-blue-600">
+              ) : (
+                <Button 
+                  className="bg-gradient-primary flex items-center gap-2"
+                  onClick={handleGenerateAndExecute}
+                  disabled={isLoading || isIterativeLoading || !currentConnection}
+                >
+                  {isLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    AI is analyzing table depths and building optimal queries...
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                  {isLoading ? "Generating SQL..." : "Generate & Execute SQL"}
+                </Button>
+              )}
+              
+              {(isLoading || isIterativeLoading) && (
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {selectedFile 
+                    ? "AI is analyzing dbt depths and building optimal queries..."
+                    : "AI is generating SQL from database schema..."
+                  }
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="text-sm text-orange-600 bg-orange-50/50 rounded-lg p-3 border border-orange-200/50">
-              ⚠️ <strong>Upload required:</strong> Please upload a dbt configuration file first to enable iterative analysis.
-            </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
@@ -850,14 +853,18 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
             </Card>
           )}
 
-          {/* Generated SQL Query from Iterative Analysis */}
-          {iterativeResult.sql_query && (
+          {/* Generated SQL Query */}
+          {(iterativeResult?.sql_query || result?.sql_query) && (
             <Card className="glass border-border/50">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  Optimized SQL Query (Iterative Analysis)
+                  {iterativeResult?.sql_query ? "Optimized SQL Query (dbt Analysis)" : "Generated SQL Query"}
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={handleCopyIterativeSQL}>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={iterativeResult?.sql_query ? handleCopyIterativeSQL : handleCopySQL}
+                    >
                       <Copy className="w-4 h-4 mr-2" />
                       Copy SQL
                     </Button>
@@ -867,100 +874,15 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
               <CardContent>
                 <div className="bg-surface-elevated rounded-lg p-4 border border-border/50">
                   <pre className="text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
-                    {iterativeResult.sql_query}
+                    {iterativeResult?.sql_query || result?.sql_query}
                   </pre>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Iterative Analysis Query Results */}
-          {iterativeResult.results && iterativeResult.results.length > 0 && (
-            <Card className="glass border-border/50">
-              <CardHeader>
-                <CardTitle>Iterative Analysis Results</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 text-sm mb-4">
-                  <span className="text-muted-foreground">
-                    Rows: {iterativeResult.row_count}
-                  </span>
-                  <span className="text-muted-foreground">
-                    Optimal depth: {iterativeResult.final_depth}
-                  </span>
-                  <span className="text-muted-foreground">
-                    AI iterations: {iterativeResult.iteration_count}
-                  </span>
-                </div>
-
-                {/* Results Table */}
-                <div className="overflow-x-auto border border-border/50 rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="bg-surface-elevated/50">
-                      <tr className="border-b border-border">
-                        {Object.keys(iterativeResult.results[0]).map((header) => (
-                          <th key={header} className="text-left p-3 font-medium">
-                            {header}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {iterativeResult.results.slice(0, 100).map((row, index) => (
-                        <tr
-                          key={index}
-                          className="border-b border-border/50 hover:bg-surface-elevated/30 transition-colors"
-                        >
-                          {Object.keys(iterativeResult.results![0]).map((header) => (
-                            <td key={header} className="p-3">
-                              {typeof row[header] === 'number' ? (
-                                <span className="font-mono text-primary">
-                                  {row[header].toLocaleString()}
-                                </span>
-                              ) : (
-                                <span className="text-foreground">
-                                  {String(row[header] ?? '')}
-                                </span>
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
-
-      {/* Query Results Display */}
-      {result && (
-        <>
-          {/* Generated SQL Query Display */}
-          {result.sql_query ? (
-            <Card className="glass border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  Generated SQL Query
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={handleCopySQL}>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy SQL
-                    </Button>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="bg-surface-elevated rounded-lg p-4 border border-border/50">
-                  <pre className="text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
-                    {result.sql_query}
-                  </pre>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
+          {/* SQL Query Not Available Fallback */}
+          {result && !result.sql_query && !iterativeResult?.sql_query && (
             <Card className="glass border-border/50 border-orange-500/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-orange-600">
@@ -980,64 +902,87 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
           )}
 
           {/* Query Results */}
-          <Card className="glass border-border/50">
-            <CardHeader>
-              <CardTitle>Query Results</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4 text-sm mb-4">
-                <span className="text-muted-foreground">
-                  Rows: {result.rowCount}
-                </span>
-                <span className="text-muted-foreground">
-                  Execution time: ~{result.executionTime}ms
-                </span>
-              </div>
+          {(iterativeResult?.results || result?.rows) && (
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle>
+                  {iterativeResult?.results ? "dbt Analysis Results" : "Query Results"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4 text-sm mb-4">
+                  <span className="text-muted-foreground">
+                    Rows: {iterativeResult?.row_count || result?.rowCount || 0}
+                  </span>
+                  {result?.executionTime && (
+                    <span className="text-muted-foreground">
+                      Execution time: ~{result.executionTime}ms
+                    </span>
+                  )}
+                  {iterativeResult?.final_depth !== undefined && (
+                    <span className="text-muted-foreground">
+                      Optimal depth: {iterativeResult.final_depth}
+                    </span>
+                  )}
+                  {iterativeResult?.iteration_count && (
+                    <span className="text-muted-foreground">
+                      AI iterations: {iterativeResult.iteration_count}
+                    </span>
+                  )}
+                </div>
 
-              {/* Results Table */}
-              {result.rows.length > 0 ? (
-                <div className="overflow-x-auto border border-border/50 rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="bg-surface-elevated/50">
-                      <tr className="border-b border-border">
-                        {Object.keys(result.rows[0]).map((header) => (
-                          <th key={header} className="text-left p-3 font-medium">
-                            {header}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.rows.slice(0, 100).map((row, index) => (
-                        <tr
-                          key={index}
-                          className="border-b border-border/50 hover:bg-surface-elevated/30 transition-colors"
-                        >
-                          {Object.keys(result.rows[0]).map((header) => (
-                            <td key={header} className="p-3">
-                              {typeof row[header] === 'number' ? (
-                                <span className="font-mono text-primary">
-                                  {row[header].toLocaleString()}
-                                </span>
-                              ) : (
-                                <span className="text-foreground">
-                                  {String(row[header] ?? '')}
-                                </span>
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No data returned from the query
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                {/* Results Table */}
+                {(() => {
+                  const rows = iterativeResult?.results || result?.rows || [];
+                  if (rows.length > 0) {
+                    return (
+                      <div className="overflow-x-auto border border-border/50 rounded-lg">
+                        <table className="w-full text-sm">
+                          <thead className="bg-surface-elevated/50">
+                            <tr className="border-b border-border">
+                              {Object.keys(rows[0]).map((header) => (
+                                <th key={header} className="text-left p-3 font-medium">
+                                  {header}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.slice(0, 100).map((row, index) => (
+                              <tr
+                                key={index}
+                                className="border-b border-border/50 hover:bg-surface-elevated/30 transition-colors"
+                              >
+                                {Object.keys(rows[0]).map((header) => (
+                                  <td key={header} className="p-3">
+                                    {typeof row[header] === 'number' ? (
+                                      <span className="font-mono text-primary">
+                                        {row[header].toLocaleString()}
+                                      </span>
+                                    ) : (
+                                      <span className="text-foreground">
+                                        {String(row[header] ?? '')}
+                                      </span>
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No data returned from the query
+                      </div>
+                    );
+                  }
+                })()}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 

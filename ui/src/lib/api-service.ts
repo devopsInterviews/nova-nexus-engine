@@ -479,12 +479,16 @@ export const dbService = {
     }>;
   }>> => {
     const { dbt_file_content, analytics_prompt, confluence_space, confluence_title, ...conn } = connection as any;
-    const body = buildPayload(conn as DbConnection, { 
+    
+    // Special handling for iterative dbt query - backend expects connection to be nested
+    const body = {
+      connection: buildPayload(conn as DbConnection, {}),  // Nest connection object
       dbt_file_content, 
       analytics_prompt, 
       confluence_space, 
       confluence_title 
-    });
+    };
+    
     return fetchApi<{
       status: 'success' | 'error';
       error?: string;
