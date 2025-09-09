@@ -30,9 +30,15 @@ def detect_dbt_file_type(dbt_file_data: Dict[str, Any]) -> str:
     if "metadata" in dbt_file_data and "nodes" in dbt_file_data:
         return "manifest"
     
-    # Check for tree format (has relations array)
+    # Check for tree format (has relations array) - tree object is optional
     if "relations" in dbt_file_data and isinstance(dbt_file_data["relations"], list):
-        return "tree"
+        # Validate that relations have the expected structure
+        relations = dbt_file_data["relations"]
+        if len(relations) > 0:
+            # Check if relations have expected fields like depth, unique_id, etc.
+            sample_relation = relations[0]
+            if isinstance(sample_relation, dict) and ("depth" in sample_relation or "unique_id" in sample_relation):
+                return "tree"
     
     return "unknown"
 
@@ -282,7 +288,7 @@ def process_dbt_file_for_ui(dbt_file_data: Dict[str, Any]) -> Dict[str, Any]:
     
     This function detects the file type and preprocesses it if needed:
     - If raw manifest.json: converts to tree format with depth calculation
-    - If already tree format: uses as-is
+    - If already tree format: ensures proper structure and uses as-is
     
     Args:
         dbt_file_data: The raw dbt file data (dict format)
@@ -305,11 +311,36 @@ def process_dbt_file_for_ui(dbt_file_data: Dict[str, Any]) -> Dict[str, Any]:
             logger.info("🔄 Converting manifest.json to tree format")
             processed_data = preprocess_dbt_manifest(dbt_file_data)
             conversion_status = "converted_from_manifest"
-        else:
-            # Already in tree format
-            logger.info("✅ File already in tree format")
-            processed_data = dbt_file_data
+        elif file_type == "tree":
+            # Already in tree format, but ensure it has tree structure
+            logger.info("✅ File already in tree format, ensuring proper structure")
+            processed_data = dbt_file_data.copy()
+            
+            # If no tree structure exists, build it from relations
+            if "tree" not in processed_data and "relations" in processed_data:
+                logger.info("🔧 Building tree structure from relations")
+                relations = processed_data["relations"]
+                tree = {}
+                for relation in relations:
+                    identifier = relation.get("identifier", relation.get("name", "unknown"))
+                    tree[identifier] = {
+                        "depth": relation.get("depth", 0),
+                        "upstream": relation.get("upstream_uids", []),
+                        "metadata": {
+                            "unique_id": relation.get("unique_id", ""),
+                            "kind": relation.get("kind", ""),
+                            "database": relation.get("database", ""),
+                            "schema": relation.get("schema", "")
+                        }
+                    }
+                processed_data["tree"] = tree
+            
             conversion_status = "no_conversion_needed"
+        else:
+            # Unknown format
+            logger.error(f"❌ Unknown file format: {file_type}")
+            processed_data = {}
+            conversion_status = "failed_unknown_format"
         
         return {
             "processed_data": processed_data,
@@ -355,13 +386,15 @@ async def _extract_tables_from_tree_format(processed_data: Dict[str, Any]) -> Tu
     }
     
     try:
-        # Get the relations list and tree structure from processed data
-        if "relations" not in processed_data or "tree" not in processed_data:
-            logger.error("❌ Missing 'relations' or 'tree' in processed data")
+        # Get the relations list from processed data
+        if "relations" not in processed_data:
+            logger.error("❌ Missing 'relations' in processed data")
             return tables_by_depth, max_depth, dbt_context
         
         relations = processed_data["relations"]
-        tree = processed_data["tree"]
+        
+        # Tree structure is optional - if it doesn't exist, we can still extract from relations
+        tree = processed_data.get("tree", {})
         
         # Build tables_by_depth from relations list
         for relation in relations:

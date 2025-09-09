@@ -418,10 +418,17 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
       }
       
       // Check for tree format (has relations array)
-      if (Array.isArray(parsed.relations) && parsed.tree) {
+      if (Array.isArray(parsed.relations)) {
         // Validate tree structure
         if (parsed.relations.length === 0) issues.push("Relations array is empty");
-        if (!parsed.relations.every((r: any) => r.hasOwnProperty('depth'))) issues.push("Some relations missing depth information");
+        
+        // Check if relations have expected structure (depth, unique_id, identifier, etc.)
+        const hasValidStructure = parsed.relations.every((r: any) => 
+          typeof r === 'object' && r !== null && 
+          (r.hasOwnProperty('depth') || r.hasOwnProperty('unique_id') || r.hasOwnProperty('identifier'))
+        );
+        
+        if (!hasValidStructure) issues.push("Relations don't have expected structure (missing depth, unique_id, or identifier)");
         
         return { 
           type: 'tree', 
@@ -702,48 +709,95 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                 </div>
                 
                 {showJsonContent && (
-                  <div className="space-y-4">
-                    <ScrollArea className="h-96 w-full rounded-md border border-border/50">
-                      <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                        {formatJsonContent(selectedFile.content)}
-                      </pre>
-                    </ScrollArea>
+                  (() => {
+                    const validation = validateDbtContent(selectedFile.content);
+                    let contentToShow = selectedFile.content;
+                    let isProcessedContent = false;
                     
-                    {/* File Actions */}
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigator.clipboard.writeText(formatJsonContent(selectedFile.content))}
-                      >
-                        Copy Formatted JSON
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigator.clipboard.writeText(selectedFile.content)}
-                      >
-                        Copy Original
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const blob = new Blob([formatJsonContent(selectedFile.content)], { type: 'application/json' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = selectedFile.name.replace('.json', '_formatted.json');
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
-                        }}
-                      >
-                        Download Formatted
-                      </Button>
-                    </div>
-                  </div>
+                    // For manifest files, show the processed tree format instead of raw manifest
+                    if (validation.isValid && validation.format.type === 'manifest') {
+                      try {
+                        const parsed = JSON.parse(selectedFile.content);
+                        // This simulates the preprocessing that happens on the backend
+                        // In a real scenario, we'd call the backend, but for preview we'll show what would be processed
+                        contentToShow = JSON.stringify({
+                          note: "This is a preview of how your manifest.json will be processed for analysis",
+                          original_format: "dbt_manifest",
+                          will_be_converted_to: "tree_format_with_relations_and_depths",
+                          sample_processed_structure: {
+                            relations: "Array of tables with depth calculations",
+                            tree: "Hierarchical structure for analysis",
+                            metadata: "Processing information"
+                          },
+                          original_nodes_count: Object.keys(parsed.nodes || {}).length,
+                          original_sources_count: Object.keys(parsed.sources || {}).length
+                        }, null, 2);
+                        isProcessedContent = true;
+                      } catch (e) {
+                        // Fall back to original content if parsing fails
+                        contentToShow = selectedFile.content;
+                      }
+                    }
+                    
+                    return (
+                      <div className="space-y-4">
+                        {isProcessedContent && (
+                          <div className="bg-blue-50/30 border border-blue-200/50 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              <span className="text-sm font-medium text-blue-700">Preview: Processed Tree Format</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              This shows how your manifest.json will be converted for analysis. The actual processing will include all relations with proper depth calculations.
+                            </p>
+                          </div>
+                        )}
+                        
+                        <div className="border border-border/50 rounded-lg">
+                          <ScrollArea className="h-96 w-full">
+                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap overflow-x-auto">
+                              {formatJsonContent(contentToShow)}
+                            </pre>
+                          </ScrollArea>
+                        </div>
+                        
+                        {/* File Actions */}
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigator.clipboard.writeText(formatJsonContent(contentToShow))}
+                          >
+                            Copy {isProcessedContent ? 'Preview' : 'Formatted'} JSON
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigator.clipboard.writeText(selectedFile.content)}
+                          >
+                            Copy Original
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const blob = new Blob([formatJsonContent(contentToShow)], { type: 'application/json' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = selectedFile.name.replace('.json', isProcessedContent ? '_preview.json' : '_formatted.json');
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            }}
+                          >
+                            Download {isProcessedContent ? 'Preview' : 'Formatted'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
             </div>
