@@ -2058,6 +2058,40 @@ async def get_api_endpoints():
         )
 
 
+@router.post("/dbt/preprocess-manifest")
+async def preprocess_manifest(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Preprocess a dbt manifest.json file to create tree format for UI preview.
+    
+    This endpoint takes a raw manifest.json and processes it into the tree format
+    that the UI expects, showing the actual processed content that will be used
+    for analysis.
+    """
+    try:
+        # Get the manifest data from request body
+        manifest_data = await request.json()
+        
+        # Import the preprocessing function
+        from app.services.dbt_analysis_service import preprocess_dbt_manifest
+        
+        # Process the manifest
+        processed_data = await preprocess_dbt_manifest(manifest_data)
+        
+        logger.debug(f"Preprocessed manifest for user {current_user.username}")
+        
+        return processed_data
+        
+    except Exception as e:
+        logger.error(f"Error preprocessing manifest: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to preprocess manifest: {str(e)}"
+        )
+
+
 @router.post("/log-dbt-file-upload")
 async def log_dbt_file_upload(
     request: Request,

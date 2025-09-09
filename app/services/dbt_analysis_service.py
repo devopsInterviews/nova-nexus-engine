@@ -382,7 +382,9 @@ async def _extract_tables_from_tree_format(processed_data: Dict[str, Any]) -> Tu
     dbt_context = {
         "total_tables": 0,
         "structure_type": "tree_format",
-        "depth_analysis": {}
+        "depth_analysis": {},
+        "type": "tree format",
+        "description": "Pre-processed dbt tree structure"
     }
     
     try:

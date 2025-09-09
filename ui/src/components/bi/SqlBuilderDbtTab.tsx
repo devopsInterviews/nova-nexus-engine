@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,6 +54,8 @@ export function SqlBuilderDbtTab() {
   
   // File upload state
   const [selectedFile, setSelectedFile] = useState<DbtFile | null>(null);
+  const [preprocessedContent, setPreprocessedContent] = useState<string | null>(null);
+  const [isPreprocessing, setIsPreprocessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -376,8 +378,53 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
   // Clear selected file
   const clearFile = useCallback(() => {
     setSelectedFile(null);
+    setPreprocessedContent(null);
     setError(null);
   }, []);
+
+  // Preprocess manifest content for preview
+  const preprocessManifestContent = useCallback(async (file: DbtFile) => {
+    if (!file.content) return;
+    
+    const validation = validateDbtContent(file.content);
+    if (!validation.isValid || validation.format.type !== 'manifest') {
+      return;
+    }
+
+    setIsPreprocessing(true);
+    try {
+      const parsed = JSON.parse(file.content);
+      const response = await fetch('/api/dbt/preprocess-manifest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(parsed),
+      });
+      
+      if (response.ok) {
+        const processedResult = await response.json();
+        setPreprocessedContent(JSON.stringify(processedResult, null, 2));
+      } else {
+        console.warn('Failed to preprocess manifest');
+        setPreprocessedContent(null);
+      }
+    } catch (e) {
+      console.warn('Failed to preprocess manifest for preview:', e);
+      setPreprocessedContent(null);
+    } finally {
+      setIsPreprocessing(false);
+    }
+  }, []);
+
+  // Process file selection (trigger preprocessing for manifests)
+  useEffect(() => {
+    if (selectedFile) {
+      preprocessManifestContent(selectedFile);
+    } else {
+      setPreprocessedContent(null);
+    }
+  }, [selectedFile, preprocessManifestContent]);
 
   // Format file size for display
   const formatFileSize = (bytes: number): string => {
@@ -714,29 +761,10 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                     let contentToShow = selectedFile.content;
                     let isProcessedContent = false;
                     
-                    // For manifest files, show the processed tree format instead of raw manifest
-                    if (validation.isValid && validation.format.type === 'manifest') {
-                      try {
-                        const parsed = JSON.parse(selectedFile.content);
-                        // This simulates the preprocessing that happens on the backend
-                        // In a real scenario, we'd call the backend, but for preview we'll show what would be processed
-                        contentToShow = JSON.stringify({
-                          note: "This is a preview of how your manifest.json will be processed for analysis",
-                          original_format: "dbt_manifest",
-                          will_be_converted_to: "tree_format_with_relations_and_depths",
-                          sample_processed_structure: {
-                            relations: "Array of tables with depth calculations",
-                            tree: "Hierarchical structure for analysis",
-                            metadata: "Processing information"
-                          },
-                          original_nodes_count: Object.keys(parsed.nodes || {}).length,
-                          original_sources_count: Object.keys(parsed.sources || {}).length
-                        }, null, 2);
-                        isProcessedContent = true;
-                      } catch (e) {
-                        // Fall back to original content if parsing fails
-                        contentToShow = selectedFile.content;
-                      }
+                    // For manifest files, show the preprocessed content if available
+                    if (validation.isValid && validation.format.type === 'manifest' && preprocessedContent) {
+                      contentToShow = preprocessedContent;
+                      isProcessedContent = true;
                     }
                     
                     return (
@@ -745,11 +773,20 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                           <div className="bg-blue-50/30 border border-blue-200/50 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-2 h-2 rounded-full bg-blue-500" />
-                              <span className="text-sm font-medium text-blue-700">Preview: Processed Tree Format</span>
+                              <span className="text-sm font-medium text-blue-700">Preview: Actual Processed Tree Format</span>
                             </div>
                             <p className="text-sm text-muted-foreground">
-                              This shows how your manifest.json will be converted for analysis. The actual processing will include all relations with proper depth calculations.
+                              This shows the actual tree format that will be used for analysis, with relations array, depth calculations, and tree structure.
                             </p>
+                          </div>
+                        )}
+                        
+                        {isPreprocessing && (
+                          <div className="bg-yellow-50/30 border border-yellow-200/50 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-yellow-700 text-sm">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span className="font-medium">Processing manifest...</span>
+                            </div>
                           </div>
                         )}
                         
@@ -768,7 +805,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                             size="sm"
                             onClick={() => navigator.clipboard.writeText(formatJsonContent(contentToShow))}
                           >
-                            Copy {isProcessedContent ? 'Preview' : 'Formatted'} JSON
+                            Copy {isProcessedContent ? 'Processed' : 'Formatted'} JSON
                           </Button>
                           <Button
                             variant="outline"
@@ -785,14 +822,14 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                               const url = URL.createObjectURL(blob);
                               const a = document.createElement('a');
                               a.href = url;
-                              a.download = selectedFile.name.replace('.json', isProcessedContent ? '_preview.json' : '_formatted.json');
+                              a.download = selectedFile.name.replace('.json', isProcessedContent ? '_processed.json' : '_formatted.json');
                               document.body.appendChild(a);
                               a.click();
                               document.body.removeChild(a);
                               URL.revokeObjectURL(url);
                             }}
                           >
-                            Download {isProcessedContent ? 'Preview' : 'Formatted'}
+                            Download {isProcessedContent ? 'Processed' : 'Formatted'}
                           </Button>
                         </div>
                       </div>
