@@ -553,6 +553,77 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                   </Alert>
                 );
               })()}
+
+              {/* File Content Preview */}
+              <div className="space-y-4 border-t border-border/30 pt-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-medium text-foreground">File Content Preview</h4>
+                    <span className="text-sm font-normal text-muted-foreground">
+                      {selectedFile.content.split('\n').length} lines
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="show-json"
+                      checked={showJsonContent}
+                      onCheckedChange={(checked) => setShowJsonContent(checked as boolean)}
+                    />
+                    <Label 
+                      htmlFor="show-json"
+                      className="text-sm font-normal cursor-pointer flex items-center gap-1"
+                    >
+                      {showJsonContent ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      Show content
+                    </Label>
+                  </div>
+                </div>
+                
+                {showJsonContent && (
+                  <div className="space-y-4">
+                    <ScrollArea className="h-96 w-full rounded-md border border-border/50">
+                      <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap">
+                        {formatJsonContent(selectedFile.content)}
+                      </pre>
+                    </ScrollArea>
+                    
+                    {/* File Actions */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigator.clipboard.writeText(formatJsonContent(selectedFile.content))}
+                      >
+                        Copy Formatted JSON
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigator.clipboard.writeText(selectedFile.content)}
+                      >
+                        Copy Original
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const blob = new Blob([formatJsonContent(selectedFile.content)], { type: 'application/json' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = selectedFile.name.replace('.json', '_formatted.json');
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        Download Formatted
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </CardContent>
@@ -984,77 +1055,6 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
             </Card>
           )}
         </>
-      )}
-
-      {/* File Content Preview */}
-      {selectedFile && (
-        <Card className="glass border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                File Content Preview
-                <span className="text-sm font-normal text-muted-foreground">
-                  {selectedFile.content.split('\n').length} lines
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="show-json"
-                  checked={showJsonContent}
-                  onCheckedChange={(checked) => setShowJsonContent(checked as boolean)}
-                />
-                <Label 
-                  htmlFor="show-json"
-                  className="text-sm font-normal cursor-pointer flex items-center gap-1"
-                >
-                  {showJsonContent ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                  Show content
-                </Label>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          {showJsonContent && (
-            <CardContent>
-              <ScrollArea className="h-96 w-full rounded-md border border-border/50">
-                <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                  {formatJsonContent(selectedFile.content)}
-                </pre>
-              </ScrollArea>
-              
-              {/* File Actions */}
-              <div className="flex gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => navigator.clipboard.writeText(formatJsonContent(selectedFile.content))}
-                >
-                  Copy Formatted JSON
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => navigator.clipboard.writeText(selectedFile.content)}
-                >
-                  Copy Original
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const blob = new Blob([formatJsonContent(selectedFile.content)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = selectedFile.name.replace('.json', '_formatted.json');
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                  }}
-                >
-                  Download Formatted
-                </Button>
-              </div>
-            </CardContent>
-          )}
-        </Card>
       )}
     </div>
   );
