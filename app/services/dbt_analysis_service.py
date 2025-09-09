@@ -4,7 +4,6 @@ DBT Analysis Service - Client-side implementation for dbt file analysis
 import json
 import logging
 from typing import Dict, Any, List, Tuple, Optional
-from ..llm_client import get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ async def analyze_dbt_file_for_iterative_query(
     
     try:
         # Import MCP client here to avoid circular imports
-        from ..client import call_mcp_tool
+        from ..client import _mcp_session
         
         # Step 1: Dynamically analyze dbt structure and extract depth information
         logger.info("🔍 Step 1: Dynamically analyzing dbt structure for table depths")
@@ -90,14 +89,16 @@ async def analyze_dbt_file_for_iterative_query(
             try:
                 # Get column metadata for current tables via MCP
                 logger.info("🔍 Getting column metadata for current table set")
-                column_metadata_result = await call_mcp_tool(
+                column_metadata_result = await _mcp_session.call_tool(
                     "get_database_column_metadata",
-                    host=str(connection['host']),
-                    port=str(connection['port']),
-                    user=str(connection['user']),
-                    password=str(connection['password']),
-                    database=str(connection['database']),
-                    database_type=str(database_type)
+                    arguments={
+                        "host": str(connection['host']),
+                        "port": str(connection['port']),
+                        "user": str(connection['user']),
+                        "password": str(connection['password']),
+                        "database": str(connection['database']),
+                        "database_type": str(database_type)
+                    }
                 )
                 
                 if not column_metadata_result or "error" in column_metadata_result:
@@ -148,15 +149,17 @@ async def analyze_dbt_file_for_iterative_query(
                     # Step A: Get filtered column keys for approved tables
                     logger.info("🔑 Step A: Getting filtered database keys for approved tables")
                     try:
-                        approved_keys_result = await call_mcp_tool(
+                        approved_keys_result = await _mcp_session.call_tool(
                             "list_database_keys_filtered_by_depth",
-                            host=str(connection['host']),
-                            port=str(connection['port']),
-                            user=str(connection['user']),
-                            password=str(connection['password']),
-                            database=str(connection['database']),
-                            approved_tables=json.dumps(current_tables),
-                            database_type=str(database_type)
+                            arguments={
+                                "host": str(connection['host']),
+                                "port": str(connection['port']),
+                                "user": str(connection['user']),
+                                "password": str(connection['password']),
+                                "database": str(connection['database']),
+                                "approved_tables": json.dumps(current_tables),
+                                "database_type": str(database_type)
+                            }
                         )
                         
                         if approved_keys_result and "error" not in approved_keys_result:
@@ -177,18 +180,20 @@ async def analyze_dbt_file_for_iterative_query(
                     # Step B: Execute analytics query with approved tables only
                     logger.info("📊 Step B: Executing analytics query on approved tables")
                     try:
-                        analytics_result_mcp = await call_mcp_tool(
+                        analytics_result_mcp = await _mcp_session.call_tool(
                             "run_analytics_query_on_approved_tables",
-                            host=str(connection['host']),
-                            port=str(connection['port']),
-                            user=str(connection['user']),
-                            password=str(connection['password']),
-                            database=str(connection['database']),
-                            analytics_prompt=str(analytics_prompt),
-                            approved_tables=json.dumps(current_tables),
-                            database_type=str(database_type),
-                            confluence_space=str(confluence_space),
-                            confluence_title=str(confluence_title)
+                            arguments={
+                                "host": str(connection['host']),
+                                "port": str(connection['port']),
+                                "user": str(connection['user']),
+                                "password": str(connection['password']),
+                                "database": str(connection['database']),
+                                "analytics_prompt": str(analytics_prompt),
+                                "approved_tables": json.dumps(current_tables),
+                                "database_type": str(database_type),
+                                "confluence_space": str(confluence_space),
+                                "confluence_title": str(confluence_title)
+                            }
                         )
                         
                         if analytics_result_mcp and "error" not in analytics_result_mcp:
@@ -475,7 +480,8 @@ async def _ask_ai_sufficiency_decision(
         Dict with "decision" (yes/no) and "reasoning" keys
     """
     try:
-        llm_client = get_llm_client()
+        # Import the global llm_client instance from app.client
+        from ..client import llm_client
         
         # Build a clear prompt for the AI
         table_info = f"Available tables (depth {current_depth}/{max_depth}): {', '.join(tables)}\n\n"
@@ -519,7 +525,7 @@ DECISION: [YES/NO]
 REASONING: [Brief explanation of why this set is sufficient or insufficient]
 """
         
-        response = await llm_client.get_completion(decision_prompt)
+        response = await llm_client.query_llm(decision_prompt)
         
         # Parse the response
         lines = response.strip().split('\n')
