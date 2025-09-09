@@ -1690,25 +1690,6 @@ async def analyze_dbt_file_for_iterative_query(
                         analytics_result = {"error": str(e)}
                     
                     # Return comprehensive results
-                    # Ensure analytics_result is a dictionary
-                    if hasattr(analytics_result, 'get'):
-                        # It's already a dictionary
-                        result_dict = analytics_result
-                    elif hasattr(analytics_result, 'content') and analytics_result.content:
-                        # It might be a CallToolResult object
-                        try:
-                            if isinstance(analytics_result.content, list) and len(analytics_result.content) > 0:
-                                if hasattr(analytics_result.content[0], 'text'):
-                                    result_dict = json.loads(analytics_result.content[0].text)
-                                else:
-                                    result_dict = analytics_result.content[0] if isinstance(analytics_result.content[0], dict) else {}
-                            else:
-                                result_dict = {}
-                        except (json.JSONDecodeError, AttributeError, IndexError):
-                            result_dict = {}
-                    else:
-                        result_dict = {}
-                    
                     return {
                         "status": "success",
                         "final_depth": current_depth,
@@ -1717,10 +1698,10 @@ async def analyze_dbt_file_for_iterative_query(
                         "column_count": len(filtered_metadata),
                         "process_log": process_log,
                         "approved_table_keys": approved_keys,
-                        "analytics_result": result_dict,
-                        "sql_query": result_dict.get("sql", ""),
-                        "rows": result_dict.get("rows", []),
-                        "row_count": len(result_dict.get("rows", [])),
+                        "analytics_result": analytics_result,
+                        "sql_query": analytics_result.get("sql", ""),
+                        "rows": analytics_result.get("rows", []),
+                        "row_count": len(analytics_result.get("rows", [])),
                         "iteration_count": max_depth - current_depth + 1,
                         "dbt_context": dbt_context,
                         "filtering_applied": True

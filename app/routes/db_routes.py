@@ -2227,12 +2227,50 @@ async def iterative_dbt_query(
             }
         )
         
-        logger.info(f"📥 MCP tool completed with status: {result.get('status', 'unknown')}")
+        logger.info("📥 MCP tool completed, processing response...")
+        
+        # Parse the CallToolResult content to extract the actual result data
+        response_data = {}
+        
+        logger.debug("Processing MCP tool response content")
+        
+        for i, msg in enumerate(result.content):
+            msg_text = getattr(msg, 'text', '')
+            logger.debug(f"Processing response part {i+1}/{len(result.content)} (length: {len(msg_text)})")
+            
+            # The MCP server returns the iterative analysis result as JSON
+            try:
+                parsed_data = json.loads(msg_text)
+                if isinstance(parsed_data, dict):
+                    # This is the structured response from MCP server
+                    response_data = parsed_data
+                    logger.info(f"Parsed iterative analysis response: status={parsed_data.get('status', 'unknown')}")
+                    break  # We found the main response
+                else:
+                    logger.debug(f"Response part {i+1} contains JSON but not in expected format")
+            except json.JSONDecodeError:
+                # Not JSON, might be additional text from the AI
+                logger.debug(f"Response part {i+1} is not JSON (length: {len(msg_text)})")
+                # Log the raw text in case it contains error information
+                if "error" in msg_text.lower() or "exception" in msg_text.lower():
+                    logger.warning(f"Possible error in response part {i+1}: {msg_text}")
+        
+        # Check if we got valid response data
+        if not response_data:
+            logger.error("❌ No valid response data found")
+            logger.error("Raw MCP response content:")
+            for i, msg in enumerate(result.content):
+                logger.error(f"  Part {i+1}: {getattr(msg, 'text', '')}")
+            
+            raise HTTPException(
+                status_code=500, 
+                detail="No valid response from iterative analysis - MCP tool may have failed"
+            )
         
         # Log the process details
-        if result.get("process_log"):
+        if response_data.get("process_log"):
             logger.info("📊 Iteration Process Log:")
-            for i, log_entry in enumerate(result["process_log"], 1):
+            for i, log_entry in enumerate(response_data["process_log"], 1):
                 depth = log_entry.get("depth", "unknown")
                 decision = log_entry.get("ai_decision", "unknown")
                 table_count = log_entry.get("table_count", 0)
@@ -2241,23 +2279,23 @@ async def iterative_dbt_query(
                     logger.info(f"    Reasoning: {log_entry['ai_reasoning'][:100]}...")
         
         # Log final results
-        if result.get("status") == "success":
-            final_depth = result.get("final_depth", "unknown")
-            tables_used = result.get("tables_used", [])
-            row_count = result.get("row_count", 0)
-            iterations = result.get("iteration_count", 0)
+        if response_data.get("status") == "success":
+            final_depth = response_data.get("final_depth", "unknown")
+            tables_used = response_data.get("approved_tables", [])
+            row_count = response_data.get("row_count", 0)
+            iterations = response_data.get("iteration_count", 0)
             
             logger.info(f"✅ Query successful at depth {final_depth}")
             logger.info(f"📊 Used {len(tables_used)} tables, returned {row_count} rows")
             logger.info(f"🔄 Required {iterations} iterations")
             logger.info(f"🏷️  Tables used: {', '.join(tables_used[:5])}{'...' if len(tables_used) > 5 else ''}")
         else:
-            error_msg = result.get("error", "Unknown error")
+            error_msg = response_data.get("error", "Unknown error")
             logger.error(f"❌ Query failed: {error_msg}")
         
         return JSONResponse({
             "status": "success",
-            "data": result,
+            "data": response_data,
             "user": current_user.username,
             "timestamp": datetime.now().isoformat()
         })
