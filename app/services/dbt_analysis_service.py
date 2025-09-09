@@ -3,9 +3,396 @@ DBT Analysis Service - Client-side implementation for dbt file analysis
 """
 import json
 import logging
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Set
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# DBT MANIFEST PREPROCESSING FUNCTIONS
+# ============================================================================
+
+def detect_dbt_file_type(dbt_file_data: Dict[str, Any]) -> str:
+    """
+    Detect the type of dbt file uploaded.
+    
+    Args:
+        dbt_file_data: The parsed JSON data from the uploaded file
+        
+    Returns:
+        str: 'manifest', 'tree', or 'unknown'
+    """
+    if not isinstance(dbt_file_data, dict):
+        return "unknown"
+    
+    # Check for manifest.json format (has metadata and nodes)
+    if "metadata" in dbt_file_data and "nodes" in dbt_file_data:
+        return "manifest"
+    
+    # Check for tree format (has relations array)
+    if "relations" in dbt_file_data and isinstance(dbt_file_data["relations"], list):
+        return "tree"
+    
+    return "unknown"
+
+
+def preprocess_dbt_manifest(manifest_data: Dict[str, Any], include_sources: bool = True) -> Dict[str, Any]:
+    """
+    Convert a raw dbt manifest.json file to tree format for analysis.
+    
+    This function:
+    1. Extracts nodes and sources from the manifest
+    2. Builds a dependency graph
+    3. Calculates depth levels for each relation
+    4. Returns data in tree format compatible with existing analysis code
+    
+    Args:
+        manifest_data: Raw dbt manifest.json content
+        include_sources: Whether to include source tables in the output
+        
+    Returns:
+        Dict containing relations list, tree structure, and metadata
+    """
+    logger.info("🔄 Converting dbt manifest.json to tree format")
+    
+    try:
+        # Extract nodes and sources
+        nodes = manifest_data.get("nodes", {})
+        sources = manifest_data.get("sources", {}) if include_sources else {}
+        
+        logger.info(f"📊 Found {len(nodes)} nodes and {len(sources)} sources")
+        
+        # Build dependency graph
+        dependency_graph = _build_dependency_graph(nodes, sources)
+        
+        # Calculate depths for all relations
+        depths = _calculate_depths(dependency_graph)
+        
+        # Build the relations list
+        relations = _build_relations_list(nodes, sources, depths, dependency_graph)
+        
+        # Build tree structure for compatibility
+        tree = _build_tree_structure(relations)
+        
+        result = {
+            "relations": relations,
+            "tree": tree,
+            "metadata": {
+                "generated_from": "dbt_manifest",
+                "project_name": manifest_data["metadata"].get("project_name"),
+                "total_relations": len(relations),
+                "max_depth": max(depths.values()) if depths else 0,
+                "include_sources": include_sources
+            }
+        }
+        
+        logger.info(f"✅ Preprocessing complete: {len(relations)} relations, max depth: {result['metadata']['max_depth']}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Error preprocessing manifest: {e}")
+        raise
+
+
+def _build_dependency_graph(nodes: Dict[str, Any], sources: Dict[str, Any]) -> Dict[str, Set[str]]:
+    """Build dependency graph from nodes and sources."""
+    graph = defaultdict(set)
+    
+    # Process nodes (models, seeds, snapshots)
+    for node_id, node in nodes.items():
+        if _is_physical_node(node):
+            depends_on = node.get("depends_on", {}).get("nodes", [])
+            for dep in depends_on:
+                if dep in nodes and _is_physical_node(nodes[dep]):
+                    graph[node_id].add(dep)
+                elif dep in sources:
+                    graph[node_id].add(dep)
+    
+    # Process sources
+    for source_id in sources:
+        if source_id not in graph:
+            graph[source_id] = set()  # Sources have no dependencies
+    
+    return graph
+
+
+def _calculate_depths(dependency_graph: Dict[str, Set[str]]) -> Dict[str, int]:
+    """Calculate depth for each node using topological sort."""
+    depths = {}
+    
+    # Find all nodes with no dependencies (depth 0)
+    for node_id, deps in dependency_graph.items():
+        if not deps:
+            depths[node_id] = 0
+    
+    # Calculate depths iteratively
+    changed = True
+    while changed:
+        changed = False
+        for node_id, deps in dependency_graph.items():
+            if node_id in depths:
+                continue
+                
+            # Check if all dependencies have been processed
+            deps_depths = []
+            for dep in deps:
+                if dep in depths:
+                    deps_depths.append(depths[dep])
+                else:
+                    break
+            
+            # If all dependencies processed, calculate this node's depth
+            if len(deps_depths) == len(deps):
+                depths[node_id] = max(deps_depths) + 1 if deps_depths else 0
+                changed = True
+    
+    return depths
+
+
+def _build_tree_structure(relations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build tree structure from relations for compatibility with existing analysis code."""
+    tree = {}
+    
+    for relation in relations:
+        table_name = relation["identifier"] or "unknown"
+        tree[table_name] = {
+            "depth": relation["depth"],
+            "upstream": relation.get("upstream_uids", []),
+            "metadata": {
+                "unique_id": relation["unique_id"],
+                "kind": relation["kind"],
+                "database": relation["database"],
+                "schema": relation["schema"]
+            }
+        }
+    
+    return tree
+
+
+def _build_relations_list(
+    nodes: Dict[str, Any], 
+    sources: Dict[str, Any], 
+    depths: Dict[str, int],
+    dependency_graph: Dict[str, Set[str]]
+) -> List[Dict[str, Any]]:
+    """Build the relations list in the target format."""
+    relations = []
+    
+    # Process nodes
+    for node_id, node in nodes.items():
+        if _is_physical_node(node):
+            relation = {
+                "unique_id": _get_table_identifier(node),
+                "database": node.get("database", ""),
+                "schema": node.get("schema", ""),
+                "identifier": node.get("name", ""),
+                "kind": node.get("resource_type", ""),
+                "materialization": _get_materialization(node),
+                "depth": depths.get(node_id, 0),
+                "upstream_uids": [
+                    _get_node_table_identifier(dep, nodes, sources) 
+                    for dep in dependency_graph.get(node_id, set())
+                ]
+            }
+            relations.append(relation)
+    
+    # Process sources  
+    for source_id, source in sources.items():
+        relation = {
+            "unique_id": _get_source_identifier(source),
+            "database": source.get("database", ""),
+            "schema": source.get("schema", ""),
+            "identifier": source.get("name", ""),
+            "kind": "source",
+            "materialization": None,
+            "depth": depths.get(source_id, 0),
+            "upstream_uids": []
+        }
+        relations.append(relation)
+    
+    # Sort by depth, then by identifier
+    relations.sort(key=lambda r: (r["depth"], r["identifier"]))
+    
+    return relations
+
+
+def _is_physical_node(node: Dict[str, Any]) -> bool:
+    """Check if node is a physical node (model, seed, snapshot) and not ephemeral/disabled."""
+    if not node:
+        return False
+        
+    resource_type = node.get("resource_type", "")
+    config = node.get("config", {})
+    
+    # Must be a physical resource type
+    if resource_type not in ["model", "seed", "snapshot"]:
+        return False
+    
+    # Must not be ephemeral
+    if config.get("materialized") == "ephemeral":
+        return False
+    
+    # Must not be disabled
+    if config.get("enabled") is False:
+        return False
+    
+    return True
+
+
+def _get_table_identifier(node: Dict[str, Any]) -> str:
+    """Get table identifier for a node."""
+    database = node.get("database", "")
+    schema = node.get("schema", "")
+    name = node.get("name", "")
+    return f"{database}.{schema}.{name}" if database and schema else name
+
+
+def _get_source_identifier(source: Dict[str, Any]) -> str:
+    """Get identifier for a source."""
+    database = source.get("database", "")
+    schema = source.get("schema", "")
+    name = source.get("name", "")
+    return f"{database}.{schema}.{name}" if database and schema else name
+
+
+def _get_materialization(node: Dict[str, Any]) -> Optional[str]:
+    """Get materialization type for a node."""
+    return node.get("config", {}).get("materialized")
+
+
+def _get_node_table_identifier(node_id: str, nodes: Dict[str, Any], sources: Dict[str, Any]) -> str:
+    """Get table identifier for a node or source by ID."""
+    if node_id in nodes:
+        return _get_table_identifier(nodes[node_id])
+    elif node_id in sources:
+        return _get_source_identifier(sources[node_id])
+    else:
+        return node_id
+
+
+# ============================================================================
+# EXISTING DBT ANALYSIS FUNCTIONS
+# ============================================================================
+
+
+def process_dbt_file_for_ui(dbt_file_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process dbt file for UI display, handling both manifest.json and tree format.
+    
+    This function detects the file type and preprocesses it if needed:
+    - If raw manifest.json: converts to tree format with depth calculation
+    - If already tree format: uses as-is
+    
+    Args:
+        dbt_file_data: The raw dbt file data (dict format)
+        
+    Returns:
+        Dict containing:
+        - processed_data: The data in tree format ready for analysis
+        - file_type: 'manifest' or 'tree'
+        - metadata: Processing information including conversion status
+    """
+    logger.info("📋 Processing dbt file for UI display")
+    
+    try:
+        # Detect file type
+        file_type = detect_dbt_file_type(dbt_file_data)
+        logger.info(f"🔍 Detected file type: {file_type}")
+        
+        if file_type == "manifest":
+            # Convert manifest to tree format
+            logger.info("🔄 Converting manifest.json to tree format")
+            processed_data = preprocess_dbt_manifest(dbt_file_data)
+            conversion_status = "converted_from_manifest"
+        else:
+            # Already in tree format
+            logger.info("✅ File already in tree format")
+            processed_data = dbt_file_data
+            conversion_status = "no_conversion_needed"
+        
+        return {
+            "processed_data": processed_data,
+            "file_type": file_type,
+            "metadata": {
+                "conversion": conversion_status,
+                "original_format": file_type,
+                "total_relations": len(processed_data.get("relations", [])),
+                "has_tree_structure": "tree" in processed_data
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing dbt file for UI: {str(e)}")
+        return {
+            "processed_data": {},
+            "file_type": "unknown",
+            "metadata": {
+                "conversion": "failed",
+                "error": str(e)
+            }
+        }
+
+
+async def _extract_tables_from_tree_format(processed_data: Dict[str, Any]) -> Tuple[Dict[int, List[str]], int, Dict[str, Any]]:
+    """
+    Extract tables by depth from tree format processed data.
+    
+    Args:
+        processed_data: Processed dbt data in tree format
+        
+    Returns:
+        Tuple of (tables_by_depth, max_depth, dbt_context)
+    """
+    logger.info("🌳 Extracting tables from tree format data")
+    
+    tables_by_depth = {}
+    max_depth = -1
+    dbt_context = {
+        "total_tables": 0,
+        "structure_type": "tree_format",
+        "depth_analysis": {}
+    }
+    
+    try:
+        # Get the relations list and tree structure from processed data
+        if "relations" not in processed_data or "tree" not in processed_data:
+            logger.error("❌ Missing 'relations' or 'tree' in processed data")
+            return tables_by_depth, max_depth, dbt_context
+        
+        relations = processed_data["relations"]
+        tree = processed_data["tree"]
+        
+        # Build tables_by_depth from relations list
+        for relation in relations:
+            if "depth" in relation:
+                depth = relation["depth"]
+                # Handle both 'name' (tree format) and 'identifier' (manifest format)
+                table_name = relation.get("name") or relation.get("identifier") or "unknown"
+                
+                if depth not in tables_by_depth:
+                    tables_by_depth[depth] = []
+                
+                tables_by_depth[depth].append(table_name)
+                max_depth = max(max_depth, depth)
+        
+        # Update context
+        dbt_context["total_tables"] = len(relations)
+        dbt_context["max_depth"] = max_depth
+        dbt_context["depth_analysis"] = {
+            str(depth): len(tables) 
+            for depth, tables in tables_by_depth.items()
+        }
+        
+        logger.info(f"📊 Extracted {len(relations)} tables across {max_depth + 1} depth levels")
+        for depth in sorted(tables_by_depth.keys(), reverse=True):
+            logger.info(f"   Depth {depth}: {len(tables_by_depth[depth])} tables")
+        
+        return tables_by_depth, max_depth, dbt_context
+        
+    except Exception as e:
+        logger.error(f"❌ Error extracting tables from tree format: {str(e)}")
+        return {}, -1, {"error": str(e), "structure_type": "tree_format"}
 
 
 async def analyze_dbt_file_for_iterative_query(
@@ -19,17 +406,18 @@ async def analyze_dbt_file_for_iterative_query(
     """
     Analyze a dbt file and iteratively build SQL queries starting from the highest depth tables.
     
-    This is the main orchestration function that:
-    1. Parses the dbt file to extract tables/views by depth
-    2. Starts with the highest depth tables
-    3. Gets column metadata for current depth tables via MCP tools
-    4. Asks AI if the available tables/columns are sufficient for the query
-    5. If AI says "no", reduces depth by 1 and tries again
-    6. If AI says "yes", generates and executes the full SQL query
-    7. Continues until successful or reaches depth 0
+    This function now handles both raw manifest.json and pre-processed tree format files:
+    1. Detects and processes the file format if needed
+    2. Extracts tables by depth from the processed data
+    3. Starts with the highest depth tables and iterates down
+    4. Gets column metadata for current depth tables via MCP tools
+    5. Asks AI if the available tables/columns are sufficient for the query
+    6. If AI says "no", reduces depth by 1 and tries again
+    7. If AI says "yes", generates and executes the full SQL query
+    8. Continues until successful or reaches depth 0
     
     Args:
-        dbt_file_data (Dict[str, Any]): Parsed dbt file content (not JSON string)
+        dbt_file_data (Dict[str, Any]): Raw dbt file data (manifest.json or tree format)
         connection (Dict[str, Any]): Database connection parameters
         analytics_prompt (str): The user's analytics question
         confluence_space (str): Confluence space for context
@@ -48,16 +436,25 @@ async def analyze_dbt_file_for_iterative_query(
         # Import MCP client here to avoid circular imports
         from ..client import _mcp_session
         
-        # Step 1: Dynamically analyze dbt structure and extract depth information
-        logger.info("🔍 Step 1: Dynamically analyzing dbt structure for table depths")
-        tables_by_depth, max_depth, dbt_context = await _analyze_dbt_structure_dynamic(dbt_file_data)
+        # Step 1: Process the dbt file (convert manifest to tree format if needed)
+        logger.info("🔄 Step 1: Processing dbt file and detecting format")
+        file_processing_result = process_dbt_file_for_ui(dbt_file_data)
+        processed_data = file_processing_result["processed_data"]
+        
+        logger.info(f"� File type: {file_processing_result['file_type']}")
+        logger.info(f"🔄 Preprocessing: {file_processing_result['metadata']['conversion']}")
+        
+        # Step 2: Extract tables by depth from processed data
+        logger.info("🔍 Step 2: Extracting tables by depth from processed data")
+        tables_by_depth, max_depth, dbt_context = await _extract_tables_from_tree_format(processed_data)
         
         if max_depth < 0:
-            logger.error("❌ No valid table structure found in dbt file")
+            logger.error("❌ No valid table structure found in processed data")
             return {
                 "status": "error", 
-                "error": "No valid table structure found in dbt file",
-                "dbt_context": dbt_context
+                "error": "No valid table structure found in processed data",
+                "dbt_context": dbt_context,
+                "file_processing": file_processing_result["metadata"]
             }
         
         logger.info(f"📊 Found {sum(len(tables) for tables in tables_by_depth.values())} tables")

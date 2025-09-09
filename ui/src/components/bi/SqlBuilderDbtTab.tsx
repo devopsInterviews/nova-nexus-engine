@@ -398,41 +398,105 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
     }
   };
 
-  // Try to parse and validate dbt model structure
-  const validateDbtContent = (content: string): { isValid: boolean; summary: string } => {
+  // Detect file format (manifest vs tree vs unknown)
+  const detectDbtFileFormat = (content: string): { type: 'manifest' | 'tree' | 'unknown'; details: string; issues?: string[] } => {
     try {
       const parsed = JSON.parse(content);
+      const issues: string[] = [];
       
-      // Check for common dbt file structures
-      if (parsed.model || parsed.models) {
+      // Check for manifest.json format (has metadata and nodes)
+      if (parsed.metadata && parsed.nodes) {
+        // Validate manifest structure
+        if (!parsed.metadata.dbt_version) issues.push("Missing dbt_version in metadata");
+        if (Object.keys(parsed.nodes).length === 0) issues.push("No nodes found in manifest");
+        
         return { 
-          isValid: true, 
-          summary: `dbt models file with ${Object.keys(parsed.models || parsed.model || {}).length} models` 
-        };
-      } else if (parsed.sources) {
-        return { 
-          isValid: true, 
-          summary: `dbt sources file with ${Object.keys(parsed.sources).length} sources` 
-        };
-      } else if (parsed.version && parsed.nodes) {
-        return { 
-          isValid: true, 
-          summary: `dbt manifest file (version ${parsed.version}) with ${Object.keys(parsed.nodes).length} nodes` 
-        };
-      } else if (Array.isArray(parsed)) {
-        return { 
-          isValid: true, 
-          summary: `JSON array with ${parsed.length} items` 
-        };
-      } else {
-        return { 
-          isValid: true, 
-          summary: `Generic JSON object with ${Object.keys(parsed).length} top-level keys` 
+          type: 'manifest', 
+          details: `dbt manifest.json (v${parsed.metadata.dbt_version || 'unknown'}) with ${Object.keys(parsed.nodes).length} nodes`,
+          issues: issues.length > 0 ? issues : undefined
         };
       }
-    } catch {
-      return { isValid: false, summary: 'Invalid JSON format' };
+      
+      // Check for tree format (has relations array)
+      if (Array.isArray(parsed.relations) && parsed.tree) {
+        // Validate tree structure
+        if (parsed.relations.length === 0) issues.push("Relations array is empty");
+        if (!parsed.relations.every((r: any) => r.hasOwnProperty('depth'))) issues.push("Some relations missing depth information");
+        
+        return { 
+          type: 'tree', 
+          details: `Pre-processed tree format with ${parsed.relations.length} relations`,
+          issues: issues.length > 0 ? issues : undefined
+        };
+      }
+      
+      // Try to identify why it's not supported
+      const reasons: string[] = [];
+      
+      if (!parsed.metadata && !parsed.relations) {
+        reasons.push("Missing both 'metadata' (for manifest) and 'relations' (for tree format)");
+      } else if (parsed.metadata && !parsed.nodes) {
+        reasons.push("Has 'metadata' but missing 'nodes' (incomplete manifest)");
+      } else if (parsed.relations && !Array.isArray(parsed.relations)) {
+        reasons.push("Has 'relations' but it's not an array (invalid tree format)");
+      } else if (Array.isArray(parsed.relations) && !parsed.tree) {
+        reasons.push("Has 'relations' array but missing 'tree' structure (incomplete tree format)");
+      }
+      
+      // Check for other dbt-like structures
+      if (parsed.model || parsed.models) {
+        reasons.push("Appears to be a dbt models file (not supported - use manifest.json or preprocessed tree format)");
+      } else if (parsed.sources) {
+        reasons.push("Appears to be a dbt sources file (not supported - use manifest.json or preprocessed tree format)");
+      } else if (Array.isArray(parsed)) {
+        reasons.push("JSON array format (not supported - expecting object with manifest or tree structure)");
+      } else {
+        reasons.push("Unknown JSON structure - not a recognizable dbt format");
+      }
+      
+      return { 
+        type: 'unknown', 
+        details: `Unsupported format: ${reasons.join(', ')}`,
+        issues: reasons
+      };
+    } catch (error) {
+      return { 
+        type: 'unknown', 
+        details: `Invalid JSON format: ${error instanceof Error ? error.message : 'Parse error'}`,
+        issues: ['File is not valid JSON']
+      };
     }
+  };
+
+  // Try to parse and validate dbt model structure
+  const validateDbtContent = (content: string): { 
+    isValid: boolean; 
+    summary: string; 
+    format: { type: 'manifest' | 'tree' | 'unknown'; details: string; issues?: string[] };
+    isDamaged: boolean;
+    damageReason?: string;
+  } => {
+    const format = detectDbtFileFormat(content);
+    
+    // Determine if file is damaged/broken
+    const isDamaged = format.type === 'unknown' || (format.issues && format.issues.length > 0);
+    
+    let damageReason: string | undefined;
+    if (format.type === 'unknown') {
+      damageReason = format.details;
+    } else if (format.issues && format.issues.length > 0) {
+      damageReason = `File has issues: ${format.issues.join(', ')}`;
+    }
+    
+    const isValid = format.type === 'manifest' || format.type === 'tree';
+    
+    return { 
+      isValid: isValid && !isDamaged,
+      summary: format.details,
+      format,
+      isDamaged,
+      damageReason
+    };
   };
 
   return (
@@ -541,16 +605,74 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
               {(() => {
                 const validation = validateDbtContent(selectedFile.content);
                 return (
-                  <Alert variant={validation.isValid ? "default" : "destructive"}>
-                    {validation.isValid ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
+                  <div className="space-y-3">
+                    {/* Main validation alert */}
+                    <Alert variant={validation.isValid ? "default" : "destructive"}>
+                      {validation.isValid ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4" />
+                      )}
+                      <AlertDescription>
+                        <strong>{validation.isValid ? 'Valid dbt File:' : validation.isDamaged ? 'File is Damaged/Broken:' : 'Invalid:'}</strong> {validation.summary}
+                      </AlertDescription>
+                    </Alert>
+
+                    {/* Detailed damage/error information */}
+                    {validation.isDamaged && validation.damageReason && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          <div className="space-y-2">
+                            <div><strong>Why this file is broken:</strong></div>
+                            <div className="text-sm">{validation.damageReason}</div>
+                            <div className="text-sm font-medium">
+                              <strong>Expected formats:</strong>
+                              <ul className="list-disc list-inside mt-1 space-y-1">
+                                <li><strong>dbt manifest.json:</strong> Must have 'metadata' and 'nodes' fields with proper structure</li>
+                                <li><strong>Pre-processed tree format:</strong> Must have 'relations' array and 'tree' object with depth information</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </AlertDescription>
+                      </Alert>
                     )}
-                    <AlertDescription>
-                      <strong>{validation.isValid ? 'Valid JSON:' : 'Invalid:'}</strong> {validation.summary}
-                    </AlertDescription>
-                  </Alert>
+
+                    {/* File Format Information - only show for valid files */}
+                    {validation.isValid && validation.format && !validation.isDamaged && (
+                      <div className={`rounded-lg p-3 border ${
+                        validation.format.type === 'manifest' 
+                          ? 'bg-blue-50/30 border-blue-200/50' 
+                          : validation.format.type === 'tree' 
+                          ? 'bg-green-50/30 border-green-200/50' 
+                          : 'bg-gray-50/30 border-gray-200/50'
+                      }`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            validation.format.type === 'manifest' ? 'bg-blue-500' 
+                            : validation.format.type === 'tree' ? 'bg-green-500' 
+                            : 'bg-gray-500'
+                          }`} />
+                          <span className={`text-sm font-medium ${
+                            validation.format.type === 'manifest' ? 'text-blue-700' 
+                            : validation.format.type === 'tree' ? 'text-green-700' 
+                            : 'text-gray-700'
+                          }`}>
+                            {validation.format.type === 'manifest' ? 'Raw dbt Manifest' 
+                             : validation.format.type === 'tree' ? 'Pre-processed Tree Format' 
+                             : 'Other Format'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {validation.format.type === 'manifest' 
+                            ? '📋 This raw manifest.json will be automatically converted to tree format for analysis' 
+                            : validation.format.type === 'tree' 
+                            ? '✅ This file is ready for analysis - no preprocessing needed' 
+                            : '⚠️ Format may not be fully supported for iterative analysis'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 );
               })()}
 
@@ -741,21 +863,29 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
             
             <div className="flex gap-3">
               {selectedFile ? (
-                <Button 
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
-                  onClick={handleIterativeAnalysis}
-                  disabled={isIterativeLoading || isLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim()}
-                >
-                  {isIterativeLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Brain className="w-4 h-4" />
-                      <Zap className="w-3 h-3" />
-                    </>
-                  )}
-                  {isIterativeLoading ? "Analyzing dbt Structure..." : "Generate SQL with dbt Analysis"}
-                </Button>
+                (() => {
+                  const validation = validateDbtContent(selectedFile.content);
+                  const isFileValid = validation.isValid && !validation.isDamaged;
+                  
+                  return (
+                    <Button 
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
+                      onClick={handleIterativeAnalysis}
+                      disabled={isIterativeLoading || isLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim() || !isFileValid}
+                      title={!isFileValid ? "Cannot analyze - file is damaged or in unsupported format" : undefined}
+                    >
+                      {isIterativeLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Brain className="w-4 h-4" />
+                          <Zap className="w-3 h-3" />
+                        </>
+                      )}
+                      {isIterativeLoading ? "Analyzing dbt Structure..." : "Generate SQL with dbt Analysis"}
+                    </Button>
+                  );
+                })()
               ) : (
                 <Button 
                   className="bg-gradient-primary flex items-center gap-2"
