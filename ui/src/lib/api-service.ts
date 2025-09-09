@@ -451,6 +451,64 @@ export const dbService = {
       body: JSON.stringify(fileData),
     });
   },
+
+  // Iterative dbt query analysis - starts with highest depth tables and iteratively reduces depth based on AI decisions
+  iterativeDbtQuery: async (connection: DbConnection & {
+    dbt_file_content: string;        // Required: JSON content of the dbt file
+    analytics_prompt: string;        // Required: user's analytics question
+    confluence_space: string;        // Required: Confluence space for context
+    confluence_title: string;        // Required: Confluence page title for context
+  }): Promise<ApiResponse<{
+    status: 'success' | 'error';     // Overall operation status
+    error?: string;                  // Error message if failed
+    final_depth?: number;            // The depth level that worked
+    tables_used?: string[];          // List of table names used in final query
+    sql_query?: string;              // The final SQL query generated
+    results?: Array<Record<string, any>>; // Query results if successful
+    row_count?: number;              // Number of rows returned
+    iteration_count?: number;        // How many depth iterations were needed
+    process_log?: Array<{            // Log of the iterative process
+      depth: number;                 // Depth level for this iteration
+      table_count: number;           // Number of tables at this depth
+      tables: string[];              // Names of tables included
+      ai_decision: 'yes' | 'no';     // AI's sufficiency decision
+      ai_reasoning: string;          // AI's explanation
+      sql_generated?: string;        // SQL generated for this iteration
+      execution_successful?: boolean; // Whether SQL executed successfully
+      error_message?: string;        // Error if execution failed
+    }>;
+  }>> => {
+    const { dbt_file_content, analytics_prompt, confluence_space, confluence_title, ...conn } = connection as any;
+    const body = buildPayload(conn as DbConnection, { 
+      dbt_file_content, 
+      analytics_prompt, 
+      confluence_space, 
+      confluence_title 
+    });
+    return fetchApi<{
+      status: 'success' | 'error';
+      error?: string;
+      final_depth?: number;
+      tables_used?: string[];
+      sql_query?: string;
+      results?: Array<Record<string, any>>;
+      row_count?: number;
+      iteration_count?: number;
+      process_log?: Array<{
+        depth: number;
+        table_count: number;
+        tables: string[];
+        ai_decision: 'yes' | 'no';
+        ai_reasoning: string;
+        sql_generated?: string;
+        execution_successful?: boolean;
+        error_message?: string;
+      }>;
+    }>('/api/iterative-dbt-query', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // Separate object for analytics-related API calls
