@@ -2210,26 +2210,67 @@ async def iterative_dbt_query(
         
         logger.info("🔧 Calling MCP tool for iterative analysis")
         
-        # Call the MCP tool
-        result = await _mcp_session.call_tool(
-            "analyze_dbt_file_for_iterative_query",
-            arguments={
-                "dbt_file_content": dbt_file_content,
-                "host": connection["host"],
-                "port": int(connection["port"]),
-                "user": connection["user"],
-                "password": connection["password"],
-                "database": connection["database"],
-                "analytics_prompt": analytics_prompt,
-                "confluence_space": confluence_space,
-                "confluence_title": confluence_title,
-                "database_type": connection.get("database_type", "postgres")
-            }
-        )
+        # Ensure dbt_file_content is a string (convert if it's a dict/object)
+        if isinstance(dbt_file_content, dict):
+            dbt_file_content_str = json.dumps(dbt_file_content)
+            logger.info("🔄 Converted dbt_file_content from dict to JSON string")
+        elif isinstance(dbt_file_content, str):
+            dbt_file_content_str = dbt_file_content
+            logger.info("✅ dbt_file_content is already a string")
+        else:
+            # Try to convert to string
+            dbt_file_content_str = str(dbt_file_content)
+            logger.warning(f"⚠️ dbt_file_content was {type(dbt_file_content)}, converted to string")
         
-        logger.info("📥 MCP tool completed, processing response...")
+        logger.info(f"📄 dbt_file_content length: {len(dbt_file_content_str)} characters")
+        
+        # Prepare tool arguments
+        tool_args = {
+            "dbt_file_content": dbt_file_content_str,
+            "host": connection["host"],
+            "port": int(connection["port"]),
+            "user": connection["user"],
+            "password": connection["password"],
+            "database": connection["database"],
+            "analytics_prompt": analytics_prompt,
+            "confluence_space": confluence_space,
+            "confluence_title": confluence_title,
+            "database_type": connection.get("database_type", "postgres")
+        }
+        
+        # Log sanitized version for debugging
+        safe_tool_args = dict(tool_args)
+        safe_tool_args["password"] = _mask_secret(safe_tool_args["password"])
+        safe_tool_args["dbt_file_content"] = f"<{len(dbt_file_content_str)} chars>"
+        safe_tool_args["analytics_prompt"] = f"<{len(analytics_prompt)} chars>"
+        logger.info("🔧 Calling MCP tool for iterative analysis")
+        logger.debug(f"Tool arguments (sanitized): {safe_tool_args}")
+        
+        # Call the MCP tool with proper error handling
+        query_start_time = time.time()
+        
+        try:
+            result = await _mcp_session.call_tool(
+                "analyze_dbt_file_for_iterative_query",
+                arguments=tool_args,
+                read_timeout_seconds=timedelta(seconds=600)
+            )
+            
+            query_execution_time = time.time() - query_start_time
+            logger.info("✅ MCP tool completed successfully in %.2fs", query_execution_time)
+            logger.debug(f"MCP tool returned {len(getattr(result, 'content', []) or [])} content parts")
+
+        except Exception as mcp_error:
+            query_execution_time = time.time() - query_start_time
+            logger.error("❌ MCP tool execution failed after %.2fs: %s", query_execution_time, str(mcp_error))
+            logger.error("Failed analytics prompt (first 500 chars): %s", analytics_prompt[:500])
+            raise HTTPException(
+                status_code=500,
+                detail=f"Iterative dbt analysis failed: {str(mcp_error)}"
+            )
         
         # Parse the CallToolResult content to extract the actual result data
+        logger.info("📥 Processing MCP response...")
         response_data = {}
         
         logger.debug("Processing MCP tool response content")
