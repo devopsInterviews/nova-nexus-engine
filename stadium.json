@@ -1,0 +1,403 @@
+{
+  "relations": [
+    {
+      "unique_id": "table.core.teams",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "teams",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.players",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "players",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.staff_roles",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "staff_roles",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.staff",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "staff",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.facilities",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "facilities",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.seating_sections",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "seating_sections",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.fans",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "fans",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.memberships",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "memberships",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.stores",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "stores",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.products",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "products",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.sales_transactions",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "sales_transactions",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.inventory_movements",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "inventory_movements",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.matches",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "matches",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.tickets",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "tickets",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.maintenance_workorders",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "maintenance_workorders",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.core.vendors",
+      "database": "stadium_mgmt",
+      "schema": "core",
+      "identifier": "vendors",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+
+    {
+      "unique_id": "table.ops.staff_shifts",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "staff_shifts",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.ops.tv_broadcasts",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "tv_broadcasts",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.ops.safety_incidents",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "safety_incidents",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.ops.vendor_invoices",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "vendor_invoices",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+
+    {
+      "unique_id": "table.analytics.kpi_targets",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "kpi_targets",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+    {
+      "unique_id": "table.analytics.budgets",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "budgets",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 0,
+      "upstream_uids": []
+    },
+
+    {
+      "unique_id": "view.ops.v_roster",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "v_roster",
+      "kind": "model",
+      "materialization": "view",
+      "depth": 1,
+      "upstream_uids": [
+        "table.core.players",
+        "table.core.teams"
+      ]
+    },
+    {
+      "unique_id": "view.ops.v_staff_roles",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "v_staff_roles",
+      "kind": "model",
+      "materialization": "view",
+      "depth": 1,
+      "upstream_uids": [
+        "table.core.staff",
+        "table.core.staff_roles",
+        "table.core.teams"
+      ]
+    },
+    {
+      "unique_id": "view.ops.v_store_sales",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "v_store_sales",
+      "kind": "model",
+      "materialization": "view",
+      "depth": 1,
+      "upstream_uids": [
+        "table.core.sales_transactions",
+        "table.core.products",
+        "table.core.stores"
+      ]
+    },
+    {
+      "unique_id": "view.ops.v_inventory_balances",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "v_inventory_balances",
+      "kind": "model",
+      "materialization": "view",
+      "depth": 1,
+      "upstream_uids": [
+        "table.core.inventory_movements",
+        "table.core.sales_transactions"
+      ]
+    },
+    {
+      "unique_id": "table.ops.fan_purchases",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "fan_purchases",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 1,
+      "upstream_uids": [
+        "table.core.fans",
+        "table.core.tickets",
+        "table.core.sales_transactions"
+      ]
+    },
+    {
+      "unique_id": "table.ops.match_attendance",
+      "database": "stadium_mgmt",
+      "schema": "ops",
+      "identifier": "match_attendance",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 1,
+      "upstream_uids": [
+        "table.core.matches",
+        "table.core.tickets"
+      ]
+    },
+
+    {
+      "unique_id": "table.analytics.broadcast_team_revenue",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "broadcast_team_revenue",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 1,
+      "upstream_uids": [
+        "table.ops.tv_broadcasts",
+        "table.core.matches"
+      ]
+    },
+    {
+      "unique_id": "table.analytics.team_revenue",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "team_revenue",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 2,
+      "upstream_uids": [
+        "table.ops.match_attendance",
+        "table.core.matches"
+      ]
+    },
+    {
+      "unique_id": "table.analytics.fan_value",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "fan_value",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 2,
+      "upstream_uids": [
+        "table.ops.fan_purchases",
+        "table.core.memberships"
+      ]
+    },
+    {
+      "unique_id": "view.analytics.facility_load",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "facility_load",
+      "kind": "model",
+      "materialization": "view",
+      "depth": 2,
+      "upstream_uids": [
+        "table.core.seating_sections",
+        "table.core.matches",
+        "table.ops.match_attendance"
+      ]
+    },
+    {
+      "unique_id": "table.analytics.revenue_by_month",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "revenue_by_month",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 2,
+      "upstream_uids": [
+        "table.ops.match_attendance",
+        "table.core.matches"
+      ]
+    },
+    {
+      "unique_id": "table.analytics.stadium_ops_kpis",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "stadium_ops_kpis",
+      "kind": "model",
+      "materialization": "table",
+      "depth": 3,
+      "upstream_uids": [
+        "view.analytics.facility_load",
+        "table.ops.match_attendance",
+        "table.core.maintenance_workorders",
+        "table.core.matches"
+      ]
+    },
+    {
+      "unique_id": "view.analytics.executive_dashboard",
+      "database": "stadium_mgmt",
+      "schema": "analytics",
+      "identifier": "executive_dashboard",
+      "kind": "model",
+      "materialization": "view",
+      "depth": 4,
+      "upstream_uids": [
+        "table.analytics.revenue_by_month",
+        "table.analytics.stadium_ops_kpis"
+      ]
+    }
+  ]
+}
