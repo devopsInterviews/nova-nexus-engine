@@ -384,10 +384,18 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
 
   // Preprocess manifest content for preview
   const preprocessManifestContent = useCallback(async (file: DbtFile) => {
-    if (!file.content) return;
+    console.log('preprocessManifestContent called with file:', file.name);
+    
+    if (!file.content) {
+      console.log('No file content, skipping');
+      return;
+    }
     
     const validation = validateDbtContent(file.content);
+    console.log('File validation result:', validation);
+    
     if (!validation.isValid || validation.format.type !== 'manifest') {
+      console.log('Not a valid manifest file, skipping preprocessing');
       return;
     }
 
@@ -397,10 +405,13 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
     
     try {
       const parsed = JSON.parse(file.content);
+      console.log('Parsed manifest, keys:', Object.keys(parsed));
       console.log('Calling backend API for preprocessing...');
       
       // Get authentication token
       const token = localStorage.getItem('auth_token');
+      console.log('Token exists:', !!token);
+      
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -415,10 +426,14 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
         body: JSON.stringify(parsed),
       });
       
+      console.log('API response status:', response.status);
+      
       if (response.ok) {
         const processedResult = await response.json();
-        console.log('Preprocessing successful, setting content...');
-        setPreprocessedContent(JSON.stringify(processedResult, null, 2));
+        console.log('Preprocessing successful, result keys:', Object.keys(processedResult));
+        const formattedContent = JSON.stringify(processedResult, null, 2);
+        console.log('Setting preprocessed content, length:', formattedContent.length);
+        setPreprocessedContent(formattedContent);
       } else {
         console.warn('Failed to preprocess manifest:', response.status, response.statusText);
         // Try to get error details
@@ -441,10 +456,14 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
 
   // Process file selection (trigger preprocessing for manifests)
   useEffect(() => {
+    console.log('useEffect triggered, selectedFile:', !!selectedFile);
     if (selectedFile) {
+      console.log('Processing file:', selectedFile.name);
       preprocessManifestContent(selectedFile);
     } else {
+      console.log('Clearing preprocessed content');
       setPreprocessedContent(null);
+      setIsPreprocessing(false);
     }
   }, [selectedFile, preprocessManifestContent]);
 
@@ -783,18 +802,29 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                     let contentToShow = selectedFile.content;
                     let isProcessedContent = false;
                     
+                    console.log('Rendering preview:', {
+                      'validation.isValid': validation.isValid,
+                      'validation.format.type': validation.format.type,
+                      'preprocessedContent exists': !!preprocessedContent,
+                      'isPreprocessing': isPreprocessing,
+                      'preprocessedContent length': preprocessedContent ? preprocessedContent.length : 0
+                    });
+                    
                     // For manifest files, show the preprocessed content if available
                     if (validation.isValid && validation.format.type === 'manifest') {
                       if (preprocessedContent) {
+                        console.log('Using preprocessed content');
                         contentToShow = preprocessedContent;
                         isProcessedContent = true;
-                      } else if (!isPreprocessing) {
-                        // Only show original content if not currently processing
-                        contentToShow = selectedFile.content;
-                      } else {
-                        // Show loading message while processing
+                      } else if (isPreprocessing) {
+                        console.log('Showing loading message');
                         contentToShow = "// Processing manifest...\n// Please wait while the backend preprocesses your manifest file.";
+                      } else {
+                        console.log('Using original content (preprocessing not started or failed)');
+                        contentToShow = selectedFile.content;
                       }
+                    } else {
+                      console.log('Not a manifest file, using original content');
                     }
                     
                     return (
@@ -820,10 +850,10 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                           </div>
                         )}
                         
-                        {/* Fixed size container with proper scrolling */}
-                        <div className="w-full h-[500px] border border-border/50 rounded-lg bg-card/50">
+                        {/* Flexible container with max-height to prevent layout issues */}
+                        <div className="w-full max-h-[400px] border border-border/50 rounded-lg bg-card/50">
                           <div className="h-full w-full overflow-auto">
-                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre min-w-max block">
+                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre block min-w-max">
                               {formatJsonContent(contentToShow)}
                             </pre>
                           </div>
