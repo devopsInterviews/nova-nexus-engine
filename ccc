@@ -1,0 +1,20 @@
+2025-09-10 06:29:19 - ERROR - Failed to parse column metadata JSON: Expecting value: line 1 column 1 (char 0)
+2025-09-10 06:29:19 - ERROR - Raw content: Error executing tool get_database_column_metadata: password authentication failed for user "malluser"
+2025-09-10 06:29:19 - ERROR - ❌ Error processing depth 4: Failed to parse column metadata JSON: Expecting value: line 1 column 1 (char 0)
+Traceback (most recent call last):
+  File "/app/app/services/dbt_analysis_service.py", line 545, in analyze_dbt_file_for_iterative_query
+    column_metadata = json.loads(column_metadata_text)
+  File "/usr/local/lib/python3.13/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/usr/local/lib/python3.13/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/json/decoder.py", line 363, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+During handling of the above exception, another exception occurred:
+Traceback (most recent call last):
+  File "/app/app/services/dbt_analysis_service.py", line 549, in analyze_dbt_file_for_iterative_query
+    raise Exception(f"Failed to parse column metadata JSON: {e}")
+Exception: Failed to parse column metadata JSON: Expecting value: line 1 column 1 (char 0)
