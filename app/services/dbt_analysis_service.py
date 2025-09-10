@@ -519,61 +519,118 @@ async def analyze_dbt_file_for_iterative_query(
             logger.debug(f"🏷️  Tables in scope: {current_tables}")
             
             try:
-                # Get column metadata for current tables via MCP
-                logger.info("🔍 Getting column metadata for current table set")
+                # Get enhanced schema with Confluence metadata for current tables via MCP
+                logger.info("🔍 Getting enhanced schema with Confluence metadata for current table set")
                 logger.info(f"📊 Database connection: {connection['host']}:{connection['port']} as {connection['user']} to {connection['database']}")
+                logger.info(f"📋 Confluence integration: space='{confluence_space}', title='{confluence_title}'")
                 logger.debug(f"🔐 Connection details: host={connection.get('host')}, port={connection.get('port')}, user={connection.get('user')}, database={connection.get('database')}, db_type={database_type}")
                 
+                # First get all database columns that actually exist
+                db_columns_args = {
+                    "host": connection['host'],
+                    "port": connection['port'],
+                    "user": connection['user'],
+                    "password": connection['password'],
+                    "database": connection['database'],
+                    "database_type": database_type
+                }
+                
+                # Get all table->columns mapping from database
+                logger.debug("Getting database schema first...")
+                db_schema_res = await _mcp_session.call_tool(
+                    "list_database_keys",
+                    arguments=db_columns_args
+                )
+                
+                db_text_parts = [m.text for m in db_schema_res.content if getattr(m, "text", None)]
+                db_text = db_text_parts[0] if db_text_parts else "{}"
+                
+                try:
+                    db_schema = json.loads(db_text)
+                    # Convert table->columns to flat list of table.column
+                    db_columns = []
+                    for table, columns in db_schema.items():
+                        for column in columns:
+                            db_columns.append(f"{table}.{column}")
+                    logger.debug(f"Found {len(db_columns)} total columns in database")
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse database schema, using empty list")
+                    db_columns = []
+                
+                # Now get enhanced schema with Confluence metadata
                 column_metadata_result = await _mcp_session.call_tool(
-                    "get_database_column_metadata",
+                    "get_enhanced_schema_with_confluence",
                     arguments={
+                        "space": confluence_space,
+                        "title": confluence_title,
                         "host": connection['host'],
                         "port": connection['port'],
                         "user": connection['user'],
                         "password": connection['password'],
                         "database": connection['database'],
+                        "columns": db_columns,
                         "database_type": database_type
                     }
                 )
                 
                 # Check if the MCP tool call was successful
                 if not column_metadata_result or not hasattr(column_metadata_result, 'content') or not column_metadata_result.content:
-                    raise Exception("Failed to get column metadata: No content returned from MCP tool")
+                    raise Exception("Failed to get enhanced schema: No content returned from MCP tool")
                 
                 # Parse the JSON result from MCP tool
                 # CallToolResult.content is a list of content items, get the first one's text
-                column_metadata_text = column_metadata_result.content[0].text if column_metadata_result.content else "{}"
+                enhanced_schema_text = column_metadata_result.content[0].text if column_metadata_result.content else "{}"
                 
                 # Check if the response is an error message instead of JSON
-                if column_metadata_text.startswith("Error executing tool"):
-                    logger.error(f"MCP tool error: {column_metadata_text}")
+                if enhanced_schema_text.startswith("Error executing tool"):
+                    logger.error(f"MCP tool error: {enhanced_schema_text}")
                     
                     # Provide more specific error messages based on the error type
-                    if "password authentication failed" in column_metadata_text:
+                    if "password authentication failed" in enhanced_schema_text:
                         raise Exception(f"Database authentication failed: Check username '{connection['user']}' and password for database '{connection['database']}' on {connection['host']}:{connection['port']}")
-                    elif "connection refused" in column_metadata_text:
+                    elif "connection refused" in enhanced_schema_text:
                         raise Exception(f"Database connection refused: Cannot connect to {connection['host']}:{connection['port']}. Check if the database server is running and accessible.")
-                    elif "database" in column_metadata_text and "does not exist" in column_metadata_text:
+                    elif "database" in enhanced_schema_text and "does not exist" in enhanced_schema_text:
                         raise Exception(f"Database '{connection['database']}' does not exist on server {connection['host']}:{connection['port']}")
                     else:
-                        raise Exception(f"Database connection failed: {column_metadata_text}")
+                        raise Exception(f"Database connection failed: {enhanced_schema_text}")
                 
                 try:
-                    column_metadata = json.loads(column_metadata_text)
+                    enhanced_schema = json.loads(enhanced_schema_text)
+                    logger.info(f"✅ Parsed enhanced schema with {len(enhanced_schema)} schema.table entries")
                 except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse column metadata JSON: {e}")
-                    logger.error(f"Raw content: {column_metadata_text}")
-                    raise Exception(f"Invalid response from database: Expected JSON but got: {column_metadata_text[:200]}...")
+                    logger.error(f"Failed to parse enhanced schema JSON: {e}")
+                    logger.error(f"Raw content: {enhanced_schema_text}")
+                    raise Exception(f"Invalid response from database: Expected JSON but got: {enhanced_schema_text[:200]}...")
                 
-                # Filter metadata to only include our current tables
+                # Convert enhanced schema format to the expected column metadata format
+                # Enhanced schema format: {"schema.table": [{"name": "col", "description": "desc", "type": "type"}]}
+                # Convert to: {"schema.table.column": {"table_schema": "schema", "table_name": "table", "column_name": "col", "description": "desc", "data_type": "type"}}
                 filtered_metadata = {}
-                for key, meta in column_metadata.items():
-                    table_schema = meta.get("table_schema", "public")
-                    table_name = meta.get("table_name")
+                for schema_table_key, columns in enhanced_schema.items():
+                    # Parse schema.table format
+                    if "." in schema_table_key:
+                        table_schema, table_name = schema_table_key.split(".", 1)
+                    else:
+                        table_schema = "public"
+                        table_name = schema_table_key
                     
                     # Check if this table is in our current scope
                     if table_name in current_tables or f"{table_schema}.{table_name}" in current_tables:
-                        filtered_metadata[key] = meta
+                        for col in columns:
+                            col_name = col.get("name", "")
+                            col_desc = col.get("description", "No description")
+                            col_type = col.get("type", "UNKNOWN")
+                            
+                            # Create a key compatible with existing logic
+                            metadata_key = f"{table_schema}.{table_name}.{col_name}"
+                            filtered_metadata[metadata_key] = {
+                                "table_schema": table_schema,
+                                "table_name": table_name,
+                                "column_name": col_name,
+                                "description": col_desc,
+                                "data_type": col_type
+                            }
                 
                 logger.info(f"📊 Found metadata for {len(filtered_metadata)} columns across {len(current_tables)} tables")
                 

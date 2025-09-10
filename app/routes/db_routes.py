@@ -2077,8 +2077,8 @@ async def preprocess_manifest(
         # Import the preprocessing function
         from app.services.dbt_analysis_service import preprocess_dbt_manifest
         
-        # Process the manifest
-        processed_data = await preprocess_dbt_manifest(manifest_data)
+        # Process the manifest (not async)
+        processed_data = preprocess_dbt_manifest(manifest_data)
         
         logger.debug(f"Preprocessed manifest for user {current_user.username}")
         
@@ -2173,7 +2173,8 @@ async def log_dbt_file_upload(
 @router.post("/iterative-dbt-query")
 async def iterative_dbt_query(
     request: Request,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
 ):
     """
     Analyze a dbt file and iteratively build SQL queries starting from the highest depth tables.
@@ -2206,8 +2207,10 @@ async def iterative_dbt_query(
         confluence_space = data.get("confluence_space", "")
         confluence_title = data.get("confluence_title", "")
         
-        # Extract connection details
-        connection = data.get("connection", {})
+        # Extract and resolve connection details using same pattern as other endpoints
+        saved_connections = _load_saved_connections(current_user.id, db)
+        connection_data = data.get("connection", {})
+        connection = _resolve_connection_payload(connection_data, saved_connections)
         
         logger.info(f"📊 Analytics prompt: {analytics_prompt[:100]}...")
         logger.info(f"📋 Confluence context: {confluence_space}/{confluence_title}")
