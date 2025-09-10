@@ -517,14 +517,24 @@ async def analyze_dbt_file_for_iterative_query(
             }
             
             # Get all table->columns mapping from database
-            logger.debug("Getting complete database schema...")
+            logger.info("🔍 Getting complete database schema with MCP tool 'list_database_keys'...")
+            logger.info(f"📊 MCP Args: host={connection['host']}, port={connection['port']}, database={connection['database']}, user={connection['user']}")
+            
             db_schema_res = await _mcp_session.call_tool(
                 "list_database_keys",
                 arguments=db_columns_args
             )
             
-            db_text_parts = [m.text for m in db_schema_res.content if getattr(m, "text", None)]
-            db_text = db_text_parts[0] if db_text_parts else "{}"
+            logger.info(f"🔍 MCP Response Type: {type(db_schema_res)}")
+            logger.info(f"🔍 MCP Response Content: {db_schema_res}")
+            
+            if hasattr(db_schema_res, 'content') and db_schema_res.content:
+                db_text_parts = [m.text for m in db_schema_res.content if hasattr(m, "text") and m.text]
+                db_text = db_text_parts[0] if db_text_parts else "{}"
+                logger.info(f"🔍 Raw DB Schema Text (first 200 chars): {db_text[:200]}")
+            else:
+                logger.error("❌ No content in MCP response for list_database_keys")
+                db_text = "{}"
             
             try:
                 db_schema = json.loads(db_text)
@@ -534,14 +544,16 @@ async def analyze_dbt_file_for_iterative_query(
                     for column in columns:
                         db_columns.append(f"{table}.{column}")
                 logger.info(f"✅ Found {len(db_columns)} total columns across {len(db_schema)} tables in database")
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse database schema, using empty list")
+                logger.info(f"📋 Sample tables: {list(db_schema.keys())[:5]}")
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Failed to parse database schema JSON: {e}")
+                logger.error(f"❌ Raw content that failed to parse: {db_text}")
                 db_columns = []
                 db_schema = {}
             
             # Now get enhanced schema with Confluence metadata for ALL columns
             if db_columns:
-                logger.info(f"🔍 Getting enhanced schema for ALL {len(db_columns)} columns...")
+                logger.info(f"🔍 Getting enhanced schema for ALL {len(db_columns)} columns with MCP tool 'get_enhanced_schema_with_confluence'...")
                 enhanced_args = {
                     "space": confluence_space,
                     "title": confluence_title,
@@ -554,16 +566,26 @@ async def analyze_dbt_file_for_iterative_query(
                     "database_type": database_type
                 }
                 
+                logger.info(f"📊 Enhanced Schema MCP Args: space={confluence_space}, title={confluence_title}, columns_count={len(db_columns)}")
+                
                 enhanced_schema_result = await _mcp_session.call_tool(
                     "get_enhanced_schema_with_confluence",
                     arguments=enhanced_args
                 )
                 
+                logger.info(f"🔍 Enhanced Schema MCP Response Type: {type(enhanced_schema_result)}")
+                logger.info(f"🔍 Enhanced Schema MCP Response: {enhanced_schema_result}")
+                
                 # Parse enhanced schema response
-                enhanced_schema_text = enhanced_schema_result.content[0].text if enhanced_schema_result.content else "{}"
+                if hasattr(enhanced_schema_result, 'content') and enhanced_schema_result.content:
+                    enhanced_schema_text = enhanced_schema_result.content[0].text if enhanced_schema_result.content else "{}"
+                    logger.info(f"🔍 Enhanced Schema Raw Text (first 500 chars): {enhanced_schema_text[:500]}")
+                else:
+                    logger.error("❌ No content in Enhanced Schema MCP response")
+                    enhanced_schema_text = "{}"
                 
                 if enhanced_schema_text.startswith("Error executing tool"):
-                    logger.error(f"MCP tool error: {enhanced_schema_text}")
+                    logger.error(f"❌ MCP tool error in get_enhanced_schema_with_confluence: {enhanced_schema_text}")
                     # Provide specific error messages
                     if "password authentication failed" in enhanced_schema_text:
                         raise Exception(f"Database authentication failed: Check username '{connection['user']}' and password for database '{connection['database']}' on {connection['host']}:{connection['port']}")
@@ -577,12 +599,13 @@ async def analyze_dbt_file_for_iterative_query(
                 try:
                     all_enhanced_schema = json.loads(enhanced_schema_text)
                     logger.info(f"✅ Successfully fetched enhanced schema with {len(all_enhanced_schema)} schema.table entries")
+                    logger.info(f"📋 Sample enhanced schema keys: {list(all_enhanced_schema.keys())[:5]}")
                 except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse enhanced schema JSON: {e}")
-                    logger.error(f"Raw content: {enhanced_schema_text}")
-                    raise Exception(f"Invalid response from database: Expected JSON but got: {enhanced_schema_text[:200]}...")
+                    logger.error(f"❌ Failed to parse enhanced schema JSON: {e}")
+                    logger.error(f"❌ Raw enhanced schema content: {enhanced_schema_text}")
+                    raise Exception(f"Invalid response from enhanced schema: Expected JSON but got: {enhanced_schema_text[:200]}...")
             else:
-                logger.warning("No database columns found, using empty enhanced schema")
+                logger.warning("⚠️ No database columns found, using empty enhanced schema")
                 all_enhanced_schema = {}
                 
         except Exception as schema_error:
@@ -719,38 +742,65 @@ async def analyze_dbt_file_for_iterative_query(
                     
                     # Step B: Execute analytics query with approved tables only
                     logger.info("📊 Step B: Executing analytics query on approved tables")
+                    logger.info(f"🎯 Analytics Prompt: {analytics_prompt}")
+                    logger.info(f"📋 Approved Tables: {cumulative_tables}")
+                    logger.info(f"🔑 Approved Table Keys Structure: {approved_keys}")
+                    
                     try:
+                        analytics_mcp_args = {
+                            "host": connection['host'],
+                            "port": connection['port'],
+                            "user": connection['user'],
+                            "password": connection['password'],
+                            "database": connection['database'],
+                            "analytics_prompt": analytics_prompt,
+                            "approved_tables": cumulative_tables,  # Pass as list, not JSON string
+                            "database_type": database_type,
+                            "confluence_space": confluence_space,
+                            "confluence_title": confluence_title
+                        }
+                        
+                        logger.info(f"📊 Calling MCP tool 'run_analytics_query_on_approved_tables' with args:")
+                        logger.info(f"   📊 Database: {connection['host']}:{connection['port']}/{connection['database']}")
+                        logger.info(f"   📋 Tables List: {cumulative_tables}")
+                        logger.info(f"   🎯 Analytics prompt: {analytics_prompt[:100]}...")
+                        
                         analytics_result_mcp = await _mcp_session.call_tool(
                             "run_analytics_query_on_approved_tables",
-                            arguments={
-                                "host": connection['host'],
-                                "port": connection['port'],
-                                "user": connection['user'],
-                                "password": connection['password'],
-                                "database": connection['database'],
-                                "analytics_prompt": analytics_prompt,
-                                "approved_tables": json.dumps(cumulative_tables),
-                                "database_type": database_type,
-                                "confluence_space": confluence_space,
-                                "confluence_title": confluence_title
-                            }
+                            arguments=analytics_mcp_args
                         )
+                        
+                        logger.info(f"🔍 Analytics MCP Response Type: {type(analytics_result_mcp)}")
+                        logger.info(f"🔍 Analytics MCP Response: {analytics_result_mcp}")
                         
                         # Check if the MCP tool call was successful
                         if analytics_result_mcp and hasattr(analytics_result_mcp, 'content') and analytics_result_mcp.content:
                             # Parse the JSON result from MCP tool
                             analytics_text = analytics_result_mcp.content[0].text
+                            logger.info(f"🔍 Analytics Raw Text (first 1000 chars): {analytics_text[:1000]}")
+                            
                             try:
                                 analytics_result = json.loads(analytics_text)
+                                logger.info(f"✅ Analytics result parsed successfully")
+                                logger.info(f"📊 Analytics result keys: {list(analytics_result.keys())}")
+                                
+                                if "sql" in analytics_result:
+                                    logger.info(f"📝 Generated SQL: {analytics_result['sql'][:200]}...")
+                                if "rows" in analytics_result:
+                                    logger.info(f"📊 Result rows count: {len(analytics_result.get('rows', []))}")
+                                    
                             except json.JSONDecodeError as e:
-                                logger.error(f"Failed to parse analytics result JSON: {e}")
-                                analytics_result = {"error": f"JSON parse error: {e}"}
+                                logger.error(f"❌ Failed to parse analytics result JSON: {e}")
+                                logger.error(f"❌ Raw analytics text: {analytics_text}")
+                                analytics_result = {"error": f"JSON parse error: {e}", "raw_response": analytics_text}
                         else:
+                            logger.error("❌ No content returned from analytics MCP tool")
                             analytics_result = {"error": "No content returned from MCP tool"}
                         
-                        logger.info("✅ Analytics query completed successfully")
+                        logger.info("✅ Analytics query processing completed")
+                        
                     except Exception as e:
-                        logger.error(f"❌ Analytics query failed: {e}")
+                        logger.error(f"❌ Analytics query failed with exception: {e}", exc_info=True)
                         analytics_result = {"error": str(e)}
                     
                     # Return comprehensive results

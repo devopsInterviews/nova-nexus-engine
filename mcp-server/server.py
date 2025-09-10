@@ -787,14 +787,28 @@ async def list_database_keys(
     else:
         raise ValueError(f"Unsupported database_type: {database_type!r}")
 
-    await client.init()
+    try:
+        await client.init()
+        logger.info("✅ Database client initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize database client: {e}")
+        raise
+        
     try:
         keys_map = await client.list_keys()
         logger.info("📋 Retrieved column mappings for %d database objects (tables and views)", len(keys_map))
+        logger.info("📋 Sample tables: %s", list(keys_map.keys())[:5])
         logger.debug("Keys map: %s", keys_map)
         return keys_map
+    except Exception as e:
+        logger.error(f"❌ Error calling client.list_keys(): {e}")
+        raise
     finally:
-        await client.close()
+        try:
+            await client.close()
+            logger.info("✅ Database client closed successfully")
+        except Exception as e:
+            logger.error(f"❌ Error closing database client: {e}")
 
 @mcp.tool()
 async def get_database_column_metadata(
@@ -888,7 +902,9 @@ async def get_enhanced_schema_with_confluence(
         }
     """
     logger.info("🔍 get_enhanced_schema_with_confluence called for %d specific columns", len(columns))
-    logger.debug("📋 Requested columns: %s", columns[:10])  # Log first 10 columns
+    logger.info(f"📊 Database: {host}:{port}/{database} as {user}")
+    logger.info(f"📋 Confluence: {space}/{title}")
+    logger.debug("📋 Requested columns (first 10): %s", columns[:10])  # Log first 10 columns
     
     # 1. Get database metadata for ALL columns (we'll filter later)
     if database_type == "postgres":
@@ -900,14 +916,27 @@ async def get_enhanced_schema_with_confluence(
     else:
         raise ValueError(f"Unsupported database_type: {database_type!r}")
 
-    await client.init()
+    try:
+        await client.init()
+        logger.info("✅ Database client initialized for enhanced schema")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize database client for enhanced schema: {e}")
+        raise
+        
     try:
         # Get detailed column metadata with types
         column_metadata = await client.get_column_metadata()
         logger.info("📊 Got metadata for %d total columns from database", len(column_metadata))
         
+    except Exception as e:
+        logger.error(f"❌ Error getting column metadata: {e}")
+        raise
     finally:
-        await client.close()
+        try:
+            await client.close()
+            logger.info("✅ Database client closed for enhanced schema")
+        except Exception as e:
+            logger.error(f"❌ Error closing database client for enhanced schema: {e}")
     
     # 2. Get Confluence descriptions for the specific columns
     logger.info("📋 Fetching Confluence descriptions from %s/%s", space, title)
@@ -1642,8 +1671,11 @@ async def run_analytics_query_on_approved_tables(
     logger.info(
         f"🔍 run_analytics_query_on_approved_tables called for {len(approved_tables)} approved tables"
     )
+    logger.info(f"📊 Database: {host}:{port}/{database} as {user}")
     logger.info(f"📊 Analytics prompt: {analytics_prompt[:100]}...")
     logger.info(f"✅ Approved tables: {approved_tables}")
+    logger.info(f"📋 Confluence context: {confluence_space}/{confluence_title}")
+    logger.info(f"🔧 Database type: {database_type}")
 
     if database_type == "postgres":
         client = PostgresClient(host, port, user, password,
@@ -1654,7 +1686,12 @@ async def run_analytics_query_on_approved_tables(
     else:
         raise ValueError(f"Unsupported database_type: {database_type!r}")
 
-    await client.init()
+    try:
+        await client.init()
+        logger.info("✅ Database client initialized for analytics query")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize database client for analytics: {e}")
+        raise
     try:
         # Get schema information only for approved tables
         logger.info("🔍 Getting schema information for approved tables...")
@@ -1700,32 +1737,35 @@ async def run_analytics_query_on_approved_tables(
         enhanced_schema_context = ""
         if confluence_space and confluence_title:
             try:
+                # Build column list for approved tables only
+                approved_column_specs = []
+                for table_name in approved_tables:
+                    for col in approved_columns:
+                        if col.get("table_name") == table_name:
+                            approved_column_specs.append(f"{table_name}.{col.get('column_name', col.get('name', ''))}")
+                
+                logger.info(f"🔍 Building enhanced schema context for {len(approved_column_specs)} approved columns")
+                
                 enhanced_result = await get_enhanced_schema_with_confluence(
-                    host, port, user, password, database, 
-                    confluence_space, confluence_title, database_type
+                    space=confluence_space,
+                    title=confluence_title,
+                    host=host,
+                    port=port, 
+                    user=user,
+                    password=password,
+                    database=database,
+                    columns=approved_column_specs,
+                    database_type=database_type
                 )
                 
-                if enhanced_result and "content" in enhanced_result:
-                    enhanced_content = enhanced_result["content"][0]["text"]
-                    # Parse and filter the enhanced schema to only include approved tables
-                    try:
-                        enhanced_data = json.loads(enhanced_content)
-                        if "tables" in enhanced_data:
-                            filtered_tables = []
-                            for table in enhanced_data["tables"]:
-                                table_name = table.get("name", "")
-                                if table_name in approved_set:
-                                    filtered_tables.append(table)
-                            
-                            enhanced_data["tables"] = filtered_tables
-                            enhanced_schema_context = json.dumps(enhanced_data, indent=2)
-                            logger.info(f"✅ Filtered enhanced schema to {len(filtered_tables)} approved tables")
-                    except json.JSONDecodeError:
-                        logger.warning("⚠️ Could not parse enhanced schema for filtering")
-                        enhanced_schema_context = enhanced_content
+                if enhanced_result:
+                    enhanced_schema_context = json.dumps(enhanced_result, indent=2)
+                    logger.info(f"✅ Built enhanced schema context for approved tables")
                         
             except Exception as e:
                 logger.warning(f"⚠️ Failed to get enhanced schema context: {e}")
+        else:
+            logger.info("📋 No Confluence context provided, skipping enhanced schema")
         
         # Build the analytics prompt with only approved table context
         filtered_context = {
@@ -1758,13 +1798,19 @@ Do not reference any tables outside of this approved set.
         
         # Execute the analytics query with filtered context
         logger.info("🚀 Executing analytics query with approved tables context...")
+        logger.info(f"📝 Enhanced prompt length: {len(enhanced_prompt)} characters")
+        logger.debug(f"📝 Full enhanced prompt: {enhanced_prompt}")
         
         # Use LLM to generate SQL with the enhanced prompt
+        logger.info("🤖 Calling LLM to generate SQL query...")
         sql_raw = await llm.call_remote_llm(
             context=enhanced_prompt,
             prompt="Generate SQL query based on the provided context and analytics request.",
             system_prompt="You are a PostgreSQL expert. Generate efficient SQL queries based on the provided database schema and requirements. Return only the SQL query without explanation."
         )
+        
+        logger.info(f"🤖 LLM returned SQL (length: {len(sql_raw)} chars)")
+        logger.debug(f"🤖 Raw SQL from LLM: {sql_raw}")
         
         # Clean the SQL (strip code fences)
         def _strip_sql_fences_local(txt: str) -> str:
@@ -1778,20 +1824,22 @@ Do not reference any tables outside of this approved set.
             return t
         
         sql = _strip_sql_fences_local(sql_raw)
-        logger.info("🔍 Generated SQL for approved tables:\n%s", sql)
+        logger.info("🔍 Generated SQL for approved tables (length: %d chars):\n%s", len(sql), sql)
         
         # Execute the query
+        logger.info("🔍 Executing SQL query against database...")
         rows = []
         try:
             rows = await client.execute_query(sql)
             logger.info("✅ Query executed successfully: rows=%d", len(rows or []))
             if rows:
-                logger.debug("First row sample=%s", rows[0])
+                logger.info("📊 First row sample (first 5 columns): %s", {k: v for k, v in list(rows[0].items())[:5]} if rows[0] else "N/A")
+                logger.info("📊 Column names: %s", list(rows[0].keys()) if rows and rows[0] else "N/A")
         except Exception as query_error:
             logger.error("❌ SQL execution failed: %s", str(query_error))
-            logger.error("Failed SQL query was:\n%s", sql)
+            logger.error("❌ Failed SQL query was:\n%s", sql)
             # Return error result instead of raising
-            return {
+            error_result = {
                 "error": str(query_error),
                 "sql": sql,
                 "rows": [],
@@ -1802,6 +1850,8 @@ Do not reference any tables outside of this approved set.
                     "filtering_applied": True
                 }
             }
+            logger.info("❌ Returning error result: %s", error_result)
+            return error_result
         
         # Build result with filtering metadata
         result = {
@@ -1816,13 +1866,31 @@ Do not reference any tables outside of this approved set.
         }
         
         logger.info("✅ Analytics query completed successfully with filtered context")
+        logger.info(f"📊 Final result: {len(rows)} rows, SQL length: {len(sql)} chars")
+        logger.debug(f"📊 Full result keys: {list(result.keys())}")
         return result
         
     except Exception as e:
         logger.error(f"❌ Error in run_analytics_query_on_approved_tables: {e}", exc_info=True)
-        raise
+        error_result = {
+            "error": str(e),
+            "sql": "",
+            "rows": [],
+            "filtering_info": {
+                "approved_tables": approved_tables if 'approved_tables' in locals() else [],
+                "total_approved_tables": 0,
+                "total_approved_columns": 0,
+                "filtering_applied": True
+            }
+        }
+        logger.info("❌ Returning exception error result: %s", error_result)
+        return error_result
     finally:
-        await client.close()
+        try:
+            await client.close()
+            logger.info("✅ Database client closed for analytics query")
+        except Exception as e:
+            logger.error(f"❌ Error closing database client for analytics: {e}")
 
 
 if __name__ == "__main__":
