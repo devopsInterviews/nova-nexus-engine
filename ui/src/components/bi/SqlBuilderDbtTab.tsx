@@ -807,24 +807,26 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                       'validation.format.type': validation.format.type,
                       'preprocessedContent exists': !!preprocessedContent,
                       'isPreprocessing': isPreprocessing,
-                      'preprocessedContent length': preprocessedContent ? preprocessedContent.length : 0
+                      'preprocessedContent length': preprocessedContent ? preprocessedContent.length : 0,
+                      'selectedFile name': selectedFile.name
                     });
                     
                     // For manifest files, show the preprocessed content if available
                     if (validation.isValid && validation.format.type === 'manifest') {
+                      console.log('✅ This is a valid manifest file');
                       if (preprocessedContent) {
-                        console.log('Using preprocessed content');
+                        console.log('✅ Using preprocessed content (length:', preprocessedContent.length, ')');
                         contentToShow = preprocessedContent;
                         isProcessedContent = true;
                       } else if (isPreprocessing) {
-                        console.log('Showing loading message');
+                        console.log('⏳ Still processing, showing loading message');
                         contentToShow = "// Processing manifest...\n// Please wait while the backend preprocesses your manifest file.";
                       } else {
-                        console.log('Using original content (preprocessing not started or failed)');
+                        console.log('⚠️ No preprocessed content and not processing - showing original');
                         contentToShow = selectedFile.content;
                       }
                     } else {
-                      console.log('Not a manifest file, using original content');
+                      console.log('ℹ️ Not a manifest file or invalid, using original content. Type:', validation.format.type);
                     }
                     
                     return (
@@ -850,10 +852,10 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                           </div>
                         )}
                         
-                        {/* Flexible container with max-height to prevent layout issues */}
-                        <div className="w-full max-h-[400px] border border-border/50 rounded-lg bg-card/50">
+                        {/* Fixed container with proper scrolling */}
+                        <div className="w-full h-[400px] border border-border/50 rounded-lg bg-card/50 overflow-hidden">
                           <div className="h-full w-full overflow-auto">
-                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre block min-w-max">
+                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap break-words">
                               {formatJsonContent(contentToShow)}
                             </pre>
                           </div>
