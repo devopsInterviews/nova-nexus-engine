@@ -1144,7 +1144,7 @@ REASONING: [Explain specifically what critical data/relationships are missing]
 Note: You are looking at CUMULATIVE tables from depth {current_depth} to {max_depth}. If this seems insufficient, we can try with more tables from shallower depths.
 """
         logger.info("🤖 Sending decision prompt to AI...")
-        
+        logger.debug(f"🤖 Decision Prompt:\n\n{decision_prompt}")
         response = await llm_client.query_llm(decision_prompt)
         
         logger.info(f"🤖 RAW AI RESPONSE: {response}")

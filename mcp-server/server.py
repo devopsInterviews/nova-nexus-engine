@@ -1730,24 +1730,72 @@ async def run_analytics_query_on_approved_tables(
         logger.info("🔍 Getting column information for approved tables...")
         approved_columns = []
         
-        for table_info in approved_schemas:
-            actual_table_name = table_info.get("table_name", table_info.get("name", ""))
-            schema_name = table_info.get("schema", "public")
-            full_table_name = table_info.get("full_name", actual_table_name)
+        if database_type == "postgres":
+            # Use get_column_metadata to get all column details at once for PostgreSQL
+            all_column_metadata = await client.get_column_metadata()
             
-            try:
-                columns = await client.list_columns(actual_table_name, schema_name)
-                for col in columns:
-                    col["table_name"] = actual_table_name  # Ensure table name is included
-                    col["schema_name"] = schema_name  # Add schema info
-                    col["full_table_name"] = full_table_name  # Add full qualified name
-                    approved_columns.append(col)
+            for table_info in approved_schemas:
+                actual_table_name = table_info.get("table_name", table_info.get("name", ""))
+                schema_name = table_info.get("schema", "public")
+                full_table_name = table_info.get("full_name", actual_table_name)
                 
-                logger.info(f"✅ Got {len(columns)} columns for table '{full_table_name}' (schema: {schema_name})")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to get columns for table '{full_table_name}': {e}")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to get columns for table '{table_name}': {e}")
+                # Filter metadata for this specific table
+                table_columns = []
+                for metadata_key, metadata in all_column_metadata.items():
+                    # metadata_key format is "schema.table.column"
+                    if metadata.get("table_schema") == schema_name and metadata.get("table_name") == actual_table_name:
+                        # Convert to the format expected by the rest of the code
+                        column_info = {
+                            "table_name": actual_table_name,
+                            "column_name": metadata.get("column_name"),
+                            "data_type": metadata.get("data_type"),
+                            "schema_name": schema_name,
+                            "full_table_name": full_table_name,
+                            "is_nullable": metadata.get("is_nullable"),
+                            "column_default": metadata.get("column_default"),
+                            "character_maximum_length": metadata.get("character_maximum_length")
+                        }
+                        table_columns.append(column_info)
+                        approved_columns.append(column_info)
+                
+                logger.info(f"✅ Got {len(table_columns)} columns for table '{full_table_name}' (schema: {schema_name})")
+                if not table_columns:
+                    logger.warning(f"⚠️ No columns found for table '{full_table_name}' in schema '{schema_name}'")
+                    
+        elif database_type == "mssql":
+            # For MSSQL, fall back to list_keys method since get_column_metadata is not implemented
+            logger.info("🔍 Using list_keys for MSSQL column information...")
+            all_keys = await client.list_keys()
+            
+            for table_info in approved_schemas:
+                actual_table_name = table_info.get("table_name", table_info.get("name", ""))
+                schema_name = table_info.get("schema", "dbo")
+                full_table_name = table_info.get("full_name", actual_table_name)
+                
+                # Get columns for this table from list_keys
+                if actual_table_name in all_keys:
+                    columns = all_keys[actual_table_name]
+                    for column_name in columns:
+                        column_info = {
+                            "table_name": actual_table_name,
+                            "column_name": column_name,
+                            "data_type": "UNKNOWN",  # MSSQL client doesn't provide type info
+                            "schema_name": schema_name,
+                            "full_table_name": full_table_name,
+                            "is_nullable": "UNKNOWN",
+                            "column_default": None,
+                            "character_maximum_length": None
+                        }
+                        approved_columns.append(column_info)
+                    
+                    logger.info(f"✅ Got {len(columns)} columns for table '{full_table_name}' (schema: {schema_name})")
+                else:
+                    logger.warning(f"⚠️ No columns found for table '{full_table_name}' in list_keys result")
+        
+        if not approved_columns:
+            logger.error("❌ No columns found for any approved tables")
+        else:
+            logger.info(f"📊 Total approved columns collected: {len(approved_columns)}")
         
         logger.info(f"📊 Total approved columns: {len(approved_columns)}")
         
