@@ -521,15 +521,18 @@ async def analyze_dbt_file_for_iterative_query(
             try:
                 # Get column metadata for current tables via MCP
                 logger.info("🔍 Getting column metadata for current table set")
+                logger.info(f"📊 Database connection: {connection['host']}:{connection['port']} as {connection['user']} to {connection['database']}")
+                logger.debug(f"🔐 Connection details: host={connection.get('host')}, port={connection.get('port')}, user={connection.get('user')}, database={connection.get('database')}, db_type={database_type}")
+                
                 column_metadata_result = await _mcp_session.call_tool(
                     "get_database_column_metadata",
                     arguments={
-                        "host": str(connection['host']),
-                        "port": str(connection['port']),
-                        "user": str(connection['user']),
-                        "password": str(connection['password']),
-                        "database": str(connection['database']),
-                        "database_type": str(database_type)
+                        "host": connection['host'],
+                        "port": connection['port'],
+                        "user": connection['user'],
+                        "password": connection['password'],
+                        "database": connection['database'],
+                        "database_type": database_type
                     }
                 )
                 
@@ -541,12 +544,26 @@ async def analyze_dbt_file_for_iterative_query(
                 # CallToolResult.content is a list of content items, get the first one's text
                 column_metadata_text = column_metadata_result.content[0].text if column_metadata_result.content else "{}"
                 
+                # Check if the response is an error message instead of JSON
+                if column_metadata_text.startswith("Error executing tool"):
+                    logger.error(f"MCP tool error: {column_metadata_text}")
+                    
+                    # Provide more specific error messages based on the error type
+                    if "password authentication failed" in column_metadata_text:
+                        raise Exception(f"Database authentication failed: Check username '{connection['user']}' and password for database '{connection['database']}' on {connection['host']}:{connection['port']}")
+                    elif "connection refused" in column_metadata_text:
+                        raise Exception(f"Database connection refused: Cannot connect to {connection['host']}:{connection['port']}. Check if the database server is running and accessible.")
+                    elif "database" in column_metadata_text and "does not exist" in column_metadata_text:
+                        raise Exception(f"Database '{connection['database']}' does not exist on server {connection['host']}:{connection['port']}")
+                    else:
+                        raise Exception(f"Database connection failed: {column_metadata_text}")
+                
                 try:
                     column_metadata = json.loads(column_metadata_text)
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse column metadata JSON: {e}")
                     logger.error(f"Raw content: {column_metadata_text}")
-                    raise Exception(f"Failed to parse column metadata JSON: {e}")
+                    raise Exception(f"Invalid response from database: Expected JSON but got: {column_metadata_text[:200]}...")
                 
                 # Filter metadata to only include our current tables
                 filtered_metadata = {}
@@ -588,13 +605,13 @@ async def analyze_dbt_file_for_iterative_query(
                         approved_keys_result = await _mcp_session.call_tool(
                             "list_database_keys_filtered_by_depth",
                             arguments={
-                                "host": str(connection['host']),
-                                "port": str(connection['port']),
-                                "user": str(connection['user']),
-                                "password": str(connection['password']),
-                                "database": str(connection['database']),
+                                "host": connection['host'],
+                                "port": connection['port'],
+                                "user": connection['user'],
+                                "password": connection['password'],
+                                "database": connection['database'],
                                 "approved_tables": json.dumps(current_tables),
-                                "database_type": str(database_type)
+                                "database_type": database_type
                             }
                         )
                         
@@ -621,16 +638,16 @@ async def analyze_dbt_file_for_iterative_query(
                         analytics_result_mcp = await _mcp_session.call_tool(
                             "run_analytics_query_on_approved_tables",
                             arguments={
-                                "host": str(connection['host']),
-                                "port": str(connection['port']),
-                                "user": str(connection['user']),
-                                "password": str(connection['password']),
-                                "database": str(connection['database']),
-                                "analytics_prompt": str(analytics_prompt),
+                                "host": connection['host'],
+                                "port": connection['port'],
+                                "user": connection['user'],
+                                "password": connection['password'],
+                                "database": connection['database'],
+                                "analytics_prompt": analytics_prompt,
                                 "approved_tables": json.dumps(current_tables),
-                                "database_type": str(database_type),
-                                "confluence_space": str(confluence_space),
-                                "confluence_title": str(confluence_title)
+                                "database_type": database_type,
+                                "confluence_space": confluence_space,
+                                "confluence_title": confluence_title
                             }
                         )
                         
