@@ -1754,9 +1754,7 @@ async def run_analytics_query_on_approved_tables(
                     # metadata_key format is "schema.table.column"
                     metadata_schema = metadata.get("table_schema")
                     metadata_table = metadata.get("table_name")
-                    
-                    logger.debug(f"🔍 Checking metadata: key='{metadata_key}', metadata_schema='{metadata_schema}', metadata_table='{metadata_table}' vs expected schema='{schema_name}', table='{actual_table_name}'")
-                    
+                                        
                     if metadata_schema == schema_name and metadata_table == actual_table_name:
                         # Convert to the format expected by the rest of the code
                         column_info = {
@@ -1847,61 +1845,83 @@ async def run_analytics_query_on_approved_tables(
         else:
             logger.info("📋 No Confluence context provided, skipping enhanced schema")
         
-        # Build the analytics prompt with only approved table context
-        filtered_context = {
-            "approved_tables": approved_tables,
-            "table_schemas": approved_schemas,
-            "column_details": approved_columns,
-            "total_approved_tables": len(approved_schemas),
-            "total_approved_columns": len(approved_columns)
-        }
+        # Build the unified schema context combining all information
+        logger.info("🔧 Building unified schema context for LLM prompt...")
         
+        # Create a unified structure: schema.table -> columns with types and descriptions
+        unified_schema = {}
+        
+        for table_info in approved_schemas:
+            actual_table_name = table_info.get("table_name")
+            schema_name = table_info.get("schema")
+            full_table_name = f"{schema_name}.{actual_table_name}"
+            
+            # Initialize table entry
+            unified_schema[full_table_name] = {
+                "columns": []
+            }
+            
+            # Get all columns for this table from approved_columns
+            for col_info in approved_columns:
+                if (col_info.get("table_name") == actual_table_name and 
+                    col_info.get("schema_name") == schema_name):
+                    
+                    column_name = col_info.get("column_name")
+                    data_type = col_info.get("data_type", "unknown")
+                    
+                    # Get description from enhanced_schema_context if available
+                    description = ""
+                    if enhanced_schema_context:
+                        try:
+                            enhanced_data = json.loads(enhanced_schema_context)
+                            table_columns = enhanced_data.get(full_table_name, [])
+                            for enhanced_col in table_columns:
+                                if enhanced_col.get("name") == column_name:
+                                    description = enhanced_col.get("description", "")
+                                    break
+                        except (json.JSONDecodeError, AttributeError):
+                            pass
+                    
+                    # Add column to unified schema
+                    unified_schema[full_table_name]["columns"].append({
+                        "name": column_name,
+                        "type": data_type,
+                        "description": description
+                    })
+        
+        logger.info(f"✅ Built unified schema for {len(unified_schema)} tables")
+        
+        # Create the clean, unified prompt
         enhanced_prompt = f"""
-You are a SQL expert. Generate a comprehensive analytical SQL query using the following approved tables.
+You are a PostgreSQL expert. Generate an analytical SQL query using the following database schema.
 
 Original Analytics Request: {analytics_prompt}
 
-REQUIREMENTS:
-1. **Smart Analysis**: Create meaningful joins based on common column names or apparent relationships
-2. **Data Quality**: Include appropriate filters to handle NULL values when necessary
-3. **Performance**: Use efficient JOIN strategies and consider adding reasonable LIMIT clauses
-4. **Insights**: Focus on metrics and dimensions that directly answer the user's question
-5. **PostgreSQL Best Practices**: Use proper PostgreSQL syntax and functions
+DATABASE SCHEMA (All tables with columns, types, and descriptions):
+{json.dumps(unified_schema, indent=2)}
 
-CRITICAL SQL FORMATTING RULES:
-- ALWAYS use fully qualified table names in the format: schema.table_name
-- ALWAYS use proper table aliases (e.g., FROM schema.table_name AS alias)
-- DO NOT reference tables without their schema prefix
-- Ensure all table names exactly match those provided in the approved list
+CRITICAL SQL REQUIREMENTS:
+1. **Schema Qualification**: ALWAYS use fully qualified table names (schema.table_name format)
+2. **Table References**: Use the EXACT table names from the schema above
+3. **Column References**: Use the exact column names shown in the schema
+4. **No Table Aliases**: Do NOT use table aliases like 't' or 'u' - use full schema.table_name format
+5. **PostgreSQL Syntax**: Use proper PostgreSQL syntax and functions
+
+EXAMPLE CORRECT FORMAT:
+SELECT public.users.id, public.users.name, analytics.sales.amount
+FROM public.users 
+JOIN analytics.sales ON public.users.id = analytics.sales.user_id
+WHERE public.users.active = true;
 
 QUERY GUIDELINES:
-- Use proper JOIN logic based on common column names (like id, foreign keys, etc.)
-- Include meaningful aggregations, filters, and groupings that answer the analytics question
-- Add descriptive column aliases for better readability
-- Use appropriate data types and handle potential NULL values
+- Create meaningful joins based on common column names (id, foreign keys, etc.)
+- Include appropriate aggregations, filters, and groupings to answer the question
+- Add descriptive column aliases for readability
+- Handle NULL values appropriately
+- Use LIMIT clauses for performance when appropriate
 - Focus on providing actionable business insights
 
-APPROVED TABLES AND SCHEMA:
-You have access to {len(approved_schemas)} approved tables with {len(approved_columns)} total columns.
-
-Approved Tables (use these EXACT names): {', '.join(approved_tables)}
-
-Table Schemas with Full Qualification:
-{json.dumps(approved_schemas, indent=2)}
-
-Column Details with Schema Information:
-{json.dumps(approved_columns, indent=2)}
-
-{f"Enhanced Documentation Context: {enhanced_schema_context}" if enhanced_schema_context else ""}
-
-IMPORTANT REMINDERS:
-1. Only use tables from the approved list: {approved_tables}
-2. Use fully qualified table names (schema.table_name format)
-3. Verify table names match exactly with the approved list
-4. Do not reference any tables outside of this approved set
-5. Return ONLY the SQL query without any additional text or formatting
-
-Example format: SELECT col1, col2 FROM schema.table_name AS t1 JOIN schema.other_table AS t2 ON t1.id = t2.foreign_id
+IMPORTANT: Return ONLY the SQL query without any additional text, explanations, or formatting.
 """
         
         # Execute the analytics query with filtered context
