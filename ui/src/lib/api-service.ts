@@ -480,17 +480,13 @@ export const dbService = {
   }>> => {
     const { dbt_file_content, analytics_prompt, confluence_space, confluence_title, ...conn } = connection as any;
     
-    // Build connection payload ensuring all required fields are included
+    // Build connection payload - buildPayload handles masked passwords correctly
+    // It will exclude masked passwords and include connection_id for backend resolution
     const connectionPayload = buildPayload(conn as DbConnection, {});
-    
-    // Ensure password is included if present (override buildPayload's masking logic)
-    if (conn.password && !connectionPayload.password) {
-      connectionPayload.password = conn.password;
-    }
     
     // Special handling for iterative dbt query - backend expects connection to be nested
     const body = {
-      connection: connectionPayload,  // Nest connection object with all fields
+      connection: connectionPayload,  // Nest connection object - masked passwords excluded, connection_id included
       dbt_file_content, 
       analytics_prompt, 
       confluence_space, 
@@ -498,6 +494,7 @@ export const dbService = {
     };
     
     console.log('🔍 Iterative dbt query payload (connection fields):', Object.keys(body.connection));
+    console.log('🔐 Connection ID included:', !!body.connection.connection_id);
     console.log('🔐 Password included:', !!body.connection.password);
     
     return fetchApi<{

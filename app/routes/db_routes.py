@@ -28,21 +28,66 @@ def _mask_secret(value: Optional[str]) -> str:
 
 def _resolve_connection_payload(data: Dict[str, Any], saved: List[Dict[str, Any]]):
     """Allow using connection_id or name to populate host/port/user/... fields."""
-    # If full fields provided, return as-is
+    logger.debug(f"🔍 _resolve_connection_payload: Input data keys: {list(data.keys())}")
+    
+    # Check if password is masked (common patterns: ***, ab***cd, ******)
+    password = data.get("password", "")
+    is_password_masked = False
+    
+    if password:
+        # Detect various masking patterns
+        password_str = str(password)
+        if (password_str == "***" or 
+            password_str.count("*") >= 3 or 
+            re.match(r'^.{0,2}\*+.{0,2}$', password_str) or
+            password_str.startswith("***") or
+            password_str.endswith("***")):
+            is_password_masked = True
+            logger.warning(f"🔒 Detected masked password pattern: '{password_str}' - will force resolution from saved connections")
+    
+    # If full fields provided AND password is not masked, return as-is
     required = ["host","port","user","password","database","database_type"]
-    if all(k in data and data[k] not in (None, "") for k in required):
+    if all(k in data and data[k] not in (None, "") for k in required) and not is_password_masked:
+        logger.debug("✅ All required fields present with real password, returning as-is")
         return data
+    
+    # If password is masked or fields are missing, resolve from saved connections
+    logger.debug("🔄 Resolving connection from saved profiles (masked password or missing fields)")
+    
     # Try resolve by id
     conn = None
     cid = data.get("connection_id")
     cname = data.get("connection_name") or data.get("name")
+    
+    logger.debug(f"🔍 Looking for connection: id={cid}, name={cname}")
+    
     if cid:
         conn = next((c for c in saved if str(c.get("id")) == str(cid)), None)
+        if conn:
+            logger.debug(f"✅ Found connection by ID {cid}: {conn.get('name')}")
     if not conn and cname:
         conn = next((c for c in saved if c.get("name") == cname), None)
+        if conn:
+            logger.debug(f"✅ Found connection by name '{cname}': ID {conn.get('id')}")
+    
     if not conn:
+        logger.error(f"❌ No matching connection found for id={cid}, name={cname}")
+        logger.debug(f"🔍 Available saved connections: {[(c.get('id'), c.get('name')) for c in saved]}")
         raise HTTPException(status_code=400, detail="Missing DB credentials and no matching connection profile found")
-    merged = {**conn, **{k:v for k,v in data.items() if v not in (None, "")}}
+    
+    # Merge saved connection with input data (input data overrides saved data except for masked passwords)
+    merged = {**conn}
+    for k, v in data.items():
+        if v not in (None, ""):
+            # Don't override with masked password
+            if k == "password" and is_password_masked:
+                logger.debug(f"🔒 Keeping real password from saved connection, ignoring masked input")
+                continue
+            merged[k] = v
+    
+    logger.debug(f"✅ Resolved connection: host={merged.get('host')}, user={merged.get('user')}, database={merged.get('database')}")
+    logger.debug(f"🔒 Password resolved: {'YES' if merged.get('password') and not str(merged.get('password')).count('*') >= 3 else 'NO (still masked)'}")
+    
     # Normalize types
     try:
         merged["port"] = int(merged["port"])  # type: ignore
@@ -2210,11 +2255,22 @@ async def iterative_dbt_query(
         # Extract and resolve connection details using same pattern as other endpoints
         saved_connections = _load_saved_connections(current_user.id, db)
         connection_data = data.get("connection", {})
+        
+        logger.info(f"🔍 Raw connection data received: {list(connection_data.keys())}")
+        logger.debug(f"🔍 Raw connection data (sanitized): {dict(connection_data, password='***' if connection_data.get('password') else None)}")
+        
         connection = _resolve_connection_payload(connection_data, saved_connections)
+        
+        # Log resolved connection details (mask password for security)
+        connection_masked = dict(connection)
+        if connection_masked.get('password'):
+            original_password = connection_masked['password']
+            connection_masked['password'] = '***RESOLVED***' if not str(original_password).count('*') >= 3 else '***STILL_MASKED***'
         
         logger.info(f"📊 Analytics prompt: {analytics_prompt[:100]}...")
         logger.info(f"📋 Confluence context: {confluence_space}/{confluence_title}")
         logger.info(f"🔗 Database: {connection.get('host', 'unknown')}:{connection.get('port', 'unknown')}")
+        logger.info(f"🔒 Resolved connection: {connection_masked}")
         
         # Validate required fields
         if not dbt_file_content:
