@@ -333,15 +333,23 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
       const executionTime = Date.now() - startTime;
 
       if (response.status === 'success' && response.data) {
+        console.log("📊 Iterative result data:", {
+          tables_used: response.data.tables_used,
+          tables_count: response.data.tables_used?.length || 0,
+          final_depth: response.data.final_depth,
+          row_count: response.data.row_count
+        });
+        
         setIterativeResult(response.data);
         
         const final_depth = response.data.final_depth;
         const iteration_count = response.data.iteration_count;
         const row_count = response.data.row_count || 0;
+        const tables_count = response.data.tables_used?.length || 0;
         
         toast({
           title: "Iterative Analysis Complete",
-          description: `✅ Successful at depth ${final_depth} after ${iteration_count} iterations (${row_count} rows, ${executionTime}ms)`
+          description: `✅ Successful at depth ${final_depth} after ${iteration_count} iterations (${row_count} rows, ${tables_count} tables, ${executionTime}ms)`
         });
       } else {
         console.error("❌ Iterative analysis failed:", response);
