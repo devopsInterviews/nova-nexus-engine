@@ -802,6 +802,9 @@ async def analyze_dbt_file_for_iterative_query(
                     except Exception as e:
                         logger.error(f"❌ Analytics query failed with exception: {e}", exc_info=True)
                         analytics_result = {"error": str(e)}
+                    logger.info(f"✅ Successfully completed iterative analysis at depth {current_depth}")
+                    logger.info(f"📊 Tables used: {cumulative_tables} (count: {len(cumulative_tables)})")
+                    logger.info(f"📊 Query result: {len(analytics_result.get('rows', []))} rows returned")
                     
                     # Return comprehensive results
                     return {
@@ -809,6 +812,7 @@ async def analyze_dbt_file_for_iterative_query(
                         "final_depth": current_depth,
                         "max_depth": max_depth,
                         "approved_tables": cumulative_tables,
+                        "tables_used": cumulative_tables,  # Add mapping for frontend compatibility
                         "column_count": len(filtered_metadata),
                         "process_log": process_log,
                         "approved_table_keys": approved_keys,
@@ -831,6 +835,7 @@ async def analyze_dbt_file_for_iterative_query(
                             "error": "AI could not generate query even with all available tables (depth 0)",
                             "final_depth": 0,
                             "max_depth": max_depth,
+                            "tables_used": [],  # No tables were successfully used
                             "process_log": process_log,
                             "dbt_context": dbt_context,
                             "filtering_applied": True
@@ -846,6 +851,7 @@ async def analyze_dbt_file_for_iterative_query(
                     return {
                         "status": "error",
                         "error": f"Error at final depth 0: {e}",
+                        "tables_used": [],  # No tables were successfully used
                         "process_log": process_log,
                         "dbt_context": dbt_context
                     }
@@ -857,6 +863,7 @@ async def analyze_dbt_file_for_iterative_query(
         return {
             "status": "no_solution",
             "error": "No suitable table combination found at any depth",
+            "tables_used": [],  # No tables were successfully used
             "process_log": process_log,
             "max_depth": max_depth,
             "dbt_context": dbt_context
@@ -866,7 +873,8 @@ async def analyze_dbt_file_for_iterative_query(
         logger.error(f"❌ Fatal error in iterative analysis: {e}", exc_info=True)
         return {
             "status": "error",
-            "error": f"Fatal error: {e}"
+            "error": f"Fatal error: {e}",
+            "tables_used": []  # No tables were successfully used
         }
 
 
