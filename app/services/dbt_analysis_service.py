@@ -822,7 +822,7 @@ async def analyze_dbt_file_for_iterative_query(
                     }
                 
                 else:
-                    logger.warning(f"❌ AI says NO at depth {current_depth}: {decision.get('reasoning', 'No reason provided')}")
+                    logger.info(f"ℹ️  AI says NO at depth {current_depth}: {decision.get('reasoning', 'No reason provided')}")
                     
                     if current_depth == 0:
                         logger.error("🚫 Reached depth 0 and AI still says NO - cannot proceed")
@@ -1094,7 +1094,7 @@ async def _ask_ai_sufficiency_decision(
             tables_with_columns[table_name].append(f"  • {column_name} ({data_type}): {description}")
         
         for table_name, columns in tables_with_columns.items():
-            column_info += f"\n🔸 Table: {table_name}\n"
+            column_info += f"\n Table: {table_name}\n"
             column_info += "\n".join(columns[:15])  # Show up to 15 columns per table
             if len(columns) > 15:
                 column_info += f"\n  • ... and {len(columns) - 15} more columns"

@@ -1782,9 +1782,25 @@ async def run_analytics_query_on_approved_tables(
         }
         
         enhanced_prompt = f"""
-{analytics_prompt}
+You are a SQL expert. Generate a comprehensive analytical SQL query using the following approved tables.
 
-CONTEXT (APPROVED TABLES ONLY):
+Original Analytics Request: {analytics_prompt}
+
+REQUIREMENTS:
+1. **Smart Analysis**: Create meaningful joins based on common column names or apparent relationships
+2. **Data Quality**: Include appropriate filters to handle NULL values when necessary
+3. **Performance**: Use efficient JOIN strategies and consider adding reasonable LIMIT clauses
+4. **Insights**: Focus on metrics and dimensions that directly answer the user's question
+5. **PostgreSQL Best Practices**: Use proper PostgreSQL syntax and functions
+
+QUERY GUIDELINES:
+- Use proper JOIN logic based on common column names (like id, foreign keys, etc.)
+- Include meaningful aggregations, filters, and groupings that answer the analytics question
+- Add descriptive column aliases for better readability
+- Use appropriate data types and handle potential NULL values
+- Focus on providing actionable business insights
+
+APPROVED TABLES AND SCHEMA:
 You have access to {len(approved_schemas)} approved tables with {len(approved_columns)} total columns.
 
 Approved Tables: {', '.join(approved_tables)}
@@ -1799,6 +1815,7 @@ Column Details:
 
 IMPORTANT: Only use tables from the approved list: {approved_tables}
 Do not reference any tables outside of this approved set.
+Return ONLY the SQL query without any additional text or formatting.
 """
         
         # Execute the analytics query with filtered context
@@ -1810,8 +1827,8 @@ Do not reference any tables outside of this approved set.
         logger.info("🤖 Calling LLM to generate SQL query...")
         sql_raw = await llm.call_remote_llm(
             context=enhanced_prompt,
-            prompt="Generate SQL query based on the provided context and analytics request.",
-            system_prompt="You are a PostgreSQL expert. Generate efficient SQL queries based on the provided database schema and requirements. Return only the SQL query without explanation."
+            prompt="Generate an analytical SQL query based on the provided context and requirements.",
+            system_prompt="You are a PostgreSQL expert. Generate efficient, analytical SQL queries that provide meaningful business insights. Use proper joins, aggregations, and filters. Return only the SQL query without explanation."
         )
         
         logger.info(f"🤖 LLM returned SQL (length: {len(sql_raw)} chars)")
