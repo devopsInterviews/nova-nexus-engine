@@ -3,10 +3,72 @@ DBT Analysis Service - Client-side implementation for dbt file analysis
 """
 import json
 import logging
+import re
 from typing import Dict, Any, List, Tuple, Optional, Set
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_tables_from_sql(sql_query: str) -> List[str]:
+    """
+    Extract table names from a SQL query.
+    
+    This function uses regex to find table references in FROM and JOIN clauses.
+    It handles schema-qualified table names (schema.table format) and cleans up the results.
+    
+    Args:
+        sql_query: The SQL query string
+        
+    Returns:
+        List of unique table names found in the query (without schema prefix for consistency)
+    """
+    if not sql_query:
+        return []
+    
+    try:
+        # Remove comments and normalize whitespace
+        sql_clean = re.sub(r'--.*?\n', ' ', sql_query)  # Remove line comments
+        sql_clean = re.sub(r'/\*.*?\*/', ' ', sql_clean, flags=re.DOTALL)  # Remove block comments
+        sql_clean = re.sub(r'\s+', ' ', sql_clean)  # Normalize whitespace
+        
+        # Convert to lowercase for pattern matching
+        sql_lower = sql_clean.lower()
+        
+        # Enhanced patterns to match table names in FROM and JOIN clauses
+        # This handles: FROM schema.table, JOIN schema.table, etc.
+        # Also handles optional AS aliases
+        patterns = [
+            r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?',
+            r'\bjoin\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?',
+            r'\binner\s+join\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?',
+            r'\bleft\s+join\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?',
+            r'\bright\s+join\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?',
+            r'\bfull\s+join\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?',
+            r'\bleft\s+outer\s+join\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?',
+            r'\bright\s+outer\s+join\s+([a-zA-Z_][a-zA-Z0-9_]*\.?[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:as\s+\w+)?'
+        ]
+        
+        tables = set()
+        for pattern in patterns:
+            matches = re.findall(pattern, sql_lower)
+            for match in matches:
+                # Clean up the table name
+                table_name = match.strip()
+                if table_name:
+                    # Extract just the table name without schema for consistency with cumulative_tables
+                    if '.' in table_name:
+                        table_name = table_name.split('.')[-1]  # Get table name without schema
+                    tables.add(table_name)
+        
+        result = sorted(list(tables))  # Sort for consistent ordering
+        logger.debug(f"🔍 Extracted tables from SQL: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Error extracting tables from SQL: {e}")
+        logger.debug(f"❌ Problematic SQL: {sql_query[:200]}...")
+        return []
 
 
 # ============================================================================
@@ -802,8 +864,35 @@ async def analyze_dbt_file_for_iterative_query(
                     except Exception as e:
                         logger.error(f"❌ Analytics query failed with exception: {e}", exc_info=True)
                         analytics_result = {"error": str(e)}
+                    
+                    # Extract actual tables used from the SQL query
+                    actual_tables_used = []
+                    sql_query = analytics_result.get("sql", "")
+                    if sql_query:
+                        actual_tables_used = _extract_tables_from_sql(sql_query)
+                        logger.info(f"📊 Tables actually used in SQL: {actual_tables_used} (count: {len(actual_tables_used)})")
+                        
+                        # Validation: Compare extracted tables with approved tables
+                        approved_set = set(cumulative_tables)
+                        used_set = set(actual_tables_used)
+                        
+                        unexpected_tables = used_set - approved_set
+                        unused_approved = approved_set - used_set
+                        
+                        if unexpected_tables:
+                            logger.warning(f"⚠️ SQL uses tables not in approved list: {list(unexpected_tables)}")
+                        if unused_approved:
+                            logger.info(f"ℹ️ Approved tables not used in SQL: {list(unused_approved)}")
+                        if used_set.issubset(approved_set):
+                            logger.info("✅ All tables used in SQL are from approved list")
+                    else:
+                        logger.warning("⚠️ No SQL query found in analytics result")
+                        # Fallback to approved tables if no SQL available
+                        actual_tables_used = cumulative_tables
+                        
                     logger.info(f"✅ Successfully completed iterative analysis at depth {current_depth}")
-                    logger.info(f"📊 Tables used: {cumulative_tables} (count: {len(cumulative_tables)})")
+                    logger.info(f"📊 Tables approved for depth: {cumulative_tables} (count: {len(cumulative_tables)})")
+                    logger.info(f"📊 Tables actually used in query: {actual_tables_used} (count: {len(actual_tables_used)})")
                     logger.info(f"📊 Query result: {len(analytics_result.get('rows', []))} rows returned")
                     
                     # Return comprehensive results
@@ -812,7 +901,7 @@ async def analyze_dbt_file_for_iterative_query(
                         "final_depth": current_depth,
                         "max_depth": max_depth,
                         "approved_tables": cumulative_tables,
-                        "tables_used": cumulative_tables,  # Add mapping for frontend compatibility
+                        "tables_used": actual_tables_used,  # Use actual tables from SQL query
                         "column_count": len(filtered_metadata),
                         "process_log": process_log,
                         "approved_table_keys": approved_keys,
