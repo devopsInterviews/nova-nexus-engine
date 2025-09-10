@@ -32,10 +32,13 @@ interface IterativeResult {
   error?: string;
   final_depth?: number;
   tables_used?: string[];
-  sql_query?: string;
-  results?: Array<Record<string, any>>;
+  sql_query?: string;  // Legacy field for compatibility
+  sql?: string;        // New field from backend
+  raw_sql?: string;    // Raw LLM output for debugging
+  rows?: Array<Record<string, any>>;
   row_count?: number;
   iteration_count?: number;
+  execution_successful?: boolean;
   process_log?: Array<{
     depth: number;
     table_count: number;
@@ -74,6 +77,19 @@ export function SqlBuilderDbtTab() {
   const [iterativeResult, setIterativeResult] = useState<IterativeResult | null>(null);
   const [iterativeError, setIterativeError] = useState<string | null>(null);
   const [showProcessLog, setShowProcessLog] = useState(false);
+
+  // Helper function to get SQL from result (handles both new and legacy formats)
+  const getSqlFromResult = (result: QueryResult | IterativeResult | null): string => {
+    if (!result) return '';
+    // Try new format first (sql), then legacy format (sql_query)
+    return (result as any).sql || (result as any).sql_query || '';
+  };
+
+  // Helper function to get raw SQL for debugging
+  const getRawSqlFromResult = (result: IterativeResult | null): string => {
+    if (!result) return '';
+    return (result as any).raw_sql || '';
+  };
 
   // Handle file selection via input
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -247,9 +263,10 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
 
   // Handle Copy SQL Query
   const handleCopySQL = () => {
-    if (!result?.sql_query) return;
+    const sql = getSqlFromResult(result);
+    if (!sql) return;
     
-    navigator.clipboard.writeText(result.sql_query);
+    navigator.clipboard.writeText(sql);
     toast({
       title: "SQL Copied",
       description: "SQL query copied to clipboard"
@@ -345,9 +362,10 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
 
   // Handle Copy Iterative SQL
   const handleCopyIterativeSQL = () => {
-    if (!iterativeResult?.sql_query) return;
+    const sql = getSqlFromResult(iterativeResult);
+    if (!sql) return;
     
-    navigator.clipboard.writeText(iterativeResult.sql_query);
+    navigator.clipboard.writeText(sql);
     toast({
       title: "SQL Copied",
       description: "Iterative analysis SQL query copied to clipboard"
@@ -1209,16 +1227,16 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
           )}
 
           {/* Generated SQL Query */}
-          {(iterativeResult?.sql_query || result?.sql_query) && (
+          {(getSqlFromResult(iterativeResult) || getSqlFromResult(result)) && (
             <Card className="glass border-border/50">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  {iterativeResult?.sql_query ? "Optimized SQL Query (dbt Analysis)" : "Generated SQL Query"}
+                  {getSqlFromResult(iterativeResult) ? "Optimized SQL Query (dbt Analysis)" : "Generated SQL Query"}
                   <div className="flex gap-2">
                     <Button 
                       size="sm" 
                       variant="outline" 
-                      onClick={iterativeResult?.sql_query ? handleCopyIterativeSQL : handleCopySQL}
+                      onClick={getSqlFromResult(iterativeResult) ? handleCopyIterativeSQL : handleCopySQL}
                     >
                       <Copy className="w-4 h-4 mr-2" />
                       Copy SQL
@@ -1229,7 +1247,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
               <CardContent>
                 <div className="bg-surface-elevated rounded-lg p-4 border border-border/50">
                   <pre className="text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
-                    {iterativeResult?.sql_query || result?.sql_query}
+                    {getSqlFromResult(iterativeResult) || getSqlFromResult(result)}
                   </pre>
                 </div>
               </CardContent>
@@ -1237,7 +1255,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
           )}
 
           {/* SQL Query Not Available Fallback */}
-          {result && !result.sql_query && !iterativeResult?.sql_query && (
+          {result && !getSqlFromResult(result) && !getSqlFromResult(iterativeResult) && (
             <Card className="glass border-border/50 border-orange-500/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-orange-600">
@@ -1251,17 +1269,28 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                     The SQL query could not be extracted from the AI response. 
                     This might happen if the AI returned results in a different format.
                   </p>
+                  {/* Show raw SQL for debugging if available */}
+                  {getRawSqlFromResult(iterativeResult) && (
+                    <details className="mt-3">
+                      <summary className="text-sm font-medium text-orange-800 cursor-pointer">
+                        Raw LLM Response (for debugging)
+                      </summary>
+                      <pre className="mt-2 text-xs bg-orange-100/50 p-2 rounded border overflow-x-auto">
+                        {getRawSqlFromResult(iterativeResult)}
+                      </pre>
+                    </details>
+                  )}
                 </div>
               </CardContent>
             </Card>
           )}
 
           {/* Query Results */}
-          {(iterativeResult?.results || result?.rows) && (
+          {(iterativeResult?.rows || result?.rows) && (
             <Card className="glass border-border/50">
               <CardHeader>
                 <CardTitle>
-                  {iterativeResult?.results ? "dbt Analysis Results" : "Query Results"}
+                  {iterativeResult?.rows ? "dbt Analysis Results" : "Query Results"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1288,7 +1317,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
 
                 {/* Results Table */}
                 {(() => {
-                  const rows = iterativeResult?.results || result?.rows || [];
+                  const rows = iterativeResult?.rows || result?.rows || [];
                   if (rows.length > 0) {
                     return (
                       <div className="overflow-x-auto border border-border/50 rounded-lg">
