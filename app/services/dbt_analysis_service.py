@@ -533,16 +533,20 @@ async def analyze_dbt_file_for_iterative_query(
                     }
                 )
                 
-                if not column_metadata_result or "error" in column_metadata_result:
-                    raise Exception(f"Failed to get column metadata: {column_metadata_result.get('error', 'Unknown error')}")
+                # Check if the MCP tool call was successful
+                if not column_metadata_result or not hasattr(column_metadata_result, 'content') or not column_metadata_result.content:
+                    raise Exception("Failed to get column metadata: No content returned from MCP tool")
                 
                 # Parse the JSON result from MCP tool
-                if isinstance(column_metadata_result.get("content"), list):
-                    column_metadata_content = column_metadata_result["content"][0]
-                else:
-                    column_metadata_content = column_metadata_result.get("content", "{}")
+                # CallToolResult.content is a list of content items, get the first one's text
+                column_metadata_text = column_metadata_result.content[0].text if column_metadata_result.content else "{}"
                 
-                column_metadata = json.loads(column_metadata_content) if isinstance(column_metadata_content, str) else column_metadata_content
+                try:
+                    column_metadata = json.loads(column_metadata_text)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse column metadata JSON: {e}")
+                    logger.error(f"Raw content: {column_metadata_text}")
+                    raise Exception(f"Failed to parse column metadata JSON: {e}")
                 
                 # Filter metadata to only include our current tables
                 filtered_metadata = {}
@@ -594,13 +598,15 @@ async def analyze_dbt_file_for_iterative_query(
                             }
                         )
                         
-                        if approved_keys_result and "error" not in approved_keys_result:
+                        # Check if the MCP tool call was successful
+                        if approved_keys_result and hasattr(approved_keys_result, 'content') and approved_keys_result.content:
                             # Parse the JSON result from MCP tool
-                            if isinstance(approved_keys_result.get("content"), list):
-                                approved_keys_content = approved_keys_result["content"][0]
-                            else:
-                                approved_keys_content = approved_keys_result.get("content", "{}")
-                            approved_keys = json.loads(approved_keys_content) if isinstance(approved_keys_content, str) else approved_keys_content
+                            approved_keys_text = approved_keys_result.content[0].text
+                            try:
+                                approved_keys = json.loads(approved_keys_text)
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Failed to parse approved keys JSON: {e}")
+                                approved_keys = {}
                         else:
                             approved_keys = {}
                         
@@ -628,15 +634,17 @@ async def analyze_dbt_file_for_iterative_query(
                             }
                         )
                         
-                        if analytics_result_mcp and "error" not in analytics_result_mcp:
+                        # Check if the MCP tool call was successful
+                        if analytics_result_mcp and hasattr(analytics_result_mcp, 'content') and analytics_result_mcp.content:
                             # Parse the JSON result from MCP tool
-                            if isinstance(analytics_result_mcp.get("content"), list):
-                                analytics_content = analytics_result_mcp["content"][0]
-                            else:
-                                analytics_content = analytics_result_mcp.get("content", "{}")
-                            analytics_result = json.loads(analytics_content) if isinstance(analytics_content, str) else analytics_content
+                            analytics_text = analytics_result_mcp.content[0].text
+                            try:
+                                analytics_result = json.loads(analytics_text)
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Failed to parse analytics result JSON: {e}")
+                                analytics_result = {"error": f"JSON parse error: {e}"}
                         else:
-                            analytics_result = {"error": analytics_result_mcp.get("error", "Unknown error")}
+                            analytics_result = {"error": "No content returned from MCP tool"}
                         
                         logger.info("✅ Analytics query completed successfully")
                     except Exception as e:

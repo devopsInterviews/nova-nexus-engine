@@ -391,22 +391,43 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
       return;
     }
 
+    console.log('Starting manifest preprocessing...');
     setIsPreprocessing(true);
+    setPreprocessedContent(null); // Clear previous content
+    
     try {
       const parsed = JSON.parse(file.content);
+      console.log('Calling backend API for preprocessing...');
+      
+      // Get authentication token
+      const token = localStorage.getItem('auth_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch('/api/dbt/preprocess-manifest', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(parsed),
       });
       
       if (response.ok) {
         const processedResult = await response.json();
+        console.log('Preprocessing successful, setting content...');
         setPreprocessedContent(JSON.stringify(processedResult, null, 2));
       } else {
-        console.warn('Failed to preprocess manifest');
+        console.warn('Failed to preprocess manifest:', response.status, response.statusText);
+        // Try to get error details
+        try {
+          const errorData = await response.json();
+          console.error('Error details:', errorData);
+        } catch (e) {
+          console.error('Could not parse error response');
+        }
         setPreprocessedContent(null);
       }
     } catch (e) {
@@ -414,6 +435,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
       setPreprocessedContent(null);
     } finally {
       setIsPreprocessing(false);
+      console.log('Preprocessing complete');
     }
   }, []);
 
@@ -762,9 +784,17 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                     let isProcessedContent = false;
                     
                     // For manifest files, show the preprocessed content if available
-                    if (validation.isValid && validation.format.type === 'manifest' && preprocessedContent) {
-                      contentToShow = preprocessedContent;
-                      isProcessedContent = true;
+                    if (validation.isValid && validation.format.type === 'manifest') {
+                      if (preprocessedContent) {
+                        contentToShow = preprocessedContent;
+                        isProcessedContent = true;
+                      } else if (!isPreprocessing) {
+                        // Only show original content if not currently processing
+                        contentToShow = selectedFile.content;
+                      } else {
+                        // Show loading message while processing
+                        contentToShow = "// Processing manifest...\n// Please wait while the backend preprocesses your manifest file.";
+                      }
                     }
                     
                     return (
@@ -790,12 +820,13 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                           </div>
                         )}
                         
-                        <div className="border border-border/50 rounded-lg">
-                          <ScrollArea className="h-96 w-full">
-                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap overflow-x-auto">
+                        {/* Fixed size container with proper scrolling */}
+                        <div className="w-full h-[500px] border border-border/50 rounded-lg bg-card/50">
+                          <div className="h-full w-full overflow-auto">
+                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre min-w-max block">
                               {formatJsonContent(contentToShow)}
                             </pre>
-                          </ScrollArea>
+                          </div>
                         </div>
                         
                         {/* File Actions */}
