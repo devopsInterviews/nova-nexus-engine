@@ -1705,14 +1705,22 @@ async def run_analytics_query_on_approved_tables(
         
         for table_name in all_tables:
             if table_name in approved_set:
+                # Detect actual schema by checking if table_name contains schema
+                if "." in table_name:
+                    schema_name, actual_table_name = table_name.split(".", 1)
+                else:
+                    schema_name = "public"  # Default schema
+                    actual_table_name = table_name
+                
                 # Create table info object for compatibility with rest of the code
                 table_info = {
-                    "table_name": table_name,
-                    "name": table_name,
-                    "schema": "public"  # Default schema
+                    "table_name": actual_table_name,
+                    "name": actual_table_name,
+                    "schema": schema_name,
+                    "full_name": table_name  # Keep the full qualified name
                 }
                 approved_schemas.append(table_info)
-                logger.info(f"✅ Included table schema for '{table_name}'")
+                logger.info(f"✅ Included table schema for '{table_name}' (schema: {schema_name}, table: {actual_table_name})")
             else:
                 logger.debug(f"🚫 Skipped table schema for '{table_name}' (not approved)")
         
@@ -1722,19 +1730,72 @@ async def run_analytics_query_on_approved_tables(
         logger.info("🔍 Getting column information for approved tables...")
         approved_columns = []
         
-        for table_info in approved_schemas:
-            table_name = table_info.get("table_name", table_info.get("name", ""))
-            schema_name = table_info.get("schema", "public")
+        if database_type == "postgres":
+            # Use get_column_metadata to get all column details at once for PostgreSQL
+            all_column_metadata = await client.get_column_metadata()
             
-            try:
-                columns = await client.list_columns(table_name, schema_name)
-                for col in columns:
-                    col["table_name"] = table_name  # Ensure table name is included
-                    approved_columns.append(col)
+            for table_info in approved_schemas:
+                actual_table_name = table_info.get("table_name", table_info.get("name", ""))
+                schema_name = table_info.get("schema", "public")
+                full_table_name = table_info.get("full_name", actual_table_name)
                 
-                logger.info(f"✅ Got {len(columns)} columns for table '{table_name}'")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to get columns for table '{table_name}': {e}")
+                # Filter metadata for this specific table
+                table_columns = []
+                for metadata_key, metadata in all_column_metadata.items():
+                    # metadata_key format is "schema.table.column"
+                    if metadata.get("table_schema") == schema_name and metadata.get("table_name") == actual_table_name:
+                        # Convert to the format expected by the rest of the code
+                        column_info = {
+                            "table_name": actual_table_name,
+                            "column_name": metadata.get("column_name"),
+                            "data_type": metadata.get("data_type"),
+                            "schema_name": schema_name,
+                            "full_table_name": full_table_name,
+                            "is_nullable": metadata.get("is_nullable"),
+                            "column_default": metadata.get("column_default"),
+                            "character_maximum_length": metadata.get("character_maximum_length")
+                        }
+                        table_columns.append(column_info)
+                        approved_columns.append(column_info)
+                
+                logger.info(f"✅ Got {len(table_columns)} columns for table '{full_table_name}' (schema: {schema_name})")
+                if not table_columns:
+                    logger.warning(f"⚠️ No columns found for table '{full_table_name}' in schema '{schema_name}'")
+                    
+        elif database_type == "mssql":
+            # For MSSQL, fall back to list_keys method since get_column_metadata is not implemented
+            logger.info("🔍 Using list_keys for MSSQL column information...")
+            all_keys = await client.list_keys()
+            
+            for table_info in approved_schemas:
+                actual_table_name = table_info.get("table_name", table_info.get("name", ""))
+                schema_name = table_info.get("schema", "dbo")
+                full_table_name = table_info.get("full_name", actual_table_name)
+                
+                # Get columns for this table from list_keys
+                if actual_table_name in all_keys:
+                    columns = all_keys[actual_table_name]
+                    for column_name in columns:
+                        column_info = {
+                            "table_name": actual_table_name,
+                            "column_name": column_name,
+                            "data_type": "UNKNOWN",  # MSSQL client doesn't provide type info
+                            "schema_name": schema_name,
+                            "full_table_name": full_table_name,
+                            "is_nullable": "UNKNOWN",
+                            "column_default": None,
+                            "character_maximum_length": None
+                        }
+                        approved_columns.append(column_info)
+                    
+                    logger.info(f"✅ Got {len(columns)} columns for table '{full_table_name}' (schema: {schema_name})")
+                else:
+                    logger.warning(f"⚠️ No columns found for table '{full_table_name}' in list_keys result")
+        
+        if not approved_columns:
+            logger.error("❌ No columns found for any approved tables")
+        else:
+            logger.info(f"📊 Total approved columns collected: {len(approved_columns)}")
         
         logger.info(f"📊 Total approved columns: {len(approved_columns)}")
         
@@ -1793,6 +1854,12 @@ REQUIREMENTS:
 4. **Insights**: Focus on metrics and dimensions that directly answer the user's question
 5. **PostgreSQL Best Practices**: Use proper PostgreSQL syntax and functions
 
+CRITICAL SQL FORMATTING RULES:
+- ALWAYS use fully qualified table names in the format: schema.table_name
+- ALWAYS use proper table aliases (e.g., FROM schema.table_name AS alias)
+- DO NOT reference tables without their schema prefix
+- Ensure all table names exactly match those provided in the approved list
+
 QUERY GUIDELINES:
 - Use proper JOIN logic based on common column names (like id, foreign keys, etc.)
 - Include meaningful aggregations, filters, and groupings that answer the analytics question
@@ -1803,19 +1870,24 @@ QUERY GUIDELINES:
 APPROVED TABLES AND SCHEMA:
 You have access to {len(approved_schemas)} approved tables with {len(approved_columns)} total columns.
 
-Approved Tables: {', '.join(approved_tables)}
+Approved Tables (use these EXACT names): {', '.join(approved_tables)}
 
-Table Schemas:
+Table Schemas with Full Qualification:
 {json.dumps(approved_schemas, indent=2)}
 
-Column Details:
+Column Details with Schema Information:
 {json.dumps(approved_columns, indent=2)}
 
 {f"Enhanced Documentation Context: {enhanced_schema_context}" if enhanced_schema_context else ""}
 
-IMPORTANT: Only use tables from the approved list: {approved_tables}
-Do not reference any tables outside of this approved set.
-Return ONLY the SQL query without any additional text or formatting.
+IMPORTANT REMINDERS:
+1. Only use tables from the approved list: {approved_tables}
+2. Use fully qualified table names (schema.table_name format)
+3. Verify table names match exactly with the approved list
+4. Do not reference any tables outside of this approved set
+5. Return ONLY the SQL query without any additional text or formatting
+
+Example format: SELECT col1, col2 FROM schema.table_name AS t1 JOIN schema.other_table AS t2 ON t1.id = t2.foreign_id
 """
         
         # Execute the analytics query with filtered context
