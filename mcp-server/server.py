@@ -1697,15 +1697,20 @@ async def run_analytics_query_on_approved_tables(
         logger.info("🔍 Getting schema information for approved tables...")
         
         # Get all tables/views first
-        all_tables = await client.list_tables_and_views()
+        all_tables = await client.list_tables()
         
-        # Filter to only approved tables
+        # Filter to only approved tables (all_tables is now a list of strings)
         approved_schemas = []
         approved_set = set(approved_tables)
         
-        for table_info in all_tables:
-            table_name = table_info.get("table_name", table_info.get("name", ""))
+        for table_name in all_tables:
             if table_name in approved_set:
+                # Create table info object for compatibility with rest of the code
+                table_info = {
+                    "table_name": table_name,
+                    "name": table_name,
+                    "schema": "public"  # Default schema
+                }
                 approved_schemas.append(table_info)
                 logger.info(f"✅ Included table schema for '{table_name}'")
             else:
