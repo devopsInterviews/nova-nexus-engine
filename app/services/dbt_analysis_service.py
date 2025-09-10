@@ -1107,32 +1107,32 @@ You are a SQL expert analyzing whether available database tables and columns are
 
 {context_info}
 
-🎯 ANALYTICS QUESTION TO ANSWER:
+ANALYTICS QUESTION TO ANSWER:
 {analytics_prompt}
 
-📊 AVAILABLE DATABASE RESOURCES:
+AVAILABLE DATABASE RESOURCES:
 {table_info}
 
-📋 DETAILED COLUMN INFORMATION:
+DETAILED COLUMN INFORMATION:
 {column_info}
 
-🤔 YOUR TASK:
+YOUR TASK:
 Determine if these tables and columns contain enough information to generate a meaningful, complete SQL query that fully answers the analytics question.
 
 💡 DECISION CRITERIA:
-✅ Answer YES if:
+Answer YES if:
 - All necessary data elements are present
 - Table relationships can be established (foreign keys, common fields)
 - Required calculations/aggregations are possible
 - The query would produce meaningful, complete results
 
-❌ Answer NO if:
+Answer NO if:
 - Missing critical tables or columns needed for the analysis
 - Cannot establish necessary table relationships
 - Data is too incomplete or fragmented
 - Would result in partial or meaningless results
 
-📝 RESPONSE FORMAT (be precise):
+RESPONSE FORMAT (be precise):
 DECISION: YES
 REASONING: [Explain specifically why these tables/columns are sufficient]
 
@@ -1143,12 +1143,7 @@ REASONING: [Explain specifically what critical data/relationships are missing]
 
 Note: You are looking at CUMULATIVE tables from depth {current_depth} to {max_depth}. If this seems insufficient, we can try with more tables from shallower depths.
 """
-        
-        # Log what we're sending to the AI for debugging
-        logger.debug("🤖 FULL PROMPT SENT TO AI:")
-        logger.debug("=" * 50)
-        logger.debug(decision_prompt)
-        logger.debug("=" * 50)
+        logger.info("🤖 Sending decision prompt to AI...")
         
         response = await llm_client.query_llm(decision_prompt)
         
