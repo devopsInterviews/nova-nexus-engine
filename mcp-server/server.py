@@ -1709,18 +1709,25 @@ async def run_analytics_query_on_approved_tables(
                 if "." in table_name:
                     schema_name, actual_table_name = table_name.split(".", 1)
                 else:
-                    schema_name = "public"  # Default schema
-                    actual_table_name = table_name
+                    # Use get_table_schema to find the correct schema for this table
+                    if database_type == "postgres":
+                        schema_name = await client.get_table_schema(table_name)
+                        actual_table_name = table_name
+                        logger.info(f"🔍 Detected schema '{schema_name}' for table '{table_name}' using get_table_schema()")
+                    else:
+                        schema_name = "dbo"  # Default MSSQL schema
+                        actual_table_name = table_name
                 
                 # Create table info object for compatibility with rest of the code
                 table_info = {
                     "table_name": actual_table_name,
                     "name": actual_table_name,
                     "schema": schema_name,
-                    "full_name": table_name  # Keep the full qualified name
+                    "full_name": f"{schema_name}.{actual_table_name}" if schema_name != "public" else actual_table_name  # Keep the full qualified name
                 }
                 approved_schemas.append(table_info)
-                logger.info(f"✅ Included table schema for '{table_name}' (schema: {schema_name}, table: {actual_table_name})")
+                logger.info(f"✅ Included table schema for '{table_name}' (schema: {schema_name}, table: {actual_table_name}, full_name: {table_info['full_name']})")
+                logger.debug(f"🔍 Table info stored: {table_info}")
             else:
                 logger.debug(f"🚫 Skipped table schema for '{table_name}' (not approved)")
         
@@ -1736,14 +1743,21 @@ async def run_analytics_query_on_approved_tables(
             
             for table_info in approved_schemas:
                 actual_table_name = table_info.get("table_name", table_info.get("name", ""))
-                schema_name = table_info.get("schema", "public")
+                schema_name = table_info.get("schema")
                 full_table_name = table_info.get("full_name", actual_table_name)
+                
+                logger.info(f"🔍 Processing table: actual_table_name='{actual_table_name}', schema_name='{schema_name}', full_table_name='{full_table_name}'")
                 
                 # Filter metadata for this specific table
                 table_columns = []
                 for metadata_key, metadata in all_column_metadata.items():
                     # metadata_key format is "schema.table.column"
-                    if metadata.get("table_schema") == schema_name and metadata.get("table_name") == actual_table_name:
+                    metadata_schema = metadata.get("table_schema")
+                    metadata_table = metadata.get("table_name")
+                    
+                    logger.debug(f"🔍 Checking metadata: key='{metadata_key}', metadata_schema='{metadata_schema}', metadata_table='{metadata_table}' vs expected schema='{schema_name}', table='{actual_table_name}'")
+                    
+                    if metadata_schema == schema_name and metadata_table == actual_table_name:
                         # Convert to the format expected by the rest of the code
                         column_info = {
                             "table_name": actual_table_name,
