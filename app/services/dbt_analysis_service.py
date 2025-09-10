@@ -596,20 +596,24 @@ async def analyze_dbt_file_for_iterative_query(
         while current_depth >= 0:
             logger.info(f"🔄 Step 3.{max_depth - current_depth + 1}: Trying depth {current_depth}")
             
-            # Get tables from current depth only (not cumulative)
-            current_tables = tables_by_depth.get(current_depth, [])
+            # Get tables from current depth AND all deeper depths (CUMULATIVE)
+            cumulative_tables = []
+            for depth in range(current_depth, max_depth + 1):
+                depth_tables = tables_by_depth.get(depth, [])
+                cumulative_tables.extend(depth_tables)
+                logger.debug(f"   Added {len(depth_tables)} tables from depth {depth}")
             
-            if not current_tables:
-                logger.info(f"⏭️  No tables at depth {current_depth}, moving to next depth")
+            if not cumulative_tables:
+                logger.info(f"⏭️  No cumulative tables at depth {current_depth} and deeper, moving to next depth")
                 current_depth -= 1
                 continue
             
-            logger.info(f"📋 Using {len(current_tables)} tables at depth {current_depth}")
-            logger.debug(f"🏷️  Tables in scope: {current_tables}")
+            logger.info(f"📋 Using {len(cumulative_tables)} CUMULATIVE tables from depth {current_depth} to {max_depth}")
+            logger.info(f"🏷️  Tables in scope: {cumulative_tables}")
             
             try:
-                # Filter pre-fetched enhanced schema to only include current tables
-                logger.info("🔍 Filtering pre-fetched metadata for current table set")
+                # Filter pre-fetched enhanced schema to only include cumulative tables
+                logger.info("🔍 Filtering pre-fetched metadata for cumulative table set")
                 
                 # Convert enhanced schema format to the expected column metadata format
                 # Enhanced schema format: {"schema.table": [{"name": "col", "description": "desc", "type": "type"}]}
@@ -623,8 +627,8 @@ async def analyze_dbt_file_for_iterative_query(
                         table_schema = "public"
                         table_name = schema_table_key
                     
-                    # Check if this table is in our current scope
-                    if table_name in current_tables or f"{table_schema}.{table_name}" in current_tables:
+                    # Check if this table is in our cumulative scope
+                    if table_name in cumulative_tables or f"{table_schema}.{table_name}" in cumulative_tables:
                         for col in columns:
                             col_name = col.get("name", "")
                             col_desc = col.get("description", "No description")
@@ -640,12 +644,42 @@ async def analyze_dbt_file_for_iterative_query(
                                 "data_type": col_type
                             }
                 
-                logger.info(f"📊 Filtered metadata: {len(filtered_metadata)} columns across {len(current_tables)} tables")
+                logger.info(f"📊 Filtered metadata: {len(filtered_metadata)} columns across {len(cumulative_tables)} tables")
+                
+                # ============================================================
+                # 🎯 DETAILED LOGGING: What we're sending to the AI
+                # ============================================================
+                logger.info("=" * 80)
+                logger.info(f"🤖 SENDING TO AI - DEPTH {current_depth} ANALYSIS")
+                logger.info("=" * 80)
+                logger.info(f"📊 Analytics Question: {analytics_prompt}")
+                logger.info(f"📋 Total Tables Available: {len(cumulative_tables)}")
+                logger.info(f"🔢 Total Columns Available: {len(filtered_metadata)}")
+                
+                # Group columns by table for better readability
+                tables_with_columns = {}
+                for metadata_key, metadata in filtered_metadata.items():
+                    table_name = metadata["table_name"]
+                    column_name = metadata["column_name"]
+                    data_type = metadata["data_type"]
+                    
+                    if table_name not in tables_with_columns:
+                        tables_with_columns[table_name] = []
+                    tables_with_columns[table_name].append(f"{column_name} ({data_type})")
+                
+                for table_name, columns in tables_with_columns.items():
+                    logger.info(f"📦 Table: {table_name}")
+                    for col in columns[:10]:  # Show first 10 columns
+                        logger.info(f"   └─ {col}")
+                    if len(columns) > 10:
+                        logger.info(f"   └─ ... and {len(columns) - 10} more columns")
+                
+                logger.info("=" * 80)
                 
                 # Ask AI if this table set is sufficient
                 logger.info("🤖 Asking AI if current table set is sufficient")
                 decision = await _ask_ai_sufficiency_decision(
-                    tables=current_tables,
+                    tables=cumulative_tables,
                     column_metadata=filtered_metadata,
                     analytics_prompt=analytics_prompt,
                     current_depth=current_depth,
@@ -655,7 +689,7 @@ async def analyze_dbt_file_for_iterative_query(
                 
                 process_log.append({
                     "depth": current_depth,
-                    "table_count": len(current_tables),
+                    "table_count": len(cumulative_tables),
                     "column_count": len(filtered_metadata),
                     "ai_decision": decision["decision"],
                     "ai_reasoning": decision.get("reasoning", "")
@@ -664,7 +698,8 @@ async def analyze_dbt_file_for_iterative_query(
                 logger.info(f"🎯 AI Decision: {decision['decision']}")
                 logger.info(f"💭 AI Reasoning: {decision.get('reasoning', 'No reasoning provided')}")
                 
-                if decision["decision"] == "sufficient":
+                # Fix: Check for "yes" not "sufficient"
+                if decision["decision"].lower().strip() == "yes":
                     logger.info(f"✅ AI says YES at depth {current_depth}! Proceeding with enhanced analysis")
                     
                     # Step A: Use filtered metadata (no need to call MCP again - we have all the data)
@@ -694,7 +729,7 @@ async def analyze_dbt_file_for_iterative_query(
                                 "password": connection['password'],
                                 "database": connection['database'],
                                 "analytics_prompt": analytics_prompt,
-                                "approved_tables": json.dumps(current_tables),
+                                "approved_tables": json.dumps(cumulative_tables),
                                 "database_type": database_type,
                                 "confluence_space": confluence_space,
                                 "confluence_title": confluence_title
@@ -723,7 +758,7 @@ async def analyze_dbt_file_for_iterative_query(
                         "status": "success",
                         "final_depth": current_depth,
                         "max_depth": max_depth,
-                        "approved_tables": current_tables,
+                        "approved_tables": cumulative_tables,
                         "column_count": len(filtered_metadata),
                         "process_log": process_log,
                         "approved_table_keys": approved_keys,
@@ -990,63 +1025,111 @@ async def _ask_ai_sufficiency_decision(
         # Import the global llm_client instance from app.client
         from ..client import llm_client
         
-        # Build a clear prompt for the AI
-        table_info = f"Available tables (depth {current_depth}/{max_depth}): {', '.join(tables)}\n\n"
+        # Build a clear prompt for the AI with enhanced context
+        table_info = f"Available tables (CUMULATIVE from depth {current_depth} to {max_depth}): {', '.join(tables)}\n"
+        table_info += f"Total tables: {len(tables)}\n"
+        table_info += f"Total columns: {len(column_metadata)}\n\n"
         
-        column_info = "Available columns:\n"
+        # Group columns by table for better presentation to AI
+        column_info = "Available columns grouped by table:\n"
+        tables_with_columns = {}
         for key, meta in column_metadata.items():
             table_name = meta.get("table_name", "unknown")
             column_name = meta.get("column_name", "unknown")
             data_type = meta.get("data_type", "unknown")
-            column_info += f"  {table_name}.{column_name} ({data_type})\n"
+            description = meta.get("description", "No description")
+            
+            if table_name not in tables_with_columns:
+                tables_with_columns[table_name] = []
+            tables_with_columns[table_name].append(f"  • {column_name} ({data_type}): {description}")
+        
+        for table_name, columns in tables_with_columns.items():
+            column_info += f"\n🔸 Table: {table_name}\n"
+            column_info += "\n".join(columns[:15])  # Show up to 15 columns per table
+            if len(columns) > 15:
+                column_info += f"\n  • ... and {len(columns) - 15} more columns"
+            column_info += "\n"
         
         context_info = f"\nDBT Context: {dbt_context.get('description', 'Unknown')}\n"
         
         decision_prompt = f"""
-You are analyzing whether the available database tables and columns are sufficient to answer a specific analytics question.
+You are a SQL expert analyzing whether available database tables and columns are sufficient to answer a specific analytics question.
 
 {context_info}
 
-ANALYTICS QUESTION:
+🎯 ANALYTICS QUESTION TO ANSWER:
 {analytics_prompt}
 
+📊 AVAILABLE DATABASE RESOURCES:
 {table_info}
 
+📋 DETAILED COLUMN INFORMATION:
 {column_info}
 
-TASK: Determine if these tables and columns contain enough information to generate a meaningful SQL query that answers the analytics question.
+🤔 YOUR TASK:
+Determine if these tables and columns contain enough information to generate a meaningful, complete SQL query that fully answers the analytics question.
 
-Consider:
-1. Are the necessary data elements present?
-2. Can relationships between tables be established?
-3. Are there enough columns to perform the required analysis?
-4. Would the resulting query be meaningful and complete?
+💡 DECISION CRITERIA:
+✅ Answer YES if:
+- All necessary data elements are present
+- Table relationships can be established (foreign keys, common fields)
+- Required calculations/aggregations are possible
+- The query would produce meaningful, complete results
 
-Respond with exactly "YES" or "NO" followed by a brief explanation.
+❌ Answer NO if:
+- Missing critical tables or columns needed for the analysis
+- Cannot establish necessary table relationships
+- Data is too incomplete or fragmented
+- Would result in partial or meaningless results
 
-If YES: The available tables/columns are sufficient to answer the question.
-If NO: More tables or deeper table relationships are needed.
+📝 RESPONSE FORMAT (be precise):
+DECISION: YES
+REASONING: [Explain specifically why these tables/columns are sufficient]
 
-Response format:
-DECISION: [YES/NO]
-REASONING: [Brief explanation of why this set is sufficient or insufficient]
+OR
+
+DECISION: NO  
+REASONING: [Explain specifically what critical data/relationships are missing]
+
+Note: You are looking at CUMULATIVE tables from depth {current_depth} to {max_depth}. If this seems insufficient, we can try with more tables from shallower depths.
 """
+        
+        # Log what we're sending to the AI for debugging
+        logger.debug("🤖 FULL PROMPT SENT TO AI:")
+        logger.debug("=" * 50)
+        logger.debug(decision_prompt)
+        logger.debug("=" * 50)
         
         response = await llm_client.query_llm(decision_prompt)
         
-        # Parse the response
+        logger.info(f"🤖 RAW AI RESPONSE: {response}")
+        
+        # Parse the response more robustly
         lines = response.strip().split('\n')
         decision = "no"
         reasoning = "Could not parse AI response"
         
+        # Look for decision in multiple formats
         for line in lines:
+            line = line.strip()
             if line.startswith("DECISION:"):
-                decision_text = line.replace("DECISION:", "").strip()
-                decision = "yes" if "yes" in decision_text.lower() else "no"
+                decision_text = line.replace("DECISION:", "").strip().lower()
+                decision = "yes" if "yes" in decision_text else "no"
             elif line.startswith("REASONING:"):
                 reasoning = line.replace("REASONING:", "").strip()
+            # Also check for direct YES/NO at start of lines
+            elif line.upper() in ["YES", "NO"]:
+                decision = line.lower()
         
-        logger.info(f"🤖 AI Decision: {decision.upper()} - {reasoning}")
+        # If we couldn't parse properly, try to find YES/NO anywhere in the response
+        if decision == "no" and reasoning == "Could not parse AI response":
+            response_lower = response.lower()
+            if "decision: yes" in response_lower or "yes" in response_lower:
+                decision = "yes"
+            reasoning = f"Fallback parsing from: {response[:200]}..."
+        
+        logger.info(f"🤖 PARSED AI Decision: {decision.upper()}")
+        logger.info(f"🤖 PARSED AI Reasoning: {reasoning}")
         
         return {
             "decision": decision,
