@@ -1951,21 +1951,67 @@ async def run_analytics_query_on_approved_tables(
         
         logger.info(f"✅ Built unified schema for {len(unified_schema)} tables")
         
+        # Format unified schema as clean text instead of JSON
+        def _format_schema_as_text(schema_dict: Dict) -> str:
+            """
+            Convert unified schema dictionary to clean, token-efficient text format.
+            
+            Format:
+            schema.table_name
+                column_name (type) - description
+                another_column (varchar) - description
+            
+            another_schema.table_name
+                column_name (int) - description
+            """
+            if not schema_dict:
+                return "No schema information available."
+            
+            lines = []
+            for table_name, table_info in schema_dict.items():
+                # Add table name
+                lines.append(f"{table_name}")
+                
+                # Add columns with indentation
+                columns = table_info.get("columns", [])
+                for col in columns:
+                    col_name = col.get("name", "unknown")
+                    col_type = col.get("type", "unknown")
+                    col_desc = col.get("description", "")
+                    
+                    # Format: column_name (type) - description
+                    col_line = f"    {col_name} ({col_type})"
+                    if col_desc.strip():
+                        col_line += f" - {col_desc.strip()}"
+                    
+                    lines.append(col_line)
+                
+                # Add empty line between tables for readability
+                lines.append("")
+            
+            return "\n".join(lines).strip()
+        
+        schema_text = _format_schema_as_text(unified_schema)
+        logger.info(f"📝 Formatted schema as text: {len(schema_text)} characters (vs JSON: {len(json.dumps(unified_schema, indent=2))} chars)")
+        logger.debug(f"📝 Schema text preview:\n{schema_text[:500]}...")
+        
         # Create the clean, unified prompt
         enhanced_prompt = f"""
 You are a PostgreSQL expert. Generate an analytical SQL query using the following database schema.
 
 Original Analytics Request: {analytics_prompt}
 
-DATABASE SCHEMA (All tables with columns, types, and descriptions):
-{json.dumps(unified_schema, indent=2)}
+DATABASE SCHEMA:
+{schema_text}
 
 CRITICAL SQL REQUIREMENTS:
-1. **Schema Qualification**: ALWAYS use fully qualified table names (schema.table_name format)
-2. **Table References**: Use the EXACT table names from the schema above
-3. **Column References**: Use the exact column names shown in the schema
-4. **No Table Aliases**: Do NOT use table aliases like 't' or 'u' - use full schema.table_name format
-5. **PostgreSQL Syntax**: Use proper PostgreSQL syntax and functions
+1. **ONLY USE PROVIDED TABLES**: You MUST use ONLY the tables listed in the DATABASE SCHEMA above. Do NOT reference any other tables, views, or database objects that are not explicitly shown in the schema.
+2. **EXACT TABLE NAMES**: Use the EXACT table names from the schema above - do not modify, abbreviate, or make up table names.
+3. **EXACT COLUMN NAMES**: Use the EXACT column names shown in the schema - do not modify, abbreviate, or make up column names.
+4. **Schema Qualification**: ALWAYS use fully qualified table names (schema.table_name format) exactly as shown in the schema.
+5. **No Table Aliases**: Do NOT use table aliases like 't' or 'u' - use full schema.table_name format.
+6. **PostgreSQL Syntax**: Use proper PostgreSQL syntax and functions.
+7. **NO HALLUCINATION**: If you cannot answer the question with the provided tables and columns, say so rather than making up table or column names.
 
 EXAMPLE CORRECT FORMAT:
 SELECT public.users.id, public.users.name, analytics.sales.amount
