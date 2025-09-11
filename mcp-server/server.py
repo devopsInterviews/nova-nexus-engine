@@ -1951,6 +1951,48 @@ async def run_analytics_query_on_approved_tables(
         
         logger.info(f"✅ Built unified schema for {len(unified_schema)} tables")
         
+        # Enhanced SQL fence stripping function for consistent processing
+        def _strip_sql_fences_local(txt: str) -> str:
+            """Enhanced SQL fence stripping with comprehensive logging"""
+            if not txt:
+                logger.warning("⚠️ _strip_sql_fences_local: Empty input")
+                return txt
+            
+            logger.info(f"🔧 _strip_sql_fences_local: Input length {len(txt)} chars")
+            logger.debug(f"🔧 _strip_sql_fences_local: Raw input: {txt[:200]}...")
+            
+            original_txt = txt
+            
+            # Remove HTML code tags
+            t = re.sub(r"</?code[^>]*>", "", txt, flags=re.I)
+            if t != txt:
+                logger.debug("🔧 Removed HTML code tags")
+            
+            # Look for SQL code blocks
+            m = re.search(r"```(?:sql)?\s*(.*?)```", t, flags=re.S | re.I)
+            if m:
+                t = m.group(1)
+                logger.debug(f"🔧 Extracted from code block, new length: {len(t)}")
+            else:
+                logger.debug("🔧 No code block found, proceeding with full text")
+            
+            # Remove any remaining backticks
+            t = t.replace("```", "").strip()
+            
+            # Remove leading "sql:" or "SQL:" labels
+            before_label_removal = t
+            t = re.sub(r"^\s*sql\s*[:\-]?\s*", "", t, flags=re.I)
+            if t != before_label_removal:
+                logger.debug("🔧 Removed SQL label prefix")
+            
+            logger.info(f"🔧 _strip_sql_fences_local: Final SQL length {len(t)} chars")
+            logger.debug(f"🔧 _strip_sql_fences_local: Final SQL preview: {t[:100]}...")
+            
+            if not t.strip():
+                logger.error(f"❌ _strip_sql_fences_local: Result is empty! Original was: {original_txt[:500]}")
+            
+            return t
+        
         # Format unified schema as clean text instead of JSON
         def _format_schema_as_text(schema_dict: Dict) -> str:
             """
@@ -2030,115 +2072,174 @@ QUERY GUIDELINES:
 IMPORTANT: Return ONLY the SQL query without any additional text, explanations, or formatting.
 """
         
-        # Execute the analytics query with filtered context
-        logger.info("🚀 Executing analytics query with approved tables context...")
+        # Execute the analytics query with iterative error correction (max 3 attempts)
+        logger.info("🚀 Starting analytics query with iterative error correction...")
         logger.info(f"📝 Enhanced prompt length: {len(enhanced_prompt)} characters")
         logger.debug(f"📝 Full enhanced prompt: {enhanced_prompt}")
         
-        # Use LLM to generate SQL with the enhanced prompt
-        logger.info("🤖 Calling LLM to generate SQL query...")
-        sql_raw = await llm.call_remote_llm(
-            context=enhanced_prompt,
-            prompt="Generate an analytical SQL query based on the provided context and requirements.",
-            system_prompt="You are a PostgreSQL expert. Generate efficient, analytical SQL queries that provide meaningful business insights. Use proper joins, aggregations, and filters. Return only the SQL query without explanation."
-        )
-        
-        logger.info(f"🤖 LLM returned SQL (length: {len(sql_raw)} chars)")
-        logger.debug(f"🤖 Raw SQL from LLM: {sql_raw}")
-        
-        # Clean the SQL (strip code fences) - using enhanced function for consistency
-        def _strip_sql_fences_local(txt: str) -> str:
-            """Enhanced SQL fence stripping with comprehensive logging"""
-            if not txt:
-                logger.warning("⚠️ _strip_sql_fences_local: Empty input")
-                return txt
-            
-            logger.info(f"🔧 _strip_sql_fences_local: Input length {len(txt)} chars")
-            logger.debug(f"🔧 _strip_sql_fences_local: Raw input: {txt[:200]}...")
-            
-            original_txt = txt
-            
-            # Remove HTML code tags
-            t = re.sub(r"</?code[^>]*>", "", txt, flags=re.I)
-            if t != txt:
-                logger.debug("🔧 Removed HTML code tags")
-            
-            # Look for SQL code blocks
-            m = re.search(r"```(?:sql)?\s*(.*?)```", t, flags=re.S | re.I)
-            if m:
-                t = m.group(1)
-                logger.debug(f"🔧 Extracted from code block, new length: {len(t)}")
-            else:
-                logger.debug("🔧 No code block found, proceeding with full text")
-            
-            # Remove any remaining backticks
-            t = t.replace("```", "").strip()
-            
-            # Remove leading "sql:" or "SQL:" labels
-            before_label_removal = t
-            t = re.sub(r"^\s*sql\s*[:\-]?\s*", "", t, flags=re.I)
-            if t != before_label_removal:
-                logger.debug("🔧 Removed SQL label prefix")
-            
-            logger.info(f"🔧 _strip_sql_fences_local: Final SQL length {len(t)} chars")
-            logger.debug(f"🔧 _strip_sql_fences_local: Final SQL preview: {t[:100]}...")
-            
-            if not t.strip():
-                logger.error(f"❌ _strip_sql_fences_local: Result is empty! Original was: {original_txt[:500]}")
-            
-            return t
-        
-        sql = _strip_sql_fences_local(sql_raw)
-        logger.info("🔍 Generated SQL for approved tables (length: %d chars):\n%s", len(sql), sql)
-        
-        # Execute the query
-        logger.info("🔍 Executing SQL query against database...")
+        max_attempts = 3
+        sql = ""
+        sql_raw = ""
         rows = []
         query_error = None
+        attempt_history = []
         
-        # Validate SQL before execution
-        if not sql or not sql.strip():
-            query_error = "Generated SQL is empty after processing"
-            logger.error(f"❌ {query_error}")
-            logger.error(f"❌ Raw LLM output was: {sql_raw}")
-        else:
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"🔄 Attempt {attempt}/{max_attempts}: Generating SQL query...")
+            
             try:
+                # Prepare the prompt for this attempt
+                current_prompt = enhanced_prompt
+                current_system_prompt = "You are a PostgreSQL expert. Generate efficient, analytical SQL queries that provide meaningful business insights. Use proper joins, aggregations, and filters. Return only the SQL query without explanation."
+                
+                # If this is a retry attempt, modify the prompt to include the previous error
+                if attempt > 1 and query_error:
+                    logger.info(f"🔧 Retry attempt {attempt}: Including previous error in prompt")
+                    error_context = f"""
+PREVIOUS ATTEMPT ERROR:
+Your previous SQL query failed with this error: {query_error}
+
+Previous failing SQL:
+{sql if sql else 'No SQL generated'}
+
+Please analyze the error and generate a corrected SQL query that addresses the specific issue mentioned in the error message.
+Pay special attention to:
+- Table and column name spelling and existence
+- Proper JOIN conditions and syntax
+- Data type compatibility
+- SQL syntax errors
+- Schema qualification
+
+"""
+                    current_prompt = error_context + current_prompt
+                    current_system_prompt = "You are a PostgreSQL expert fixing a failed SQL query. Analyze the previous error carefully and generate a corrected SQL query that addresses the specific issue. Return only the corrected SQL query without explanation."
+                
+                # Generate SQL with LLM
+                logger.info(f"🤖 Calling LLM for attempt {attempt}...")
+                sql_raw = await llm.call_remote_llm(
+                    context=current_prompt,
+                    prompt="Generate an analytical SQL query based on the provided context and requirements." if attempt == 1 else "Fix the previous SQL query based on the error message and generate a corrected version.",
+                    system_prompt=current_system_prompt
+                )
+                
+                logger.info(f"🤖 Attempt {attempt}: LLM returned SQL (length: {len(sql_raw)} chars)")
+                logger.debug(f"🤖 Attempt {attempt}: Raw SQL from LLM: {sql_raw}")
+                
+                # Clean the SQL (strip code fences)
+                sql = _strip_sql_fences_local(sql_raw)
+                logger.info(f"🔍 Attempt {attempt}: Generated SQL (length: {len(sql)} chars):\n{sql}")
+                
+                # Validate SQL before execution
+                if not sql or not sql.strip():
+                    query_error = f"Attempt {attempt}: Generated SQL is empty after processing"
+                    logger.error(f"❌ {query_error}")
+                    logger.error(f"❌ Raw LLM output was: {sql_raw}")
+                    
+                    # Store attempt details
+                    attempt_history.append({
+                        "attempt": attempt,
+                        "sql": sql,
+                        "raw_sql": sql_raw,
+                        "error": query_error,
+                        "success": False
+                    })
+                    
+                    # If this was the last attempt, break
+                    if attempt == max_attempts:
+                        break
+                    else:
+                        continue
+                
+                # Execute the query
+                logger.info(f"🔍 Attempt {attempt}: Executing SQL query against database...")
                 rows = await client.execute_query(sql)
-                logger.info("✅ Query executed successfully: rows=%d", len(rows or []))
+                
+                # If we get here, the query succeeded
+                logger.info(f"✅ Attempt {attempt}: Query executed successfully with {len(rows or [])} rows!")
                 if rows:
-                    logger.info("📊 First row sample (first 5 columns): %s", {k: v for k, v in list(rows[0].items())[:5]} if rows[0] else "N/A")
-                    logger.info("📊 Column names: %s", list(rows[0].keys()) if rows and rows[0] else "N/A")
+                    logger.info("� First row sample (first 5 columns): %s", {k: v for k, v in list(rows[0].items())[:5]} if rows[0] else "N/A")
+                    logger.info("� Column names: %s", list(rows[0].keys()) if rows and rows[0] else "N/A")
                 else:
-                    logger.info("📊 Query returned no rows")
+                    logger.info("📊 Query returned no rows (but executed successfully)")
+                
+                # Store successful attempt
+                attempt_history.append({
+                    "attempt": attempt,
+                    "sql": sql,
+                    "raw_sql": sql_raw,
+                    "error": None,
+                    "success": True,
+                    "rows_returned": len(rows or [])
+                })
+                
+                query_error = None  # Clear any previous error
+                break  # Success! Exit the retry loop
+                
             except Exception as ex:
                 query_error = str(ex)
-                logger.error("❌ SQL execution failed: %s", query_error)
-                logger.error("❌ Failed SQL query was:\n%s", sql)
+                logger.error(f"❌ Attempt {attempt}: SQL execution failed: {query_error}")
+                logger.error(f"❌ Failed SQL query was:\n{sql}")
+                
+                # Store failed attempt
+                attempt_history.append({
+                    "attempt": attempt,
+                    "sql": sql,
+                    "raw_sql": sql_raw,
+                    "error": query_error,
+                    "success": False
+                })
+                
+                # If this was the last attempt, we'll exit the loop
+                if attempt == max_attempts:
+                    logger.error(f"❌ All {max_attempts} attempts failed. Final error: {query_error}")
+                else:
+                    logger.info(f"🔄 Attempt {attempt} failed, will retry with error context...")
         
-        # Build result with comprehensive information
+        # Log the complete attempt history
+        logger.info("� Complete attempt history:")
+        for i, hist in enumerate(attempt_history):
+            status = "✅ SUCCESS" if hist["success"] else "❌ FAILED"
+            logger.info(f"  Attempt {hist['attempt']}: {status}")
+            if hist["success"]:
+                logger.info(f"    Rows returned: {hist.get('rows_returned', 0)}")
+            else:
+                logger.info(f"    Error: {hist['error']}")
+            logger.debug(f"    SQL length: {len(hist['sql'])} chars")
+        
+        final_success = query_error is None
+        logger.info(f"🏁 Final result: {'SUCCESS' if final_success else 'FAILED'} after {len(attempt_history)} attempts")
+        
+        # Build result with comprehensive information including attempt history
         result = {
             "rows": rows, 
-            "sql": sql,  # Always include the SQL, even if execution failed
-            "raw_sql": sql_raw,  # Include raw LLM output for debugging
+            "sql": sql,  # Always include the final SQL, even if execution failed
+            "raw_sql": sql_raw,  # Include final raw LLM output for debugging
             "filtering_info": {
                 "approved_tables": approved_tables,
                 "total_approved_tables": len(approved_schemas) if 'approved_schemas' in locals() else 0,
                 "total_approved_columns": len(approved_columns) if 'approved_columns' in locals() else 0,
                 "filtering_applied": True
+            },
+            "retry_info": {
+                "max_attempts": max_attempts,
+                "total_attempts": len(attempt_history),
+                "final_success": final_success,
+                "attempt_history": attempt_history
             }
         }
         
-        # Add error information if query failed
+        # Add error information if final query failed
         if query_error:
             result["error"] = query_error
             result["execution_successful"] = False
-            logger.info("❌ Returning result with execution error")
+            logger.info(f"❌ Returning result with execution error after {len(attempt_history)} attempts")
         else:
             result["execution_successful"] = True
-            logger.info("✅ Returning successful result")
+            logger.info(f"✅ Returning successful result after {len(attempt_history)} attempts")
         
-        logger.info("✅ Analytics query completed")
-        logger.info(f"📊 Final result: {len(rows)} rows, SQL length: {len(sql)} chars, success: {not query_error}")
+        logger.info("✅ Analytics query completed with iterative error correction")
+        logger.info(f"📊 Final result: {len(rows)} rows, SQL length: {len(sql)} chars, success: {final_success}")
+        logger.info(f"🔄 Retry summary: {len(attempt_history)}/{max_attempts} attempts used")
         logger.debug(f"📊 Full result keys: {list(result.keys())}")
         return result
         
@@ -2164,6 +2265,13 @@ IMPORTANT: Return ONLY the SQL query without any additional text, explanations, 
                 "total_approved_tables": 0,
                 "total_approved_columns": 0,
                 "filtering_applied": True
+            },
+            "retry_info": {
+                "max_attempts": 3,
+                "total_attempts": len(attempt_history) if 'attempt_history' in locals() else 0,
+                "final_success": False,
+                "attempt_history": attempt_history if 'attempt_history' in locals() else [],
+                "exception_occurred": True
             }
         }
         logger.info("❌ Returning exception error result with available SQL: %s", {k: v for k, v in error_result.items() if k != 'raw_sql'})

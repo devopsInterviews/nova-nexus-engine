@@ -35,7 +35,7 @@ export default function BI() {
             <ThemedTabsTrigger value="connect" layoutId="biTab">Connect to DB</ThemedTabsTrigger>
             <ThemedTabsTrigger value="suggestions" layoutId="biTab">Column Suggestions</ThemedTabsTrigger>
             <ThemedTabsTrigger value="sql" layoutId="biTab">SQL Builder</ThemedTabsTrigger>
-            <ThemedTabsTrigger value="dbt" layoutId="biTab">SQL Builder - dbt</ThemedTabsTrigger>
+            <ThemedTabsTrigger value="dbt" layoutId="biTab">SQL Builder - DBT</ThemedTabsTrigger>
             <ThemedTabsTrigger value="sync" layoutId="biTab">Sync Tables to Confluence</ThemedTabsTrigger>
           </ThemedTabsList>
 
