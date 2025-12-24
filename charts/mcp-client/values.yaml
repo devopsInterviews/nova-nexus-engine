@@ -161,10 +161,12 @@ idaMcp:
     # Namespace for MCP server deployments
     namespace: ""  # Leave empty to use same namespace as mcp-client
     
-    # IDA Proxy settings (must match ida-proxy chart values)
-    proxyDeployment: "ida-proxy"
-    proxyConfigMapPorts: "ida-proxy-listen-ports"
-    proxyConfigMapMap: "ida-proxy-port-map"
+    # IDA Proxy settings - these names are auto-generated from chart fullname
+    # The controller will use: {release-name}-ida-proxy, {release-name}-ida-proxy-listen-ports, etc.
+    # Leave these empty to use defaults based on Release.Name
+    proxyDeployment: ""  # Auto: {fullname}-ida-proxy
+    proxyConfigMapPorts: ""  # Auto: {fullname}-ida-proxy-listen-ports
+    proxyConfigMapMap: ""  # Auto: {fullname}-ida-proxy-port-map
     
     # MCP Server image
     # For testing, use "nginxdemos/hello" which has a nice visual UI
@@ -183,7 +185,7 @@ idaMcp:
   
   # Port allocation range for proxy ports
   proxyPortMin: 9001
-  proxyPortMax: 9999
+  proxyPortMax: 9100
   
   # IDA port validation range
   idaPortMin: 1024
@@ -193,6 +195,102 @@ idaMcp:
   # This is the externally-accessible URL prefix for MCP servers
   # The proxy port will be appended: {gatewayBaseUrl}:{proxyPort}/
   gatewayBaseUrl: "https://mcp-gateway.company.internal"
+
+# ============================================================
+# IDA Proxy Configuration (nginx reverse proxy for IDA workstations)
+# ============================================================
+idaProxy:
+  # Enable IDA Proxy deployment
+  enabled: true
+  
+  # Docker image settings
+  image:
+    repository: nginx
+    tag: alpine
+    pullPolicy: IfNotPresent
+  
+  # Replica count
+  replicaCount: 1
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+  
+  # Port allocation range for proxy ports
+  # These ports are dynamically allocated to users
+  portRange:
+    start: 9001
+    end: 9100  # Allows 100 concurrent users
+  
+  # DNS configuration for resolving user workstation hostnames
+  dns:
+    servers:
+      - 10.0.0.53
+      - 10.0.0.54
+    # Uncomment if using short hostnames without domain
+    # searchDomains:
+    #   - corp.example.com
+    resolverValid: "30s"
+    resolverTimeout: "2s"
+  
+  # Proxy timeouts
+  proxy:
+    connectTimeout: "2s"
+    readTimeout: "60s"
+    sendTimeout: "60s"
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+  
+  # Pod labels
+  podLabels: {}
+  
+  # Pod annotations
+  podAnnotations: {}
+  
+  # Security context
+  securityContext:
+    runAsNonRoot: false  # nginx needs root to bind to ports
+  
+  # Pod security context
+  podSecurityContext: {}
+  
+  # Liveness probe
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  
+  # Readiness probe
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  
+  # Initial port mappings (optional, normally managed by controller)
+  # initialPortMappings:
+  #   - proxyPort: 9001
+  #     upstreamHost: "user1-pc.corp.example.com"
+  #     upstreamPort: 13337
 
 # External services
 external:

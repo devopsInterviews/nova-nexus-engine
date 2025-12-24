@@ -1,12 +1,12 @@
+{{- if .Values.idaProxy.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-port-map
+  name: {{ include "mcp-client.fullname" . }}-ida-proxy-port-map
   labels:
     app: ida-mcp
     component: proxy
-    app.kubernetes.io/name: {{ .Chart.Name }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- include "mcp-client.labels" . | nindent 4 }}
 data:
   port_map.conf: |
     # Auto-managed by MCP Client controller
@@ -16,8 +16,8 @@ data:
     # Format: PROXY_PORT   UPSTREAM_HOST:UPSTREAM_PORT;
     #
     # Initial mappings from Helm values:
-    {{- if .Values.initialPortMappings }}
-    {{- range .Values.initialPortMappings }}
+    {{- if .Values.idaProxy.initialPortMappings }}
+    {{- range .Values.idaProxy.initialPortMappings }}
     {{ .proxyPort }}          {{ .upstreamHost }}:{{ .upstreamPort }};
     {{- end }}
     {{- else }}
@@ -27,3 +27,4 @@ data:
     # 9001          userA-workstation.corp.example.com:9100;
     # 9002          userB-workstation.corp.example.com:9100;
     {{- end }}
+{{- end }}

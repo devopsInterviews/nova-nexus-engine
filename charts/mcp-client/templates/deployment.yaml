@@ -40,12 +40,13 @@ spec:
             # IDA MCP Controller Configuration
             - name: K8S_NAMESPACE
               value: "{{ .Values.idaMcp.k8s.namespace | default .Release.Namespace }}"
+            # IDA Proxy names - use values if set, otherwise derive from release name
             - name: IDA_PROXY_DEPLOYMENT
-              value: "{{ .Values.idaMcp.k8s.proxyDeployment }}"
+              value: "{{ .Values.idaMcp.k8s.proxyDeployment | default (printf "%s-ida-proxy" (include "mcp-client.fullname" .)) }}"
             - name: IDA_PROXY_CONFIGMAP_PORTS
-              value: "{{ .Values.idaMcp.k8s.proxyConfigMapPorts }}"
+              value: "{{ .Values.idaMcp.k8s.proxyConfigMapPorts | default (printf "%s-ida-proxy-listen-ports" (include "mcp-client.fullname" .)) }}"
             - name: IDA_PROXY_CONFIGMAP_MAP
-              value: "{{ .Values.idaMcp.k8s.proxyConfigMapMap }}"
+              value: "{{ .Values.idaMcp.k8s.proxyConfigMapMap | default (printf "%s-ida-proxy-port-map" (include "mcp-client.fullname" .)) }}"
             - name: MCP_SERVER_IMAGE_REPO
               value: "{{ .Values.idaMcp.k8s.mcpServerImageRepo }}"
             - name: MCP_SERVER_PORT

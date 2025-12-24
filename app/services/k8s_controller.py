@@ -24,13 +24,13 @@ logger = logging.getLogger("uvicorn.error")
 # Configuration
 # ============================================================
 
-# Namespace where IDA MCP resources are deployed
-K8S_NAMESPACE = os.getenv("K8S_NAMESPACE", "ida-mcp-servers")
+# Namespace where IDA MCP resources are deployed (set via Helm)
+K8S_NAMESPACE = os.getenv("K8S_NAMESPACE", "default")
 
-# IDA Proxy deployment name
-IDA_PROXY_DEPLOYMENT = os.getenv("IDA_PROXY_DEPLOYMENT", "ida-proxy")
-IDA_PROXY_CONFIGMAP_PORTS = os.getenv("IDA_PROXY_CONFIGMAP_PORTS", "ida-proxy-listen-ports")
-IDA_PROXY_CONFIGMAP_MAP = os.getenv("IDA_PROXY_CONFIGMAP_MAP", "ida-proxy-port-map")
+# IDA Proxy deployment name (set via Helm based on release name)
+IDA_PROXY_DEPLOYMENT = os.getenv("IDA_PROXY_DEPLOYMENT", "mcp-client-ida-proxy")
+IDA_PROXY_CONFIGMAP_PORTS = os.getenv("IDA_PROXY_CONFIGMAP_PORTS", "mcp-client-ida-proxy-listen-ports")
+IDA_PROXY_CONFIGMAP_MAP = os.getenv("IDA_PROXY_CONFIGMAP_MAP", "mcp-client-ida-proxy-port-map")
 
 # MCP Server configuration
 MCP_SERVER_IMAGE_REPO = os.getenv("MCP_SERVER_IMAGE_REPO", "nginxdemos/hello")

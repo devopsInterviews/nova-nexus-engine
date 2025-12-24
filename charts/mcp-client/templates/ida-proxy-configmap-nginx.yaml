@@ -1,12 +1,12 @@
+{{- if .Values.idaProxy.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-nginx-config
+  name: {{ include "mcp-client.fullname" . }}-ida-proxy-nginx-config
   labels:
     app: ida-mcp
     component: proxy
-    app.kubernetes.io/name: {{ .Chart.Name }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- include "mcp-client.labels" . | nindent 4 }}
 data:
   nginx.conf: |
     events {
@@ -16,8 +16,8 @@ data:
     http {
       # DNS used to resolve the upstream hostnames at runtime
       # 'valid=' controls how long NGINX caches DNS answers
-      resolver {{ join " " .Values.dns.servers }} valid={{ .Values.dns.resolverValid }} ipv6=off;
-      resolver_timeout {{ .Values.dns.resolverTimeout }};
+      resolver {{ join " " .Values.idaProxy.dns.servers }} valid={{ .Values.idaProxy.dns.resolverValid }} ipv6=off;
+      resolver_timeout {{ .Values.idaProxy.dns.resolverTimeout }};
 
       # Port -> upstream host:port mapping
       map $server_port $ida_upstream {
@@ -66,9 +66,9 @@ data:
           proxy_set_header X-Request-Id $http_x_request_id;
 
           # Proxy timeouts
-          proxy_connect_timeout {{ .Values.proxy.connectTimeout }};
-          proxy_read_timeout {{ .Values.proxy.readTimeout }};
-          proxy_send_timeout {{ .Values.proxy.sendTimeout }};
+          proxy_connect_timeout {{ .Values.idaProxy.proxy.connectTimeout }};
+          proxy_read_timeout {{ .Values.idaProxy.proxy.readTimeout }};
+          proxy_send_timeout {{ .Values.idaProxy.proxy.sendTimeout }};
           
           # Support for SSE (Server-Sent Events)
           proxy_buffering off;
@@ -78,3 +78,4 @@ data:
         }
       }
     }
+{{- end }}
