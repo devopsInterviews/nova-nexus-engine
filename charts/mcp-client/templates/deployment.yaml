@@ -47,11 +47,12 @@ spec:
               value: "{{ .Values.idaMcp.k8s.proxyConfigMapPorts | default (printf "%s-ida-proxy-listen-ports" (include "mcp-client.fullname" .)) }}"
             - name: IDA_PROXY_CONFIGMAP_MAP
               value: "{{ .Values.idaMcp.k8s.proxyConfigMapMap | default (printf "%s-ida-proxy-port-map" (include "mcp-client.fullname" .)) }}"
-            - name: MCP_SERVER_IMAGE_REPO
+            # IDA MCP Server settings (prefixed to avoid K8s service discovery conflicts)
+            - name: IDA_MCP_SERVER_IMAGE_REPO
               value: "{{ .Values.idaMcp.k8s.mcpServerImageRepo }}"
-            - name: MCP_SERVER_PORT
+            - name: IDA_MCP_SERVER_PORT
               value: "{{ .Values.idaMcp.k8s.mcpServerPort }}"
-            - name: MCP_SERVER_HEALTH_PATH
+            - name: IDA_MCP_SERVER_HEALTH_PATH
               value: "{{ .Values.idaMcp.k8s.mcpServerHealthPath | default "/" }}"
             - name: ALLOWED_MCP_VERSIONS
               value: "{{ .Values.idaMcp.allowedVersions }}"

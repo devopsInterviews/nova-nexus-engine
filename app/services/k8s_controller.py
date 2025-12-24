@@ -32,10 +32,10 @@ IDA_PROXY_DEPLOYMENT = os.getenv("IDA_PROXY_DEPLOYMENT", "mcp-client-ida-proxy")
 IDA_PROXY_CONFIGMAP_PORTS = os.getenv("IDA_PROXY_CONFIGMAP_PORTS", "mcp-client-ida-proxy-listen-ports")
 IDA_PROXY_CONFIGMAP_MAP = os.getenv("IDA_PROXY_CONFIGMAP_MAP", "mcp-client-ida-proxy-port-map")
 
-# MCP Server configuration
-MCP_SERVER_IMAGE_REPO = os.getenv("MCP_SERVER_IMAGE_REPO", "nginxdemos/hello")
-MCP_SERVER_PORT = int(os.getenv("MCP_SERVER_PORT", "80"))
-MCP_SERVER_HEALTH_PATH = os.getenv("MCP_SERVER_HEALTH_PATH", "/")
+# IDA MCP Server configuration (prefixed to avoid K8s service discovery conflicts)
+IDA_MCP_SERVER_IMAGE_REPO = os.getenv("IDA_MCP_SERVER_IMAGE_REPO", "nginxdemos/hello")
+IDA_MCP_SERVER_PORT = int(os.getenv("IDA_MCP_SERVER_PORT", "80"))
+IDA_MCP_SERVER_HEALTH_PATH = os.getenv("IDA_MCP_SERVER_HEALTH_PATH", "/")
 
 # Labels for resource management
 LABEL_APP = "ida-mcp"
@@ -44,8 +44,8 @@ LABEL_COMPONENT_PROXY = "proxy"
 
 logger.info(f"[K8S_CONTROLLER] Initialized with namespace={K8S_NAMESPACE}")
 logger.info(f"[K8S_CONTROLLER] Proxy deployment={IDA_PROXY_DEPLOYMENT}")
-logger.info(f"[K8S_CONTROLLER] MCP image repo={MCP_SERVER_IMAGE_REPO}")
-logger.info(f"[K8S_CONTROLLER] MCP server port={MCP_SERVER_PORT}, health path={MCP_SERVER_HEALTH_PATH}")
+logger.info(f"[K8S_CONTROLLER] IDA MCP image repo={IDA_MCP_SERVER_IMAGE_REPO}")
+logger.info(f"[K8S_CONTROLLER] IDA MCP server port={IDA_MCP_SERVER_PORT}, health path={IDA_MCP_SERVER_HEALTH_PATH}")
 
 
 # ============================================================
@@ -168,8 +168,8 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
         
         container = client.V1Container(
             name="mcp-server",
-            image=f"{MCP_SERVER_IMAGE_REPO}:{config.mcp_version}",
-            ports=[client.V1ContainerPort(container_port=MCP_SERVER_PORT)],
+            image=f"{IDA_MCP_SERVER_IMAGE_REPO}:{config.mcp_version}",
+            ports=[client.V1ContainerPort(container_port=IDA_MCP_SERVER_PORT)],
             env=[
                 # Proxy connection - MCP server uses these to reach IDA via proxy
                 client.V1EnvVar(name="IDA_PROXY_HOST", value=ida_proxy_host),
@@ -178,7 +178,7 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
                 client.V1EnvVar(name="IDA_HOST", value=config.hostname_fqdn),
                 client.V1EnvVar(name="IDA_PORT", value=str(config.ida_port)),
                 # Server config
-                client.V1EnvVar(name="MCP_PORT", value=str(MCP_SERVER_PORT)),
+                client.V1EnvVar(name="SERVER_PORT", value=str(IDA_MCP_SERVER_PORT)),
                 client.V1EnvVar(name="USER_ID", value=str(config.user_id)),
             ],
             resources=client.V1ResourceRequirements(
@@ -186,12 +186,12 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
                 limits={"cpu": "500m", "memory": "512Mi"}
             ),
             liveness_probe=client.V1Probe(
-                http_get=client.V1HTTPGetAction(path=MCP_SERVER_HEALTH_PATH, port=MCP_SERVER_PORT),
+                http_get=client.V1HTTPGetAction(path=IDA_MCP_SERVER_HEALTH_PATH, port=IDA_MCP_SERVER_PORT),
                 initial_delay_seconds=10,
                 period_seconds=30
             ),
             readiness_probe=client.V1Probe(
-                http_get=client.V1HTTPGetAction(path=MCP_SERVER_HEALTH_PATH, port=MCP_SERVER_PORT),
+                http_get=client.V1HTTPGetAction(path=IDA_MCP_SERVER_HEALTH_PATH, port=IDA_MCP_SERVER_PORT),
                 initial_delay_seconds=5,
                 period_seconds=10
             )
@@ -237,7 +237,7 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
             metadata=client.V1ObjectMeta(name=service_name, labels=labels),
             spec=client.V1ServiceSpec(
                 selector=labels,
-                ports=[client.V1ServicePort(port=MCP_SERVER_PORT, target_port=MCP_SERVER_PORT)]
+                ports=[client.V1ServicePort(port=IDA_MCP_SERVER_PORT, target_port=IDA_MCP_SERVER_PORT)]
             )
         )
         
@@ -270,7 +270,7 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
         
         # Generate MCP endpoint URL - points to the MCP Server Service (for OpenWebUI)
         # OpenWebUI → MCP Server Service → MCP Server Pod → ida-proxy → developer workstation
-        mcp_url = f"http://{service_name}.{K8S_NAMESPACE}.svc.cluster.local:{MCP_SERVER_PORT}/"
+        mcp_url = f"http://{service_name}.{K8S_NAMESPACE}.svc.cluster.local:{IDA_MCP_SERVER_PORT}/"
         
         # Also log the proxy URL for direct testing
         proxy_test_url = f"http://{IDA_PROXY_DEPLOYMENT}.{K8S_NAMESPACE}.svc.cluster.local:{config.proxy_port}/"
@@ -385,7 +385,7 @@ def upgrade_mcp_server(user_id: int, new_version: str) -> Tuple[bool, str]:
         
         # Update image tag
         old_image = deployment.spec.template.spec.containers[0].image
-        new_image = f"{MCP_SERVER_IMAGE_REPO}:{new_version}"
+        new_image = f"{IDA_MCP_SERVER_IMAGE_REPO}:{new_version}"
         deployment.spec.template.spec.containers[0].image = new_image
         
         logger.info(f"[K8S_CONTROLLER] Upgrading from {old_image} to {new_image}")
