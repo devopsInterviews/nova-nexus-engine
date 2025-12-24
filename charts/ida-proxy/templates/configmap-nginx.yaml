@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-nginx-config
+  labels:
+    app: ida-mcp
+    component: proxy
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  nginx.conf: |
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      # DNS used to resolve the upstream hostnames at runtime
+      # 'valid=' controls how long NGINX caches DNS answers
+      resolver {{ join " " .Values.dns.servers }} valid={{ .Values.dns.resolverValid }} ipv6=off;
+      resolver_timeout {{ .Values.dns.resolverTimeout }};
+
+      # Port -> upstream host:port mapping
+      map $server_port $ida_upstream {
+        default "";
+        include /etc/nginx/port_map.conf;
+      }
+
+      # Health check server on port 8080
+      server {
+        listen 8080;
+        server_name _;
+        
+        location /health {
+          access_log off;
+          return 200 "OK\n";
+          add_header Content-Type text/plain;
+        }
+        
+        location /ready {
+          access_log off;
+          return 200 "Ready\n";
+          add_header Content-Type text/plain;
+        }
+      }
+
+      # Main proxy server - accepts traffic on dynamically configured ports
+      server {
+        # One server block accepts many ports (we include all 'listen ...;' lines)
+        include /etc/nginx/listen_ports.conf;
+
+        # Proxy ALL paths on that port (so /mcp, /sse, /ida, etc. all work)
+        location / {
+          # Unknown port => fast fail
+          if ($ida_upstream = "") { return 404; }
+
+          # Use variable in proxy_pass (avoids "host not found in upstream" at startup,
+          # and uses resolver for DNS)
+          proxy_pass http://$ida_upstream;
+
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+          # Forward custom headers for session tracking
+          proxy_set_header X-Session-Id $http_x_session_id;
+          proxy_set_header X-Request-Id $http_x_request_id;
+
+          # Proxy timeouts
+          proxy_connect_timeout {{ .Values.proxy.connectTimeout }};
+          proxy_read_timeout {{ .Values.proxy.readTimeout }};
+          proxy_send_timeout {{ .Values.proxy.sendTimeout }};
+          
+          # Support for SSE (Server-Sent Events)
+          proxy_buffering off;
+          proxy_cache off;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
+        }
+      }
+    }

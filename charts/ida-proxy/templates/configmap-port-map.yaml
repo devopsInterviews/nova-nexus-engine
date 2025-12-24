@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-port-map
+  labels:
+    app: ida-mcp
+    component: proxy
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  port_map.conf: |
+    # Auto-managed by MCP Client controller
+    # This file maps proxy ports to upstream IDA workstations
+    # DO NOT EDIT MANUALLY
+    #
+    # Format: PROXY_PORT   UPSTREAM_HOST:UPSTREAM_PORT;
+    #
+    # Initial mappings from Helm values:
+    {{- if .Values.initialPortMappings }}
+    {{- range .Values.initialPortMappings }}
+    {{ .proxyPort }}          {{ .upstreamHost }}:{{ .upstreamPort }};
+    {{- end }}
+    {{- else }}
+    # No initial port mappings configured
+    # Mappings will be added here as users deploy their MCP servers
+    # Example:
+    # 9001          userA-workstation.corp.example.com:9100;
+    # 9002          userB-workstation.corp.example.com:9100;
+    {{- end }}

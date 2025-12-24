@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: ida-mcp
+    component: proxy
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: ida-mcp
+    component: proxy
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    # Health check port
+    - name: health
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    # Expose all proxy ports in the range
+    # The actual active ports are controlled by listen_ports.conf
+    {{- range untilStep (int .Values.portRange.start) (int (add .Values.portRange.end 1)) 1 }}
+    - name: proxy-{{ . }}
+      port: {{ . }}
+      targetPort: {{ . }}
+      protocol: TCP
+    {{- end }}

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-listen-ports
+  labels:
+    app: ida-mcp
+    component: proxy
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  listen_ports.conf: |
+    # Auto-managed by MCP Client controller
+    # This file is dynamically updated when users deploy/delete MCP servers
+    # DO NOT EDIT MANUALLY
+    #
+    # Initial ports from Helm values:
+    {{- if .Values.initialPortMappings }}
+    {{- range .Values.initialPortMappings }}
+    listen {{ .proxyPort }};
+    {{- end }}
+    {{- else }}
+    # No initial port mappings configured
+    # Ports will be added here as users deploy their MCP servers
+    # Example:
+    # listen 9001;
+    # listen 9002;
+    {{- end }}

@@ -1,0 +1,50 @@
+{{- if .Values.idaMcp.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "mcp-client.fullname" . }}-k8s-controller
+  labels:
+    {{- include "mcp-client.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "mcp-client.fullname" . }}-k8s-controller
+  labels:
+    {{- include "mcp-client.labels" . | nindent 4 }}
+rules:
+  # Allow managing MCP server deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Allow managing MCP server services
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Allow managing ConfigMaps for proxy configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Allow listing pods for status checks and exec for nginx reload
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "mcp-client.fullname" . }}-k8s-controller
+  labels:
+    {{- include "mcp-client.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "mcp-client.fullname" . }}-k8s-controller
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "mcp-client.fullname" . }}-k8s-controller
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
