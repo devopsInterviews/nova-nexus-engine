@@ -1,12 +1,12 @@
+{{- if .Values.idaProxy.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-listen-ports
+  name: {{ include "mcp-client.fullname" . }}-ida-proxy-listen-ports
   labels:
     app: ida-mcp
     component: proxy
-    app.kubernetes.io/name: {{ .Chart.Name }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- include "mcp-client.labels" . | nindent 4 }}
 data:
   listen_ports.conf: |
     # Auto-managed by MCP Client controller
@@ -14,8 +14,8 @@ data:
     # DO NOT EDIT MANUALLY
     #
     # Initial ports from Helm values:
-    {{- if .Values.initialPortMappings }}
-    {{- range .Values.initialPortMappings }}
+    {{- if .Values.idaProxy.initialPortMappings }}
+    {{- range .Values.idaProxy.initialPortMappings }}
     listen {{ .proxyPort }};
     {{- end }}
     {{- else }}
@@ -25,3 +25,4 @@ data:
     # listen 9001;
     # listen 9002;
     {{- end }}
+{{- end }}

@@ -1,63 +1,61 @@
+{{- if .Values.idaProxy.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ include "mcp-client.fullname" . }}-ida-proxy
   labels:
     app: ida-mcp
     component: proxy
-    app.kubernetes.io/name: {{ .Chart.Name }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    {{- include "mcp-client.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.idaProxy.replicaCount }}
   selector:
     matchLabels:
       app: ida-mcp
       component: proxy
-      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/name: {{ .Chart.Name }}-ida-proxy
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
         app: ida-mcp
         component: proxy
-        app.kubernetes.io/name: {{ .Chart.Name }}
+        app.kubernetes.io/name: {{ .Chart.Name }}-ida-proxy
         app.kubernetes.io/instance: {{ .Release.Name }}
-      {{- with .Values.podLabels }}
+      {{- with .Values.idaProxy.podLabels }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
       annotations:
         # Trigger restart when ConfigMaps change
-        checksum/nginx-config: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
-        checksum/listen-ports: {{ include (print $.Template.BasePath "/configmap-listen-ports.yaml") . | sha256sum }}
-        checksum/port-map: {{ include (print $.Template.BasePath "/configmap-port-map.yaml") . | sha256sum }}
-      {{- with .Values.podAnnotations }}
+        checksum/nginx-config: {{ include (print $.Template.BasePath "/ida-proxy-configmap-nginx.yaml") . | sha256sum }}
+        checksum/listen-ports: {{ include (print $.Template.BasePath "/ida-proxy-configmap-listen-ports.yaml") . | sha256sum }}
+        checksum/port-map: {{ include (print $.Template.BasePath "/ida-proxy-configmap-port-map.yaml") . | sha256sum }}
+      {{- with .Values.idaProxy.podAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      {{- if .Values.dns.servers }}
+      {{- if .Values.idaProxy.dns.servers }}
       dnsPolicy: "None"
       dnsConfig:
         nameservers:
-        {{- range .Values.dns.servers }}
+        {{- range .Values.idaProxy.dns.servers }}
           - {{ . | quote }}
         {{- end }}
-        {{- if .Values.dns.searchDomains }}
+        {{- if .Values.idaProxy.dns.searchDomains }}
         searches:
-        {{- range .Values.dns.searchDomains }}
+        {{- range .Values.idaProxy.dns.searchDomains }}
           - {{ . | quote }}
         {{- end }}
         {{- end }}
       {{- end }}
-      {{- with .Values.podSecurityContext }}
+      {{- with .Values.idaProxy.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
         - name: nginx
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ .Values.idaProxy.image.repository }}:{{ .Values.idaProxy.image.tag }}"
+          imagePullPolicy: {{ .Values.idaProxy.image.pullPolicy }}
           ports:
             # Health check port
             - name: health
@@ -65,7 +63,7 @@ spec:
               protocol: TCP
             # Proxy ports are dynamically assigned via ConfigMap
             # We expose the full range and let the ConfigMap control which are active
-            {{- range untilStep (int .Values.portRange.start) (int (add .Values.portRange.end 1)) 1 }}
+            {{- range untilStep (int .Values.idaProxy.portRange.start) (int (add .Values.idaProxy.portRange.end 1)) 1 }}
             - name: proxy-{{ . }}
               containerPort: {{ . }}
               protocol: TCP
@@ -83,41 +81,42 @@ spec:
               mountPath: /etc/nginx/port_map.conf
               subPath: port_map.conf
               readOnly: true
-          {{- with .Values.securityContext }}
+          {{- with .Values.idaProxy.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.resources }}
+          {{- with .Values.idaProxy.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.livenessProbe }}
+          {{- with .Values.idaProxy.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.readinessProbe }}
+          {{- with .Values.idaProxy.readinessProbe }}
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
         - name: nginx-config
           configMap:
-            name: {{ .Release.Name }}-nginx-config
+            name: {{ include "mcp-client.fullname" . }}-ida-proxy-nginx-config
         - name: listen-ports
           configMap:
-            name: {{ .Release.Name }}-listen-ports
+            name: {{ include "mcp-client.fullname" . }}-ida-proxy-listen-ports
         - name: port-map
           configMap:
-            name: {{ .Release.Name }}-port-map
-      {{- with .Values.nodeSelector }}
+            name: {{ include "mcp-client.fullname" . }}-ida-proxy-port-map
+      {{- with .Values.idaProxy.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with .Values.idaProxy.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with .Values.idaProxy.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}
