@@ -608,6 +608,137 @@ export const analyticsService = {
   },
 };
 
+// ============================================================
+// Research Service - IDA MCP Connection Management
+// ============================================================
+
+/**
+ * TypeScript interface for IDA MCP connection configuration.
+ * Represents the user's workstation connection settings for IDA integration.
+ */
+export interface IdaBridgeConfig {
+  id?: number;                            // Database record ID (optional for new configs)
+  user_id?: number;                       // User ID (set by backend)
+  hostname_fqdn: string;                  // Workstation FQDN (e.g., mypc.corp.example.com)
+  ida_port: number;                       // IDA plugin listening port (e.g., 9100, 13337)
+  proxy_port?: number | null;             // Allocated proxy port (null if not deployed)
+  mcp_version: string;                    // MCP server image tag/version
+  mcp_endpoint_url?: string | null;       // Generated MCP URL for Open WebUI
+  status?: string;                        // Deployment status: NEW, DEPLOYING, DEPLOYED, ERROR, UNDEPLOYED
+  last_error?: string | null;             // Last error message if status is ERROR
+  created_at?: string;                    // Record creation timestamp
+  updated_at?: string;                    // Last update timestamp
+  last_deploy_at?: string | null;         // Last successful deployment timestamp
+  last_healthcheck_at?: string | null;    // Last health check timestamp
+}
+
+/**
+ * TypeScript interface for deployment status response.
+ * Contains current deployment state and helpful messages.
+ */
+export interface IdaBridgeStatus {
+  status: string;                         // Current status code
+  proxy_port: number | null;              // Allocated proxy port
+  mcp_endpoint_url: string | null;        // MCP URL for Open WebUI
+  last_error: string | null;              // Error message if any
+  last_deploy_at: string | null;          // Last deployment timestamp
+  last_healthcheck_at: string | null;     // Last health check timestamp
+  is_deployed: boolean;                   // Whether MCP is currently deployed
+  message: string;                        // Human-readable status message
+}
+
+/**
+ * TypeScript interface for deploy/undeploy action response.
+ */
+export interface DeployResponse {
+  success: boolean;                       // Whether action succeeded
+  message: string;                        // Result message
+  status: string;                         // New status after action
+  proxy_port: number | null;              // Proxy port (null after undeploy)
+  mcp_endpoint_url: string | null;        // MCP URL (null after undeploy)
+}
+
+/**
+ * TypeScript interface for MCP versions response.
+ */
+export interface McpVersionsResponse {
+  versions: string[];                     // Available MCP server versions
+  default_version: string;                // Default/recommended version
+}
+
+/**
+ * Research service for managing IDA MCP connections.
+ * 
+ * This service provides APIs for:
+ * - Getting available MCP server versions
+ * - Saving/loading IDA bridge configuration
+ * - Deploying/undeploying MCP server pods
+ * - Checking deployment status
+ */
+export const researchService = {
+  /**
+   * Get list of allowed MCP server versions.
+   * Used to populate the version dropdown in the UI.
+   */
+  getMcpVersions: async (): Promise<ApiResponse<McpVersionsResponse>> => {
+    return fetchApi<McpVersionsResponse>('/api/research/mcp/versions');
+  },
+
+  /**
+   * Get the current user's IDA bridge configuration.
+   * Returns null if no configuration exists yet.
+   */
+  getIdaBridgeConfig: async (): Promise<ApiResponse<IdaBridgeConfig | null>> => {
+    return fetchApi<IdaBridgeConfig | null>('/api/research/ida-bridge');
+  },
+
+  /**
+   * Create or update the user's IDA bridge configuration.
+   * This saves the config but does NOT trigger deployment.
+   * 
+   * @param config - The IDA bridge configuration to save
+   */
+  saveIdaBridgeConfig: async (config: {
+    hostname_fqdn: string;
+    ida_port: number;
+    mcp_version: string;
+  }): Promise<ApiResponse<IdaBridgeConfig>> => {
+    return fetchApi<IdaBridgeConfig>('/api/research/ida-bridge', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  /**
+   * Deploy the user's MCP server pod.
+   * This allocates a proxy port, deploys the MCP pod, and configures routing.
+   * Returns the MCP endpoint URL to add in Open WebUI.
+   */
+  deployIdaBridge: async (): Promise<ApiResponse<DeployResponse>> => {
+    return fetchApi<DeployResponse>('/api/research/ida-bridge/deploy', {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Undeploy the user's MCP server pod.
+   * This removes the MCP pod, clears routing, and releases the proxy port.
+   */
+  undeployIdaBridge: async (): Promise<ApiResponse<DeployResponse>> => {
+    return fetchApi<DeployResponse>('/api/research/ida-bridge/undeploy', {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Get the deployment status of the user's MCP server.
+   * Returns current status, proxy port, MCP URL, and any error messages.
+   */
+  getIdaBridgeStatus: async (): Promise<ApiResponse<IdaBridgeStatus>> => {
+    return fetchApi<IdaBridgeStatus>('/api/research/ida-bridge/status');
+  },
+};
+
 // TypeScript interface for connection context (shared state between components)
 export interface ConnectionContext {
   currentConnection: DbConnection | null; // Currently selected database connection (null if none selected)
@@ -622,4 +753,5 @@ export interface ConnectionContext {
 export default {
   db: dbService,                          // Database operations
   analytics: analyticsService,            // Analytics and monitoring
+  research: researchService,              // Research/IDA MCP connections
 };

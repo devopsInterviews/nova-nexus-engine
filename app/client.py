@@ -150,6 +150,7 @@ from app.routes.test_routes import router as test_router  # Test execution
 from app.routes.internal_data_routes import router as internal_data_router  # Internal data APIs
 from app.routes.permissions_routes import router as permissions_router  # Role-based permissions
 from app.routes.analytics_routes import router as analytics_router  # System metrics
+from app.routes.research_routes import router as research_router  # Research/IDA MCP connections
 
 # Register all route modules with the FastAPI app under /api prefix
 # This makes all endpoints accessible at /api/... URLs
@@ -166,6 +167,8 @@ app.include_router(internal_data_router, prefix="/api")
 app.include_router(permissions_router, prefix="/api")
 # Expose analytics routes under /api
 app.include_router(analytics_router, prefix="/api")
+# Expose research routes under /api (IDA MCP connections)
+app.include_router(research_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")  # Decorator registers this function as HTTP middleware that runs on every request

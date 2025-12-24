@@ -12,7 +12,7 @@ import logging
 from app.models import (
     Base, User, DatabaseConnection, TestConfiguration, UserActivity, 
     TestExecution, DatabaseSession, SystemMetrics, RequestLog, 
-    McpServerStatus, PageView
+    McpServerStatus, PageView, IdaMcpConnection, IdaMcpDeployAudit
 )
 
 logging.basicConfig(level=logging.INFO)
