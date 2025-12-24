@@ -2,19 +2,29 @@
 Database models for MCP Client authentication and user management.
 
 This module defines SQLAlchemy models for user authentication, user management,
-database connections, test configurations, and user activity tracking.
+database connections, test configurations, user activity tracking, and IDA MCP connections.
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text, ForeignKey, Index, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import json
+import enum
 from werkzeug.security import generate_password_hash, check_password_hash
 
 Base = declarative_base()
+
+
+class IdaMcpConnectionStatus(str, enum.Enum):
+    """Status enum for IDA MCP connection deployments."""
+    NEW = "NEW"
+    DEPLOYING = "DEPLOYING"
+    DEPLOYED = "DEPLOYED"
+    ERROR = "ERROR"
+    UNDEPLOYED = "UNDEPLOYED"
 
 
 class User(Base):
@@ -657,5 +667,137 @@ class PageView(Base):
             "user_agent": self.user_agent,
             "referer": self.referer,
             "load_time_ms": self.load_time_ms,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None
+        }
+
+
+class IdaMcpConnection(Base):
+    """
+    IDA MCP Connection configuration for Research tab.
+    
+    Stores per-user IDA MCP connection configurations including hostname,
+    port mappings, deployment status, and MCP server details.
+    
+    **Purpose**:
+    Each user can register their IDA workstation to connect via an MCP server.
+    The system allocates a unique proxy port and deploys a per-user MCP server pod.
+    
+    **Data Flow**:
+    1. User registers hostname (FQDN) and IDA port
+    2. System allocates unique proxy_port from configured range
+    3. MCP server pod deployed with proxy configuration
+    4. Proxy routes proxy_port -> user's hostname:ida_port
+    5. User adds MCP endpoint URL to Open WebUI
+    
+    **Security**:
+    - Hostname validated against allowed corporate domains
+    - IDA port validated against allowlist range
+    - proxy_port uniquely allocated, not user-chosen
+    - One connection record per user (unique constraint)
+    """
+    __tablename__ = "ida_mcp_connections"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    
+    # User-provided connection details
+    hostname_fqdn = Column(String(255), nullable=False)  # Workstation FQDN (e.g., mypc.corp.example.com)
+    ida_port = Column(Integer, nullable=False)           # IDA plugin listening port (e.g., 9100, 13337)
+    
+    # System-allocated resources
+    proxy_port = Column(Integer, unique=True, nullable=True)  # Allocated proxy port (e.g., 9001, 9002)
+    
+    # MCP server configuration
+    mcp_version = Column(String(100), nullable=False)    # MCP server image tag/version
+    mcp_endpoint_url = Column(String(500), nullable=True)  # Generated MCP URL for Open WebUI
+    
+    # Deployment status
+    status = Column(String(20), nullable=False, default=IdaMcpConnectionStatus.NEW.value)
+    last_error = Column(Text, nullable=True)             # Last error message if status is ERROR
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    last_deploy_at = Column(DateTime(timezone=True), nullable=True)
+    last_healthcheck_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    user = relationship("User", backref="ida_mcp_connection")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_ida_mcp_user_id', 'user_id'),
+        Index('idx_ida_mcp_proxy_port', 'proxy_port'),
+        Index('idx_ida_mcp_status', 'status'),
+    )
+    
+    def __repr__(self):
+        return f"<IdaMcpConnection(id={self.id}, user_id={self.user_id}, hostname='{self.hostname_fqdn}', status='{self.status}')>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert IDA MCP connection to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "hostname_fqdn": self.hostname_fqdn,
+            "ida_port": self.ida_port,
+            "proxy_port": self.proxy_port,
+            "mcp_version": self.mcp_version,
+            "mcp_endpoint_url": self.mcp_endpoint_url,
+            "status": self.status,
+            "last_error": self.last_error,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_deploy_at": self.last_deploy_at.isoformat() if self.last_deploy_at else None,
+            "last_healthcheck_at": self.last_healthcheck_at.isoformat() if self.last_healthcheck_at else None
+        }
+
+
+class IdaMcpDeployAudit(Base):
+    """
+    Audit log for IDA MCP deployment actions.
+    
+    Records all deploy/undeploy actions for security auditing and troubleshooting.
+    """
+    __tablename__ = "ida_mcp_deploy_audit"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Action details
+    action = Column(String(50), nullable=False)          # 'deploy', 'undeploy', 'update', 'error'
+    payload = Column(JSON, nullable=True)                # Request payload/configuration
+    result = Column(JSON, nullable=True)                 # Action result/response
+    
+    # Status
+    status = Column(String(50), nullable=False)          # 'success', 'failure', 'pending'
+    error_message = Column(Text, nullable=True)
+    
+    # Timestamps
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("User")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_ida_mcp_audit_user_timestamp', 'user_id', 'timestamp'),
+        Index('idx_ida_mcp_audit_action', 'action'),
+        Index('idx_ida_mcp_audit_timestamp', 'timestamp'),
+    )
+    
+    def __repr__(self):
+        return f"<IdaMcpDeployAudit(id={self.id}, user_id={self.user_id}, action='{self.action}')>"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert audit record to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "action": self.action,
+            "payload": self.payload,
+            "result": self.result,
+            "status": self.status,
+            "error_message": self.error_message,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None
         }

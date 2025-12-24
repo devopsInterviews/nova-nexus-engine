@@ -7,7 +7,8 @@ import {
   Cpu,
   Zap,
   CheckSquare,
-  Users
+  Users,
+  Search
 } from "lucide-react";
 import {
   Sidebar,
@@ -48,6 +49,11 @@ const navigationItems = [
     title: "Tests",
     url: "/tests",
     icon: CheckSquare,
+  },
+  {
+    title: "Research",
+    url: "/research",
+    icon: Search,
   },
   {
     title: "Users",

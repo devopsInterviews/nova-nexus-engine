@@ -5,8 +5,8 @@ import re
 from atlassian import Confluence
 
 # Import database clients from the new structure
-from .clients.databases.postgres_client import PostgresClient
-from .clients.databases.mssql_client import MSSQLClient
+from .db_clients.databases.postgres_client import PostgresClient
+from .db_clients.databases.mssql_client import MSSQLClient
 
 logger = logging.getLogger(__name__)
 

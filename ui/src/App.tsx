@@ -56,12 +56,14 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import Users from "./pages/Users";
+import Research from "./pages/Research";
 import { ConnectionProvider } from "@/context/connection-context";
 import { AuthProvider, useAuth } from "@/context/auth-context";
 
 // Create React Query client for server state management
 // This handles API caching, background refetching, and optimistic updates
 const queryClient = new QueryClient();
+
 
 /**
  * PrivateRoute Component - Route Protection Wrapper
@@ -268,6 +270,7 @@ const App = () => (
                 <Route path="bi/*" element={<BI />} />                {/* Business Intelligence with sub-routing */}
                 <Route path="analytics" element={<Analytics />} />    {/* System analytics and metrics */}
                 <Route path="tests" element={<Tests />} />            {/* Test execution and management */}
+                <Route path="research" element={<Research />} />      {/* Research/IDA MCP connection */}
                 <Route path="settings" element={<Settings />} />      {/* User preferences and configuration */}
                 <Route path="users" element={<Users />} />            {/* User management and admin features */}
               </Route>
