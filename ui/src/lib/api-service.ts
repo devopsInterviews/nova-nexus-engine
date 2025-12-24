@@ -108,9 +108,40 @@ async function fetchApi<T>(
     // Check if the HTTP request failed (status codes 400-599)
     if (!response.ok) {                   // response.ok is false for status codes 400+
       console.error('API error response:', data); // Log error details
+      
+      // Extract error message from various API response formats
+      let errorMessage = 'Server returned an error';
+      
+      if (data) {
+        if (typeof data === 'string') {
+          // Plain string error
+          errorMessage = data;
+        } else if (typeof data.detail === 'string') {
+          // FastAPI HTTPException: { detail: "error message" }
+          errorMessage = data.detail;
+        } else if (Array.isArray(data.detail)) {
+          // Pydantic validation error: { detail: [{ loc: [...], msg: "...", type: "..." }, ...] }
+          errorMessage = data.detail
+            .map((err: any) => {
+              const field = err.loc?.slice(-1)[0] || 'field';
+              return `${field}: ${err.msg}`;
+            })
+            .join('; ');
+        } else if (typeof data.detail === 'object' && data.detail !== null) {
+          // Object detail - try to stringify
+          errorMessage = JSON.stringify(data.detail);
+        } else if (data.message) {
+          // Generic { message: "..." } format
+          errorMessage = data.message;
+        } else if (data.error) {
+          // Generic { error: "..." } format
+          errorMessage = data.error;
+        }
+      }
+      
       return {
         status: 'error',                  // Return error response
-        error: data.detail || data.message || 'Server returned an error', // Extract error message
+        error: errorMessage,
       };
     }
 
@@ -713,20 +744,40 @@ export const researchService = {
    * Deploy the user's MCP server pod.
    * This allocates a proxy port, deploys the MCP pod, and configures routing.
    * Returns the MCP endpoint URL to add in Open WebUI.
+   * 
+   * @param config - The IDA bridge configuration to deploy
    */
-  deployIdaBridge: async (): Promise<ApiResponse<DeployResponse>> => {
+  deployIdaBridge: async (config: {
+    hostname_fqdn: string;
+    ida_port: number;
+    mcp_version: string;
+  }): Promise<ApiResponse<DeployResponse>> => {
     return fetchApi<DeployResponse>('/api/research/ida-bridge/deploy', {
       method: 'POST',
+      body: JSON.stringify(config),
     });
   },
 
   /**
-   * Undeploy the user's MCP server pod.
-   * This removes the MCP pod, clears routing, and releases the proxy port.
+   * Delete/undeploy the user's MCP server pod.
+   * This removes the MCP pod, clears routing, releases the proxy port, 
+   * and deletes the configuration from the database.
    */
   undeployIdaBridge: async (): Promise<ApiResponse<DeployResponse>> => {
-    return fetchApi<DeployResponse>('/api/research/ida-bridge/undeploy', {
+    return fetchApi<DeployResponse>('/api/research/ida-bridge', {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Upgrade the user's MCP server to a new version.
+   * 
+   * @param newVersion - The new MCP server version to upgrade to
+   */
+  upgradeIdaBridge: async (newVersion: string): Promise<ApiResponse<DeployResponse>> => {
+    return fetchApi<DeployResponse>('/api/research/ida-bridge/upgrade', {
       method: 'POST',
+      body: JSON.stringify({ new_mcp_version: newVersion }),
     });
   },
 

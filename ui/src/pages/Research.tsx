@@ -5,16 +5,14 @@
  * Users can register their workstation hostname, IDA port, and select an MCP version.
  * Once deployed, they receive an MCP URL to add in Open WebUI.
  * 
- * Features:
- * - Form for configuring IDA connection (hostname, port, MCP version)
- * - Deploy/Undeploy buttons for managing MCP server
- * - Status display with deployment state and MCP URL
- * - Copy-to-clipboard for MCP URL
- * - Error handling and validation
+ * Layout:
+ * - Left side: Configuration form with Deploy button
+ * - Right side: Setup instructions
+ * - Bottom: Deployed MCP Server details with Delete/Upgrade options
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +26,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Search, 
   Server, 
@@ -37,9 +43,12 @@ import {
   RefreshCw, 
   AlertCircle,
   Rocket,
-  Power,
+  Trash2,
+  ArrowUp,
   Info,
-  ExternalLink
+  ExternalLink,
+  Clock,
+  Network
 } from "lucide-react";
 import { researchService, IdaBridgeConfig, IdaBridgeStatus, McpVersionsResponse } from "@/lib/api-service";
 import { useToast } from "@/hooks/use-toast";
@@ -47,13 +56,13 @@ import { useToast } from "@/hooks/use-toast";
 /**
  * Status badge variant mapping based on deployment status
  */
-const statusVariants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-  NEW: { variant: "secondary", label: "Not Deployed" },
-  DEPLOYING: { variant: "default", label: "Deploying..." },
-  DEPLOYED: { variant: "default", label: "Deployed" },
-  ERROR: { variant: "destructive", label: "Error" },
-  UNDEPLOYED: { variant: "secondary", label: "Undeployed" },
-  NOT_CONFIGURED: { variant: "outline", label: "Not Configured" },
+const statusVariants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string; color: string }> = {
+  NEW: { variant: "secondary", label: "Not Deployed", color: "" },
+  DEPLOYING: { variant: "default", label: "Deploying...", color: "bg-yellow-500" },
+  DEPLOYED: { variant: "default", label: "Running", color: "bg-green-500" },
+  ERROR: { variant: "destructive", label: "Error", color: "" },
+  UNDEPLOYED: { variant: "secondary", label: "Undeployed", color: "" },
+  NOT_CONFIGURED: { variant: "outline", label: "Not Configured", color: "" },
 };
 
 export default function Research() {
@@ -69,11 +78,16 @@ export default function Research() {
   
   // UI state
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
-  const [isUndeploying, setIsUndeploying] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpgrading, setIsUpgrading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const [newVersionForUpgrade, setNewVersionForUpgrade] = useState("");
   
   const { toast } = useToast();
 
@@ -128,9 +142,10 @@ export default function Research() {
   }, []);
 
   /**
-   * Save configuration to the database
+   * Deploy the MCP server - creates config and deploys in one step
    */
-  const handleSave = async () => {
+  const handleDeploy = async () => {
+    // Validation
     if (!hostname.trim()) {
       toast({
         title: "Validation Error",
@@ -140,7 +155,7 @@ export default function Research() {
       return;
     }
     
-    if (!idaPort || idaPort < 1024 || idaPort > 65535) {
+    if (!idaPort || Number(idaPort) < 1024 || Number(idaPort) > 65535) {
       toast({
         title: "Validation Error",
         description: "IDA port must be between 1024 and 65535",
@@ -158,58 +173,15 @@ export default function Research() {
       return;
     }
     
-    setIsSaving(true);
-    setError(null);
-    
-    try {
-      const result = await researchService.saveIdaBridgeConfig({
-        hostname_fqdn: hostname.trim().toLowerCase(),
-        ida_port: Number(idaPort),
-        mcp_version: mcpVersion,
-      });
-      
-      if (result.status === "success" && result.data) {
-        setConfig(result.data);
-        toast({
-          title: "Configuration Saved",
-          description: "Your IDA bridge configuration has been saved successfully.",
-        });
-        // Reload status
-        await loadData();
-      } else {
-        throw new Error(result.error || "Failed to save configuration");
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to save configuration";
-      setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  /**
-   * Deploy the MCP server
-   */
-  const handleDeploy = async () => {
-    // Save first if there are changes
-    if (
-      config?.hostname_fqdn !== hostname ||
-      config?.ida_port !== idaPort ||
-      config?.mcp_version !== mcpVersion
-    ) {
-      await handleSave();
-    }
-    
     setIsDeploying(true);
     setError(null);
     
     try {
-      const result = await researchService.deployIdaBridge();
+      const result = await researchService.deployIdaBridge({
+        hostname_fqdn: hostname.trim().toLowerCase(),
+        ida_port: Number(idaPort),
+        mcp_version: mcpVersion,
+      });
       
       if (result.status === "success" && result.data) {
         toast({
@@ -235,35 +207,86 @@ export default function Research() {
   };
 
   /**
-   * Undeploy the MCP server
+   * Delete the MCP server and config
    */
-  const handleUndeploy = async () => {
-    setIsUndeploying(true);
+  const handleDelete = async () => {
+    setIsDeleting(true);
     setError(null);
+    setShowDeleteDialog(false);
     
     try {
       const result = await researchService.undeployIdaBridge();
       
       if (result.status === "success" && result.data) {
+        setConfig(null);
+        setStatus(null);
+        // Clear form
+        setHostname("");
+        setIdaPort("");
+        setMcpVersion(versions?.default_version || "");
+        
         toast({
-          title: "Undeployment Successful",
+          title: "Deleted Successfully",
+          description: "MCP server configuration has been removed.",
+        });
+        // Reload all data
+        await loadData();
+      } else {
+        throw new Error(result.error || "Delete failed");
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Delete failed";
+      setError(errorMessage);
+      toast({
+        title: "Delete Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  /**
+   * Upgrade MCP server to new version
+   */
+  const handleUpgrade = async () => {
+    if (!newVersionForUpgrade || newVersionForUpgrade === config?.mcp_version) {
+      toast({
+        title: "Invalid Selection",
+        description: "Please select a different version to upgrade to",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsUpgrading(true);
+    setError(null);
+    setShowUpgradeDialog(false);
+    
+    try {
+      const result = await researchService.upgradeIdaBridge(newVersionForUpgrade);
+      
+      if (result.status === "success" && result.data) {
+        toast({
+          title: "Upgrade Successful",
           description: result.data.message,
         });
         // Reload all data
         await loadData();
       } else {
-        throw new Error(result.error || "Undeployment failed");
+        throw new Error(result.error || "Upgrade failed");
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Undeployment failed";
+      const errorMessage = err instanceof Error ? err.message : "Upgrade failed";
       setError(errorMessage);
       toast({
-        title: "Undeployment Error",
+        title: "Upgrade Error",
         description: errorMessage,
         variant: "destructive",
       });
     } finally {
-      setIsUndeploying(false);
+      setIsUpgrading(false);
     }
   };
 
@@ -271,8 +294,9 @@ export default function Research() {
    * Copy MCP URL to clipboard
    */
   const handleCopyUrl = async () => {
-    if (status?.mcp_endpoint_url) {
-      await navigator.clipboard.writeText(status.mcp_endpoint_url);
+    const url = status?.mcp_endpoint_url || config?.mcp_endpoint_url;
+    if (url) {
+      await navigator.clipboard.writeText(url);
       setCopied(true);
       toast({
         title: "Copied!",
@@ -293,14 +317,24 @@ export default function Research() {
     });
   };
 
+  /**
+   * Open upgrade dialog with proper state
+   */
+  const openUpgradeDialog = () => {
+    setNewVersionForUpgrade(config?.mcp_version || "");
+    setShowUpgradeDialog(true);
+  };
+
   // Get current status info
-  const currentStatus = status?.status || "NOT_CONFIGURED";
+  const currentStatus = status?.status || config?.status || "NOT_CONFIGURED";
   const statusInfo = statusVariants[currentStatus] || statusVariants.NOT_CONFIGURED;
-  const isDeployed = status?.is_deployed || false;
+  const isDeployed = status?.is_deployed || currentStatus === "DEPLOYED";
+  const hasConfig = config !== null;
+  const mcpUrl = status?.mcp_endpoint_url || config?.mcp_endpoint_url;
 
   return (
     <motion.div
-      className="space-y-6 max-w-4xl"
+      className="space-y-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
@@ -321,51 +355,68 @@ export default function Research() {
       </motion.div>
 
       {/* Error Alert */}
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* IDA MCP Connection Card */}
+      {/* Main Content: Configuration + Instructions Side by Side */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
       >
-        <Card className="glass border-border/50">
+        {/* Configuration Card - Takes 2/3 */}
+        <Card className="glass border-border/50 lg:col-span-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plug className="w-5 h-5 text-primary" />
-              IDA MCP Connection
-            </CardTitle>
-            <CardDescription>
-              Configure your workstation connection to enable IDA integration through MCP
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Plug className="w-5 h-5 text-primary" />
+                  {hasConfig && isDeployed ? "Update IDA Connection" : "Deploy IDA Connection"}
+                </CardTitle>
+                <CardDescription>
+                  {hasConfig && isDeployed 
+                    ? "Modify your workstation connection settings and redeploy"
+                    : "Configure your workstation to enable IDA integration through MCP"
+                  }
+                </CardDescription>
+              </div>
+              <Button
+                onClick={handleRefresh}
+                disabled={isLoading}
+                variant="ghost"
+                size="icon"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Configuration Form */}
-            <div className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               {/* Hostname Field */}
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="hostname">Workstation Hostname (FQDN)</Label>
                 <Input
                   id="hostname"
-                  placeholder="mypc.corp.example.com"
+                  placeholder="mypc.corp.example.com or localhost"
                   value={hostname}
                   onChange={(e) => setHostname(e.target.value)}
-                  disabled={isLoading || isDeploying || isUndeploying}
+                  disabled={isLoading || isDeploying || isDeleting || isUpgrading}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Enter your workstation's fully qualified domain name (FQDN), not IP address
-                </p>
               </div>
 
               {/* IDA Port Field */}
@@ -379,11 +430,8 @@ export default function Research() {
                   max={65535}
                   value={idaPort}
                   onChange={(e) => setIdaPort(e.target.value ? parseInt(e.target.value) : "")}
-                  disabled={isLoading || isDeploying || isUndeploying}
+                  disabled={isLoading || isDeploying || isDeleting || isUpgrading}
                 />
-                <p className="text-xs text-muted-foreground">
-                  The port where your IDA MCP plugin is listening (typically 9100 or 13337)
-                </p>
               </div>
 
               {/* MCP Version Select */}
@@ -392,10 +440,10 @@ export default function Research() {
                 <Select
                   value={mcpVersion}
                   onValueChange={setMcpVersion}
-                  disabled={isLoading || isDeploying || isUndeploying}
+                  disabled={isLoading || isDeploying || isDeleting || isUpgrading}
                 >
                   <SelectTrigger id="mcp-version">
-                    <SelectValue placeholder="Select MCP version" />
+                    <SelectValue placeholder="Select version" />
                   </SelectTrigger>
                   <SelectContent>
                     {versions?.versions.map((version) => (
@@ -406,223 +454,281 @@ export default function Research() {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Select the MCP server version to deploy
-                </p>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={isLoading || isSaving || isDeploying || isUndeploying}
-                variant="outline"
-              >
-                {isSaving ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Server className="w-4 h-4 mr-2" />
-                )}
-                Save Configuration
-              </Button>
-              
-              <Button
-                onClick={handleDeploy}
-                disabled={isLoading || isSaving || isDeploying || isUndeploying || !hostname || !idaPort || !mcpVersion}
-                className="bg-gradient-primary"
-              >
-                {isDeploying ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Rocket className="w-4 h-4 mr-2" />
-                )}
-                Deploy
-              </Button>
-              
-              <Button
-                onClick={handleUndeploy}
-                disabled={isLoading || isSaving || isDeploying || isUndeploying || !isDeployed}
-                variant="destructive"
-              >
-                {isUndeploying ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Power className="w-4 h-4 mr-2" />
-                )}
-                Undeploy
-              </Button>
-              
-              <Button
-                onClick={handleRefresh}
-                disabled={isLoading}
-                variant="ghost"
-                size="icon"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
+            {/* Deploy Button */}
+            <Button
+              onClick={handleDeploy}
+              disabled={isLoading || isDeploying || isDeleting || isUpgrading || !hostname || !idaPort || !mcpVersion}
+              className="w-full bg-gradient-primary"
+              size="lg"
+            >
+              {isDeploying ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Rocket className="w-4 h-4 mr-2" />
+              )}
+              {hasConfig && isDeployed ? "Update & Redeploy" : "Deploy MCP Server"}
+            </Button>
           </CardContent>
         </Card>
-      </motion.div>
 
-      {/* Status Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
+        {/* Instructions Card - Takes 1/3 */}
         <Card className="glass border-border/50">
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Server className="w-5 h-5 text-primary" />
-                Deployment Status
-              </span>
-              <Badge variant={statusInfo.variant} className={isDeployed ? 'animate-pulse bg-success' : ''}>
-                {statusInfo.label}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Status Message */}
-            <p className="text-muted-foreground">
-              {status?.message || "Loading status..."}
-            </p>
-
-            {/* Status Details Table */}
-            {config && (
-              <div className="rounded-lg border bg-surface/50 p-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Hostname:</span>
-                    <span className="ml-2 font-medium">{config.hostname_fqdn}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">IDA Port:</span>
-                    <span className="ml-2 font-medium">{config.ida_port}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Proxy Port:</span>
-                    <span className="ml-2 font-medium">{config.proxy_port || "Not allocated"}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">MCP Version:</span>
-                    <span className="ml-2 font-medium">{config.mcp_version}</span>
-                  </div>
-                  {config.last_deploy_at && (
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">Last Deployed:</span>
-                      <span className="ml-2 font-medium">
-                        {new Date(config.last_deploy_at).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* MCP URL (when deployed) */}
-            {isDeployed && status?.mcp_endpoint_url && (
-              <div className="space-y-2">
-                <Label>MCP Server URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={status.mcp_endpoint_url}
-                    readOnly
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    onClick={handleCopyUrl}
-                    variant="outline"
-                    size="icon"
-                  >
-                    {copied ? (
-                      <Check className="w-4 h-4 text-success" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Add this URL in Open WebUI Settings → Connections → MCP Servers as a Streamable HTTP connection
-                </p>
-              </div>
-            )}
-
-            {/* Error Display */}
-            {status?.last_error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Deployment Error</AlertTitle>
-                <AlertDescription>{status.last_error}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Help/Instructions Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
-        <Card className="glass border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
               <Info className="w-5 h-5 text-primary" />
-              Setup Instructions
+              Quick Setup
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3 text-sm">
-              <div className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">1</span>
-                <div>
-                  <p className="font-medium">Enable IDA Plugin</p>
-                  <p className="text-muted-foreground">Install and enable the IDA MCP plugin on your workstation. Make sure it's listening on the configured port.</p>
-                </div>
+              <div className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">1</span>
+                <p className="text-muted-foreground">Install IDA MCP plugin on your workstation</p>
               </div>
-              <div className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">2</span>
-                <div>
-                  <p className="font-medium">Configure Firewall</p>
-                  <p className="text-muted-foreground">Allow inbound connections to your IDA port from the proxy server IP range.</p>
-                </div>
+              <div className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">2</span>
+                <p className="text-muted-foreground">Allow firewall for your IDA port</p>
               </div>
-              <div className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">3</span>
-                <div>
-                  <p className="font-medium">Enter Configuration</p>
-                  <p className="text-muted-foreground">Fill in your workstation hostname (FQDN, not IP) and IDA plugin port above.</p>
-                </div>
+              <div className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">3</span>
+                <p className="text-muted-foreground">Enter hostname & port, then Deploy</p>
               </div>
-              <div className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">4</span>
-                <div>
-                  <p className="font-medium">Deploy MCP Server</p>
-                  <p className="text-muted-foreground">Click Deploy to allocate a proxy port and start your MCP server pod.</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">5</span>
-                <div>
-                  <p className="font-medium">Add to Open WebUI</p>
-                  <p className="text-muted-foreground">Copy the MCP URL and add it in Open WebUI Settings → Connections → MCP Servers.</p>
-                </div>
+              <div className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">4</span>
+                <p className="text-muted-foreground">Copy MCP URL to Open WebUI Settings</p>
               </div>
             </div>
             
-            <div className="pt-4 border-t">
-              <p className="text-xs text-muted-foreground">
-                <strong>Troubleshooting:</strong> If you encounter connection issues, verify your hostname resolves correctly via DNS, 
-                ensure your firewall allows the connection, and check that your IDA plugin is running.
-              </p>
+            <div className="pt-3 border-t text-xs text-muted-foreground">
+              <p><strong>Tip:</strong> Use your machine's FQDN, not IP address. Check DNS resolves correctly.</p>
             </div>
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Deployed Server Details Card - Only shown when deployed */}
+      <AnimatePresence>
+        {hasConfig && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ delay: 0.4 }}
+          >
+            <Card className="glass border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Server className="w-5 h-5 text-primary" />
+                    Your MCP Server
+                  </span>
+                  <Badge 
+                    variant={statusInfo.variant} 
+                    className={isDeployed ? 'bg-green-600 text-white' : ''}
+                  >
+                    {isDeployed && <span className="w-2 h-2 rounded-full bg-white mr-2 animate-pulse" />}
+                    {statusInfo.label}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Status Message */}
+                <p className="text-muted-foreground">
+                  {status?.message || "Loading status..."}
+                </p>
+
+                {/* Details Grid */}
+                <div className="rounded-lg border bg-surface/50 p-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <Network className="w-3 h-3" /> Hostname
+                      </span>
+                      <span className="font-medium block truncate" title={config.hostname_fqdn}>
+                        {config.hostname_fqdn}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground">IDA Port</span>
+                      <span className="font-medium block">{config.ida_port}</span>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground">Proxy Port</span>
+                      <span className="font-medium block">{config.proxy_port || "Not allocated"}</span>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground">MCP Version</span>
+                      <span className="font-medium block">{config.mcp_version}</span>
+                    </div>
+                  </div>
+                  
+                  {config.last_deploy_at && (
+                    <div className="mt-3 pt-3 border-t text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Last deployed: {new Date(config.last_deploy_at).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+
+                {/* MCP URL (when deployed) */}
+                {isDeployed && mcpUrl && (
+                  <div className="space-y-2">
+                    <Label>MCP Server URL (add this to Open WebUI)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={mcpUrl}
+                        readOnly
+                        className="font-mono text-sm bg-muted"
+                      />
+                      <Button
+                        onClick={handleCopyUrl}
+                        variant="outline"
+                        size="icon"
+                      >
+                        {copied ? (
+                          <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <ExternalLink className="w-3 h-3" />
+                      Open WebUI → Settings → Connections → MCP Servers → Add Streamable HTTP
+                    </p>
+                  </div>
+                )}
+
+                {/* Error Display */}
+                {(status?.last_error || config.last_error) && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{status?.last_error || config.last_error}</AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <Button
+                    onClick={openUpgradeDialog}
+                    disabled={isLoading || isDeploying || isDeleting || isUpgrading || !isDeployed}
+                    variant="outline"
+                  >
+                    {isUpgrading ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <ArrowUp className="w-4 h-4 mr-2" />
+                    )}
+                    Upgrade Version
+                  </Button>
+                  
+                  <Button
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={isLoading || isDeploying || isDeleting || isUpgrading}
+                    variant="destructive"
+                  >
+                    {isDeleting ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-2" />
+                    )}
+                    Delete
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete MCP Server?</DialogTitle>
+            <DialogDescription>
+              This will stop your MCP server pod, remove all routing configuration, 
+              and delete your configuration. You'll need to redeploy to use the 
+              IDA integration again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upgrade Dialog */}
+      <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upgrade MCP Server Version</DialogTitle>
+            <DialogDescription>
+              Select a new version to upgrade your MCP server.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Current Version */}
+            <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+              <span className="text-sm text-muted-foreground">Current Version</span>
+              <Badge variant="secondary">{config?.mcp_version}</Badge>
+            </div>
+            
+            {/* Arrow */}
+            <div className="flex justify-center">
+              <ArrowUp className="w-6 h-6 text-primary rotate-180" />
+            </div>
+            
+            {/* New Version Selection */}
+            <div className="space-y-2">
+              <Label>New Version</Label>
+              <Select
+                value={newVersionForUpgrade}
+                onValueChange={setNewVersionForUpgrade}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select new version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {versions?.versions
+                    .filter(v => v !== config?.mcp_version)
+                    .map((version) => (
+                      <SelectItem key={version} value={version}>
+                        {version}
+                        {version === versions.default_version && " (recommended)"}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUpgradeDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleUpgrade}
+              disabled={!newVersionForUpgrade || newVersionForUpgrade === config?.mcp_version}
+              className="bg-gradient-primary"
+            >
+              <ArrowUp className="w-4 h-4 mr-2" />
+              Upgrade
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
