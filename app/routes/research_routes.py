@@ -28,6 +28,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import get_db_session
 from app.models import User, IdaMcpConnection, IdaMcpDeployAudit, IdaMcpConnectionStatus
 from app.routes.auth_routes import get_current_user
+from app.services.k8s_controller import (
+    McpServerConfig, 
+    deploy_mcp_server, 
+    delete_mcp_server, 
+    upgrade_mcp_server,
+    get_mcp_server_status,
+    health_check as k8s_health_check
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -204,6 +212,7 @@ class DeployResponse(BaseModel):
     status: str
     proxy_port: Optional[int]
     mcp_endpoint_url: Optional[str]
+    proxy_test_url: Optional[str] = None  # For direct testing: curl to this URL to reach IDA
     config: Optional[IdaBridgeConfigResponse]
 
 
@@ -250,11 +259,42 @@ def log_audit_action(
     """Log an audit record for IDA MCP deployment actions."""
     logger.debug(f"[RESEARCH] Logging audit: user={user_id}, action={action}, status={action_status}")
     try:
+        # Ensure payload and result are properly serializable JSON
+        # Convert to dict if they're Pydantic models or other objects
+        serialized_payload = None
+        if payload is not None:
+            if hasattr(payload, 'dict'):
+                serialized_payload = payload.dict()
+            elif hasattr(payload, 'model_dump'):
+                serialized_payload = payload.model_dump()
+            elif isinstance(payload, dict):
+                # Ensure all values are JSON serializable
+                serialized_payload = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict, type(None))) else v 
+                                      for k, v in payload.items()}
+            else:
+                serialized_payload = {"value": str(payload)}
+        
+        serialized_result = None
+        if result is not None:
+            if hasattr(result, 'dict'):
+                serialized_result = result.dict()
+            elif hasattr(result, 'model_dump'):
+                serialized_result = result.model_dump()
+            elif isinstance(result, dict):
+                # Ensure all values are JSON serializable
+                serialized_result = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict, type(None))) else v 
+                                     for k, v in result.items()}
+            else:
+                serialized_result = {"value": str(result)}
+        
+        logger.debug(f"[RESEARCH] Audit payload: {serialized_payload}")
+        logger.debug(f"[RESEARCH] Audit result: {serialized_result}")
+        
         audit = IdaMcpDeployAudit(
             user_id=user_id,
             action=action,
-            payload=payload,
-            result=result,
+            payload=serialized_payload,
+            result=serialized_result,
             status=action_status,
             error_message=error_message
         )
@@ -263,6 +303,7 @@ def log_audit_action(
         logger.debug(f"[RESEARCH] Audit logged successfully")
     except Exception as e:
         logger.error(f"[RESEARCH] Failed to log audit: {e}")
+        logger.error(traceback.format_exc())
         db.rollback()
 
 
@@ -378,19 +419,50 @@ async def deploy_ida_bridge(
         db.commit()
         
         # ============================================================
-        # PLACEHOLDER: Kubernetes deployment logic goes here
-        # 
-        # The actual implementation will:
-        # 1. Deploy per-user MCP server pod with environment variables
-        # 2. Update proxy ConfigMap with port mapping
-        # 3. Trigger proxy reload
-        # 4. Wait for pod readiness
+        # Deploy MCP Server via Kubernetes Controller
         # ============================================================
-        logger.info(f"[RESEARCH] [PLACEHOLDER] Would deploy K8s resources here")
+        mcp_config = McpServerConfig(
+            user_id=current_user.id,
+            username=current_user.username,
+            hostname_fqdn=config.hostname_fqdn,
+            ida_port=config.ida_port,
+            proxy_port=connection.proxy_port,
+            mcp_version=config.mcp_version
+        )
         
-        # Generate MCP endpoint URL (placeholder - actual URL depends on Ingress config)
-        mcp_base_url = os.getenv("MCP_GATEWAY_BASE_URL", "https://mcp-gateway.company.internal")
-        connection.mcp_endpoint_url = f"{mcp_base_url}/research/mcp/{current_user.id}/"
+        logger.info(f"[RESEARCH] Calling K8s controller to deploy MCP server")
+        k8s_success, k8s_message, mcp_url = deploy_mcp_server(mcp_config)
+        
+        if not k8s_success:
+            logger.error(f"[RESEARCH] K8s deployment failed: {k8s_message}")
+            connection.status = IdaMcpConnectionStatus.ERROR.value
+            connection.last_error = k8s_message
+            db.commit()
+            
+            log_audit_action(
+                db, current_user.id, "deploy",
+                payload={
+                    "hostname_fqdn": connection.hostname_fqdn,
+                    "ida_port": connection.ida_port,
+                    "mcp_version": connection.mcp_version,
+                    "proxy_port": connection.proxy_port
+                },
+                action_status="failure",
+                error_message=k8s_message
+            )
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Kubernetes deployment failed: {k8s_message}"
+            )
+        
+        # Update with MCP endpoint URL from K8s controller
+        # Also allow override via environment variable for external access
+        mcp_base_url = os.getenv("MCP_GATEWAY_BASE_URL", "")
+        if mcp_base_url:
+            connection.mcp_endpoint_url = f"{mcp_base_url}:{connection.proxy_port}/"
+        else:
+            connection.mcp_endpoint_url = mcp_url
         
         logger.info(f"[RESEARCH] Generated MCP URL: {connection.mcp_endpoint_url}")
         
@@ -423,12 +495,18 @@ async def deploy_ida_bridge(
         
         logger.info(f"[RESEARCH] ========== DEPLOY SUCCESS ==========")
         
+        # Build proxy test URL for direct testing
+        k8s_namespace = os.getenv("K8S_NAMESPACE", "ida-mcp-servers")
+        ida_proxy_deployment = os.getenv("IDA_PROXY_DEPLOYMENT", "ida-proxy")
+        proxy_test_url = f"http://{ida_proxy_deployment}.{k8s_namespace}.svc.cluster.local:{connection.proxy_port}/"
+        
         return DeployResponse(
             success=True,
             message="MCP server deployed successfully",
             status=connection.status,
             proxy_port=connection.proxy_port,
             mcp_endpoint_url=connection.mcp_endpoint_url,
+            proxy_test_url=proxy_test_url,
             config=IdaBridgeConfigResponse(**connection.to_dict())
         )
         
@@ -510,18 +588,21 @@ async def delete_ida_bridge(
         
         old_proxy_port = connection.proxy_port
         old_status = connection.status
+        old_hostname = connection.hostname_fqdn
+        old_ida_port = connection.ida_port
+        old_mcp_version = connection.mcp_version
         
         logger.info(f"[RESEARCH] Deleting config: id={connection.id}, proxy_port={old_proxy_port}")
         
         # ============================================================
-        # PLACEHOLDER: Kubernetes cleanup logic goes here
-        #
-        # The actual implementation will:
-        # 1. Delete per-user MCP server Deployment/Service/Ingress
-        # 2. Remove proxy ConfigMap port mapping
-        # 3. Trigger proxy reload
+        # Delete MCP Server via Kubernetes Controller
         # ============================================================
-        logger.info(f"[RESEARCH] [PLACEHOLDER] Would delete K8s resources here")
+        logger.info(f"[RESEARCH] Calling K8s controller to delete MCP server")
+        k8s_success, k8s_message = delete_mcp_server(current_user.id, old_proxy_port)
+        
+        if not k8s_success:
+            logger.warning(f"[RESEARCH] K8s deletion had issues: {k8s_message}")
+            # Continue anyway - we still want to delete from database
         
         # Delete the configuration
         db.delete(connection)
@@ -531,8 +612,14 @@ async def delete_ida_bridge(
         
         log_audit_action(
             db, current_user.id, "delete",
-            payload={"proxy_port": old_proxy_port, "old_status": old_status},
-            result={"message": "Deleted successfully"},
+            payload={
+                "proxy_port": old_proxy_port, 
+                "old_status": old_status,
+                "hostname_fqdn": old_hostname,
+                "ida_port": old_ida_port,
+                "mcp_version": old_mcp_version
+            },
+            result={"message": "Deleted successfully", "k8s_message": k8s_message},
             action_status="success"
         )
         
@@ -616,13 +703,29 @@ async def upgrade_ida_bridge(
         db.commit()
         
         # ============================================================
-        # PLACEHOLDER: Kubernetes upgrade logic goes here
-        # 
-        # The actual implementation will:
-        # 1. Update the MCP server Deployment with new image tag
-        # 2. Wait for rollout to complete
+        # Upgrade MCP Server via Kubernetes Controller
         # ============================================================
-        logger.info(f"[RESEARCH] [PLACEHOLDER] Would upgrade K8s deployment here")
+        logger.info(f"[RESEARCH] Calling K8s controller to upgrade MCP server")
+        k8s_success, k8s_message = upgrade_mcp_server(current_user.id, upgrade_request.new_mcp_version)
+        
+        if not k8s_success:
+            logger.error(f"[RESEARCH] K8s upgrade failed: {k8s_message}")
+            connection.status = IdaMcpConnectionStatus.ERROR.value
+            connection.last_error = k8s_message
+            connection.mcp_version = old_version  # Revert version
+            db.commit()
+            
+            log_audit_action(
+                db, current_user.id, "upgrade",
+                payload={"old_version": old_version, "new_version": upgrade_request.new_mcp_version},
+                action_status="failure",
+                error_message=k8s_message
+            )
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Kubernetes upgrade failed: {k8s_message}"
+            )
         
         connection.status = IdaMcpConnectionStatus.DEPLOYED.value
         connection.last_deploy_at = datetime.utcnow()
@@ -742,3 +845,24 @@ async def upsert_ida_bridge_config(
     """
     logger.info(f"[RESEARCH] Legacy POST /ida-bridge called, redirecting to deploy")
     return await deploy_ida_bridge(config, current_user, db)
+
+
+@router.get("/k8s/health")
+async def k8s_controller_health(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the health status of the Kubernetes controller.
+    
+    Returns information about K8s connectivity and proxy status.
+    """
+    logger.info(f"[RESEARCH] User {current_user.id} checking K8s health")
+    
+    health = k8s_health_check()
+    
+    return {
+        "status": "ok" if health.get("k8s_connected") else "simulation_mode",
+        "k8s_connected": health.get("k8s_connected", False),
+        "proxy_status": health.get("proxy_status", "unknown"),
+        "namespace": health.get("namespace", "unknown")
+    }

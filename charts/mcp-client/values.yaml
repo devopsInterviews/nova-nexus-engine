@@ -151,6 +151,49 @@ features:
   enableMetrics: true
   enableTracing: false
 
+# IDA MCP Configuration
+idaMcp:
+  # Enable IDA MCP functionality
+  enabled: true
+  
+  # Kubernetes controller configuration
+  k8s:
+    # Namespace for MCP server deployments
+    namespace: ""  # Leave empty to use same namespace as mcp-client
+    
+    # IDA Proxy settings (must match ida-proxy chart values)
+    proxyDeployment: "ida-proxy"
+    proxyConfigMapPorts: "ida-proxy-listen-ports"
+    proxyConfigMapMap: "ida-proxy-port-map"
+    
+    # MCP Server image
+    # For testing, use "nginxdemos/hello" which has a nice visual UI
+    # Replace with your actual MCP server image when ready
+    mcpServerImageRepo: "nginxdemos/hello"
+    mcpServerPort: 80
+    # Health check endpoint - nginx hello uses "/" 
+    mcpServerHealthPath: "/"
+  
+  # Allowed MCP server versions
+  allowedVersions: "v1.0.0,v1.1.0,v1.2.0,latest"
+  
+  # Hostname validation patterns (comma-separated regex)
+  # Leave empty to allow all hostnames
+  allowedHostnamePatterns: ""
+  
+  # Port allocation range for proxy ports
+  proxyPortMin: 9001
+  proxyPortMax: 9999
+  
+  # IDA port validation range
+  idaPortMin: 1024
+  idaPortMax: 65535
+  
+  # MCP Gateway URL (for generating external URLs)
+  # This is the externally-accessible URL prefix for MCP servers
+  # The proxy port will be appended: {gatewayBaseUrl}:{proxyPort}/
+  gatewayBaseUrl: "https://mcp-gateway.company.internal"
+
 # External services
 external:
   # Redis for caching (optional)

@@ -1,0 +1,95 @@
+# IDA Proxy Helm Chart Values
+# This chart deploys an nginx proxy that routes traffic to user IDA workstations
+
+# Docker image settings
+image:
+  repository: nginx
+  tag: alpine
+  pullPolicy: IfNotPresent
+
+# Replica count (recommend 1 for simplicity, can scale if needed)
+replicaCount: 1
+
+# Service configuration
+service:
+  type: ClusterIP
+  # Additional port range is defined in portRange below
+
+# Port allocation range for proxy ports
+# These ports are dynamically allocated to users
+portRange:
+  start: 9001
+  end: 9100  # Allows 100 concurrent users
+
+# DNS configuration for resolving user workstation hostnames
+dns:
+  servers:
+    - 10.0.0.53
+    - 10.0.0.54
+  # Uncomment if using short hostnames without domain
+  # searchDomains:
+  #   - corp.example.com
+  resolverValid: "30s"
+  resolverTimeout: "2s"
+
+# Proxy timeouts
+proxy:
+  connectTimeout: "2s"
+  readTimeout: "60s"
+  sendTimeout: "60s"
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Pod labels
+podLabels: {}
+
+# Pod annotations
+podAnnotations: {}
+
+# Security context
+securityContext:
+  runAsNonRoot: false  # nginx needs root to bind to ports
+  # runAsUser: 101  # nginx user
+
+# Pod security context
+podSecurityContext: {}
+
+# Liveness probe
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+# Readiness probe  
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# Initial port mappings (managed by MCP Client controller)
+# These are populated dynamically as users deploy their MCP servers
+initialPortMappings: []
+# Example:
+# - proxyPort: 9001
+#   upstreamHost: userA-workstation.corp.example.com
+#   upstreamPort: 9100
