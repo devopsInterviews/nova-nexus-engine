@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "mcp-client.fullname" . }}-ida-proxy
+  name: {{ if .Values.idaMcp.k8s.proxyDeployment }}{{ .Values.idaMcp.k8s.proxyDeployment }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy{{ end }}
   labels:
     app: ida-mcp
     component: proxy

@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "mcp-client.fullname" . }}-ida-proxy-listen-ports
+  name: {{ if .Values.idaMcp.k8s.proxyConfigMapPorts }}{{ .Values.idaMcp.k8s.proxyConfigMapPorts }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy-listen-ports{{ end }}
   labels:
     app: ida-mcp
     component: proxy

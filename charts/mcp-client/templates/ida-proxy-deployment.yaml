@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "mcp-client.fullname" . }}-ida-proxy
+  name: {{ if .Values.idaMcp.k8s.proxyDeployment }}{{ .Values.idaMcp.k8s.proxyDeployment }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy{{ end }}
   labels:
     app: ida-mcp
     component: proxy
@@ -103,10 +103,10 @@ spec:
             name: {{ include "mcp-client.fullname" . }}-ida-proxy-nginx-config
         - name: listen-ports
           configMap:
-            name: {{ include "mcp-client.fullname" . }}-ida-proxy-listen-ports
+            name: {{ if .Values.idaMcp.k8s.proxyConfigMapPorts }}{{ .Values.idaMcp.k8s.proxyConfigMapPorts }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy-listen-ports{{ end }}
         - name: port-map
           configMap:
-            name: {{ include "mcp-client.fullname" . }}-ida-proxy-port-map
+            name: {{ if .Values.idaMcp.k8s.proxyConfigMapMap }}{{ .Values.idaMcp.k8s.proxyConfigMapMap }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy-port-map{{ end }}
       {{- with .Values.idaProxy.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
