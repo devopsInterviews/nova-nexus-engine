@@ -37,6 +37,9 @@ IDA_MCP_SERVER_IMAGE_REPO = os.getenv("IDA_MCP_SERVER_IMAGE_REPO", "nginxdemos/h
 IDA_MCP_SERVER_PORT = int(os.getenv("IDA_MCP_SERVER_PORT", "80"))
 IDA_MCP_SERVER_HEALTH_PATH = os.getenv("IDA_MCP_SERVER_HEALTH_PATH", "/")
 
+# Service configuration for MCP server pods
+IDA_MCP_SERVICE_NETWORK_POOL = os.getenv("IDA_MCP_SERVICE_NETWORK_POOL", "")
+
 # Labels for resource management
 LABEL_APP = "ida-mcp"
 LABEL_COMPONENT_MCP = "mcp-server"
@@ -228,14 +231,21 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
                 raise
         
         # ============================================================
-        # Create/Update Service
+        # Create/Update Service (LoadBalancer with network labels)
         # ============================================================
+        
+        # Service labels include network-pool and Egress-policy
+        service_labels = labels.copy()
+        if IDA_MCP_SERVICE_NETWORK_POOL:
+            service_labels["network-pool"] = IDA_MCP_SERVICE_NETWORK_POOL
+        service_labels["Egress-policy"] = "enabled"
         
         service = client.V1Service(
             api_version="v1",
             kind="Service",
-            metadata=client.V1ObjectMeta(name=service_name, labels=labels),
+            metadata=client.V1ObjectMeta(name=service_name, labels=service_labels),
             spec=client.V1ServiceSpec(
+                type="LoadBalancer",
                 selector=labels,
                 ports=[client.V1ServicePort(port=IDA_MCP_SERVER_PORT, target_port=IDA_MCP_SERVER_PORT)]
             )
