@@ -40,13 +40,13 @@ spec:
             # IDA MCP Controller Configuration
             - name: K8S_NAMESPACE
               value: "{{ .Values.idaMcp.k8s.namespace | default .Release.Namespace }}"
-            # IDA Proxy names - use values if set, otherwise derive from release name
+            # IDA Proxy names - derive from release name (empty strings in values are ignored)
             - name: IDA_PROXY_DEPLOYMENT
-              value: "{{ .Values.idaMcp.k8s.proxyDeployment | default (printf "%s-ida-proxy" (include "mcp-client.fullname" .)) }}"
+              value: "{{ if .Values.idaMcp.k8s.proxyDeployment }}{{ .Values.idaMcp.k8s.proxyDeployment }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy{{ end }}"
             - name: IDA_PROXY_CONFIGMAP_PORTS
-              value: "{{ .Values.idaMcp.k8s.proxyConfigMapPorts | default (printf "%s-ida-proxy-listen-ports" (include "mcp-client.fullname" .)) }}"
+              value: "{{ if .Values.idaMcp.k8s.proxyConfigMapPorts }}{{ .Values.idaMcp.k8s.proxyConfigMapPorts }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy-listen-ports{{ end }}"
             - name: IDA_PROXY_CONFIGMAP_MAP
-              value: "{{ .Values.idaMcp.k8s.proxyConfigMapMap | default (printf "%s-ida-proxy-port-map" (include "mcp-client.fullname" .)) }}"
+              value: "{{ if .Values.idaMcp.k8s.proxyConfigMapMap }}{{ .Values.idaMcp.k8s.proxyConfigMapMap }}{{ else }}{{ include "mcp-client.fullname" . }}-ida-proxy-port-map{{ end }}"
             # IDA MCP Server settings (prefixed to avoid K8s service discovery conflicts)
             - name: IDA_MCP_SERVER_IMAGE_REPO
               value: "{{ .Values.idaMcp.k8s.mcpServerImageRepo }}"
