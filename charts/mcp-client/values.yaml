@@ -194,6 +194,8 @@ idaMcp:
     # Bitbucket credentials (username and app password)
     username: ""
     password: ""  # Bitbucket app password or personal access token
+    # SSL certificate verification (set to false for self-signed certificates)
+    verifySSL: true
   
   # Allowed MCP server versions
   allowedVersions: "v1.0.0,v1.1.0,v1.2.0,latest"

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, RefreshCw, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Trash2, RefreshCw, Loader2, CheckCircle, XCircle, Clock, ArrowUpCircle } from "lucide-react";
 import { toast } from "sonner";
 import apiService, { AdminMcpConnection } from "@/lib/api-service";
 import {
@@ -259,7 +259,7 @@ export function AdminMcpServers() {
                             {actionLoading === server.user_id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <RefreshCw className="h-4 w-4" />
+                              <ArrowUpCircle className="h-4 w-4" />
                             )}
                           </Button>
                           <Button

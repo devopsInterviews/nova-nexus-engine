@@ -36,12 +36,14 @@ BITBUCKET_BRANCH = os.getenv("BITBUCKET_BRANCH", "main")
 BITBUCKET_VALUES_PATH = os.getenv("BITBUCKET_VALUES_PATH", "")  # e.g., "charts/mcp-client/values.yaml"
 BITBUCKET_USERNAME = os.getenv("BITBUCKET_USERNAME", "")
 BITBUCKET_PASSWORD = os.getenv("BITBUCKET_PASSWORD", "")  # App password or access token
+BITBUCKET_VERIFY_SSL = os.getenv("BITBUCKET_VERIFY_SSL", "true").lower() == "true"  # Set to false for self-signed certs
 
 logger.info(f"[BITBUCKET] Enabled: {BITBUCKET_ENABLED}")
 if BITBUCKET_ENABLED:
     logger.info(f"[BITBUCKET] URL: {BITBUCKET_URL}")
     logger.info(f"[BITBUCKET] Project: {BITBUCKET_PROJECT}, Repo: {BITBUCKET_REPO}")
     logger.info(f"[BITBUCKET] Branch: {BITBUCKET_BRANCH}, Path: {BITBUCKET_VALUES_PATH}")
+    logger.info(f"[BITBUCKET] SSL Verification: {BITBUCKET_VERIFY_SSL}")
 
 
 # ============================================================
@@ -68,6 +70,7 @@ class BitbucketConfig:
     values_path: str = "values.yaml"
     username: str = ""
     password: str = ""
+    verify_ssl: bool = True
 
 
 # ============================================================
@@ -85,7 +88,8 @@ class BitbucketClient:
         branch: str = BITBUCKET_BRANCH,
         values_path: str = BITBUCKET_VALUES_PATH,
         username: str = BITBUCKET_USERNAME,
-        password: str = BITBUCKET_PASSWORD
+        password: str = BITBUCKET_PASSWORD,
+        verify_ssl: bool = BITBUCKET_VERIFY_SSL
     ):
         if Bitbucket is None:
             raise ImportError("atlassian-python-api is required. Install with: pip install atlassian-python-api")
@@ -95,14 +99,18 @@ class BitbucketClient:
         self.repo = repo
         self.branch = branch
         self.values_path = values_path
+        self.verify_ssl = verify_ssl
         
         # Initialize Bitbucket client from atlassian-python-api
         self.bitbucket = Bitbucket(
             url=self.base_url,
             username=username,
-            password=password
+            password=password,
+            verify_ssl=verify_ssl
         )
         
+        if not verify_ssl:
+            logger.warning(f"[BITBUCKET] SSL verification is DISABLED for {project}/{repo}")
         logger.info(f"[BITBUCKET] Initialized client for {project}/{repo}")
     
     def get_file_content(self) -> Tuple[Optional[str], Optional[str]]:
