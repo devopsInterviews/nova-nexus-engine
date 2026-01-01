@@ -49,6 +49,7 @@ BITBUCKET_BRANCH = os.getenv("BITBUCKET_BRANCH", "main")
 BITBUCKET_VALUES_PATH = os.getenv("BITBUCKET_VALUES_PATH", "values.yaml")
 BITBUCKET_USERNAME = os.getenv("BITBUCKET_USERNAME", "")
 BITBUCKET_PASSWORD = os.getenv("BITBUCKET_PASSWORD", "")
+BITBUCKET_VERIFY_SSL = os.getenv("BITBUCKET_VERIFY_SSL", "true").lower() == "true"
 
 # Labels for resource management
 LABEL_APP = "ida-mcp"
@@ -73,7 +74,8 @@ if BITBUCKET_ENABLED:
             branch=BITBUCKET_BRANCH,
             values_path=BITBUCKET_VALUES_PATH,
             username=BITBUCKET_USERNAME,
-            password=BITBUCKET_PASSWORD
+            password=BITBUCKET_PASSWORD,
+            verify_ssl=BITBUCKET_VERIFY_SSL
         )
         bitbucket_manager = ValuesFileManager(bitbucket_client)
         logger.info(f"[K8S_CONTROLLER] Bitbucket client initialized for {BITBUCKET_URL}/{BITBUCKET_PROJECT}/{BITBUCKET_REPO}")

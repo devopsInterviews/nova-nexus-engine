@@ -88,6 +88,8 @@ spec:
               value: "{{ .Values.idaMcp.bitbucket.username }}"
             - name: BITBUCKET_PASSWORD
               value: "{{ .Values.idaMcp.bitbucket.password }}"
+            - name: BITBUCKET_VERIFY_SSL
+              value: "{{ .Values.idaMcp.bitbucket.verifySSL }}"
             {{- end }}
           {{- end }}
           resources:
