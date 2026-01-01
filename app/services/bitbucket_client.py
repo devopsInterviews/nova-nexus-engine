@@ -134,16 +134,27 @@ class BitbucketClient:
             
             if content:
                 # Get latest commit ID for the file
-                commits_response = self.bitbucket.get_commits(
-                    project_key=self.project,
-                    repository_slug=self.repo,
-                    hash_oldest=None,
-                    hash_newest=self.branch,
-                    limit=1
-                )
-                # get_commits returns a dict with 'values' key containing the list of commits
-                commits = commits_response.get('values', []) if isinstance(commits_response, dict) else commits_response
-                commit_id = commits[0]['id'] if commits else None
+                # get_commits returns a generator, so we convert to list
+                try:
+                    commits_response = self.bitbucket.get_commits(
+                        project_key=self.project,
+                        repository_slug=self.repo,
+                        hash_oldest=None,
+                        hash_newest=self.branch,
+                        limit=1
+                    )
+                    # Handle generator or dict response
+                    if hasattr(commits_response, '__iter__') and not isinstance(commits_response, (dict, str)):
+                        commits = list(commits_response)
+                    elif isinstance(commits_response, dict):
+                        commits = commits_response.get('values', [])
+                    else:
+                        commits = []
+                    
+                    commit_id = commits[0]['id'] if commits and len(commits) > 0 else None
+                except Exception as e:
+                    logger.warning(f"[BITBUCKET] Could not fetch commit ID: {e}")
+                    commit_id = None
                 
                 logger.info(f"[BITBUCKET] Successfully fetched file from branch '{self.branch}' (commit: {commit_id})")
                 return content, commit_id
