@@ -113,35 +113,38 @@ class BitbucketClient:
             Tuple of (content, commit_id) or (None, None) on error
         """
         try:
-            logger.debug(f"[BITBUCKET] Fetching file: {self.values_path} from {self.project}/{self.repo}")
+            logger.info(f"[BITBUCKET] Fetching file: {self.values_path} from {self.project}/{self.repo} (branch: {self.branch})")
             
             # Get file content using atlassian-python-api
+            # Correct parameters: project_key, repository_slug, filename, at, markup
             content = self.bitbucket.get_content_of_file(
-                project=self.project,
-                repository=self.repo,
+                project_key=self.project,
+                repository_slug=self.repo,
                 filename=self.values_path,
                 at=f"refs/heads/{self.branch}"
             )
             
             if content:
                 # Get latest commit ID for the file
-                commits = self.bitbucket.get_commits(
-                    project=self.project,
-                    repository=self.repo,
+                commits_response = self.bitbucket.get_commits(
+                    project_key=self.project,
+                    repository_slug=self.repo,
                     hash_oldest=None,
                     hash_newest=self.branch,
                     limit=1
                 )
+                # get_commits returns a dict with 'values' key containing the list of commits
+                commits = commits_response.get('values', []) if isinstance(commits_response, dict) else commits_response
                 commit_id = commits[0]['id'] if commits else None
                 
-                logger.info(f"[BITBUCKET] Successfully fetched file (commit: {commit_id})")
+                logger.info(f"[BITBUCKET] Successfully fetched file from branch '{self.branch}' (commit: {commit_id})")
                 return content, commit_id
             else:
-                logger.error(f"[BITBUCKET] File not found or empty")
+                logger.error(f"[BITBUCKET] File not found or empty: {self.values_path}")
                 return None, None
                 
         except Exception as e:
-            logger.error(f"[BITBUCKET] Error fetching file: {e}")
+            logger.error(f"[BITBUCKET] Error fetching file from {self.project}/{self.repo} (branch: {self.branch}): {e}")
             return None, None
     
     def update_file(self, content: str, commit_message: str, source_commit_id: Optional[str] = None) -> Tuple[bool, str]:
@@ -157,13 +160,14 @@ class BitbucketClient:
             Tuple of (success, message or commit_id)
         """
         try:
-            logger.info(f"[BITBUCKET] Updating file: {self.values_path}")
+            logger.info(f"[BITBUCKET] Updating file: {self.values_path} in {self.project}/{self.repo} (branch: {self.branch})")
             logger.debug(f"[BITBUCKET] Commit message: {commit_message}")
             
             # Update file using atlassian-python-api
+            # Correct parameters: project_key, repository_slug, content, message, branch, filename, source_commit_id
             result = self.bitbucket.update_file(
-                project=self.project,
-                repository=self.repo,
+                project_key=self.project,
+                repository_slug=self.repo,
                 content=content,
                 message=commit_message,
                 branch=self.branch,
@@ -174,12 +178,12 @@ class BitbucketClient:
             # Extract commit ID from result
             commit_id = result.get('id') if isinstance(result, dict) else str(result)
             
-            logger.info(f"[BITBUCKET] File updated successfully. Commit: {commit_id}")
+            logger.info(f"[BITBUCKET] File updated successfully in branch '{self.branch}'. Commit: {commit_id}")
             return True, commit_id
             
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"[BITBUCKET] Error updating file: {error_msg}")
+            logger.error(f"[BITBUCKET] Error updating file in {self.project}/{self.repo} (branch: {self.branch}): {error_msg}")
             
             # Handle common errors
             if "409" in error_msg or "conflict" in error_msg.lower():
