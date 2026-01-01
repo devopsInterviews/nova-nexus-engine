@@ -70,6 +70,25 @@ spec:
               value: "{{ .Values.idaMcp.idaPortMax }}"
             - name: MCP_GATEWAY_BASE_URL
               value: "{{ .Values.idaMcp.gatewayBaseUrl }}"
+            {{- if .Values.idaMcp.bitbucket.enabled }}
+            # Bitbucket GitOps Configuration
+            - name: BITBUCKET_ENABLED
+              value: "true"
+            - name: BITBUCKET_URL
+              value: "{{ .Values.idaMcp.bitbucket.url }}"
+            - name: BITBUCKET_PROJECT
+              value: "{{ .Values.idaMcp.bitbucket.project }}"
+            - name: BITBUCKET_REPO
+              value: "{{ .Values.idaMcp.bitbucket.repo }}"
+            - name: BITBUCKET_BRANCH
+              value: "{{ .Values.idaMcp.bitbucket.branch }}"
+            - name: BITBUCKET_VALUES_PATH
+              value: "{{ .Values.idaMcp.bitbucket.valuesPath }}"
+            - name: BITBUCKET_USERNAME
+              value: "{{ .Values.idaMcp.bitbucket.username }}"
+            - name: BITBUCKET_PASSWORD
+              value: "{{ .Values.idaMcp.bitbucket.password }}"
+            {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

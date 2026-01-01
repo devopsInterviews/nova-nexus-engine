@@ -40,6 +40,16 @@ IDA_MCP_SERVER_HEALTH_PATH = os.getenv("IDA_MCP_SERVER_HEALTH_PATH", "/")
 # Service configuration for MCP server pods
 IDA_MCP_SERVICE_NETWORK_POOL = os.getenv("IDA_MCP_SERVICE_NETWORK_POOL", "")
 
+# Bitbucket GitOps configuration (for ArgoCD-managed deployments)
+BITBUCKET_ENABLED = os.getenv("BITBUCKET_ENABLED", "false").lower() == "true"
+BITBUCKET_URL = os.getenv("BITBUCKET_URL", "")
+BITBUCKET_PROJECT = os.getenv("BITBUCKET_PROJECT", "")
+BITBUCKET_REPO = os.getenv("BITBUCKET_REPO", "")
+BITBUCKET_BRANCH = os.getenv("BITBUCKET_BRANCH", "main")
+BITBUCKET_VALUES_PATH = os.getenv("BITBUCKET_VALUES_PATH", "values.yaml")
+BITBUCKET_USERNAME = os.getenv("BITBUCKET_USERNAME", "")
+BITBUCKET_PASSWORD = os.getenv("BITBUCKET_PASSWORD", "")
+
 # Labels for resource management
 LABEL_APP = "ida-mcp"
 LABEL_COMPONENT_MCP = "mcp-server"
@@ -49,6 +59,27 @@ logger.info(f"[K8S_CONTROLLER] Initialized with namespace={K8S_NAMESPACE}")
 logger.info(f"[K8S_CONTROLLER] Proxy deployment={IDA_PROXY_DEPLOYMENT}")
 logger.info(f"[K8S_CONTROLLER] IDA MCP image repo={IDA_MCP_SERVER_IMAGE_REPO}")
 logger.info(f"[K8S_CONTROLLER] IDA MCP server port={IDA_MCP_SERVER_PORT}, health path={IDA_MCP_SERVER_HEALTH_PATH}")
+logger.info(f"[K8S_CONTROLLER] Bitbucket GitOps enabled={BITBUCKET_ENABLED}")
+
+# Initialize Bitbucket client if enabled
+bitbucket_manager = None
+if BITBUCKET_ENABLED:
+    try:
+        from app.services.bitbucket_client import ValuesFileManager, BitbucketClient
+        bitbucket_client = BitbucketClient(
+            base_url=BITBUCKET_URL,
+            project=BITBUCKET_PROJECT,
+            repo=BITBUCKET_REPO,
+            branch=BITBUCKET_BRANCH,
+            values_path=BITBUCKET_VALUES_PATH,
+            username=BITBUCKET_USERNAME,
+            password=BITBUCKET_PASSWORD
+        )
+        bitbucket_manager = ValuesFileManager(bitbucket_client)
+        logger.info(f"[K8S_CONTROLLER] Bitbucket client initialized for {BITBUCKET_URL}/{BITBUCKET_PROJECT}/{BITBUCKET_REPO}")
+    except Exception as e:
+        logger.error(f"[K8S_CONTROLLER] Failed to initialize Bitbucket client: {e}")
+        BITBUCKET_ENABLED = False
 
 
 # ============================================================
@@ -268,7 +299,13 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
         # Update Proxy Configuration
         # ============================================================
         
-        success, msg = update_proxy_config_add(config.proxy_port, config.hostname_fqdn, config.ida_port)
+        success, msg = update_proxy_config_add(
+            proxy_port=config.proxy_port, 
+            upstream_host=config.hostname_fqdn, 
+            upstream_port=config.ida_port,
+            user_id=config.user_id,
+            username=config.username
+        )
         if not success:
             logger.error(f"[K8S_CONTROLLER] Failed to update proxy config: {msg}")
             # Continue anyway - MCP server is deployed
@@ -470,20 +507,50 @@ def get_proxy_config() -> Tuple[Dict[int, str], List[int]]:
         return {}, []
 
 
-def update_proxy_config_add(proxy_port: int, upstream_host: str, upstream_port: int) -> Tuple[bool, str]:
+def update_proxy_config_add(
+    proxy_port: int, 
+    upstream_host: str, 
+    upstream_port: int,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None
+) -> Tuple[bool, str]:
     """
     Add a new port mapping to the proxy configuration.
+    
+    If Bitbucket GitOps is enabled, updates the values file in Bitbucket
+    and lets ArgoCD sync the changes. Otherwise, updates ConfigMaps directly.
     
     Args:
         proxy_port: Port the proxy listens on
         upstream_host: Target hostname (user's workstation FQDN)
         upstream_port: Target port (IDA plugin port)
+        user_id: User ID (used for GitOps tracking)
+        username: Username (used for GitOps tracking)
         
     Returns:
         Tuple of (success, message)
     """
     logger.info(f"[K8S_CONTROLLER] Adding proxy mapping: {proxy_port} -> {upstream_host}:{upstream_port}")
     
+    # Use Bitbucket GitOps if enabled
+    if BITBUCKET_ENABLED and bitbucket_manager is not None:
+        logger.info("[K8S_CONTROLLER] Using Bitbucket GitOps for proxy config update")
+        try:
+            success, message = bitbucket_manager.add_port_mapping(
+                proxy_port=proxy_port,
+                upstream_host=upstream_host,
+                upstream_port=upstream_port,
+                user_id=user_id or 0,
+                username=username or "unknown"
+            )
+            if success:
+                logger.info(f"[K8S_CONTROLLER] Port mapping added via Bitbucket. ArgoCD will sync.")
+            return success, message
+        except Exception as e:
+            logger.error(f"[K8S_CONTROLLER] Bitbucket update failed: {e}")
+            return False, f"Bitbucket update failed: {e}"
+    
+    # Direct ConfigMap update (non-GitOps mode)
     core_v1, _ = get_k8s_clients()
     
     if core_v1 is None:
@@ -511,6 +578,9 @@ def update_proxy_config_remove(proxy_port: int) -> Tuple[bool, str]:
     """
     Remove a port mapping from the proxy configuration.
     
+    If Bitbucket GitOps is enabled, updates the values file in Bitbucket
+    and lets ArgoCD sync the changes. Otherwise, updates ConfigMaps directly.
+    
     Args:
         proxy_port: Port to remove
         
@@ -519,6 +589,19 @@ def update_proxy_config_remove(proxy_port: int) -> Tuple[bool, str]:
     """
     logger.info(f"[K8S_CONTROLLER] Removing proxy mapping for port: {proxy_port}")
     
+    # Use Bitbucket GitOps if enabled
+    if BITBUCKET_ENABLED and bitbucket_manager is not None:
+        logger.info("[K8S_CONTROLLER] Using Bitbucket GitOps for proxy config removal")
+        try:
+            success, message = bitbucket_manager.remove_port_mapping(proxy_port)
+            if success:
+                logger.info(f"[K8S_CONTROLLER] Port mapping removed via Bitbucket. ArgoCD will sync.")
+            return success, message
+        except Exception as e:
+            logger.error(f"[K8S_CONTROLLER] Bitbucket update failed: {e}")
+            return False, f"Bitbucket update failed: {e}"
+    
+    # Direct ConfigMap update (non-GitOps mode)
     core_v1, _ = get_k8s_clients()
     
     if core_v1 is None:
