@@ -176,6 +176,25 @@ idaMcp:
     # Health check endpoint - nginx hello uses "/" 
     mcpServerHealthPath: "/"
   
+  # Bitbucket GitOps Configuration
+  # When enabled, the controller updates values in Bitbucket instead of ConfigMaps directly.
+  # ArgoCD will sync the changes from Bitbucket and update the ConfigMaps.
+  bitbucket:
+    enabled: false
+    # Bitbucket Server URL (e.g., https://bitbucket.company.com)
+    url: ""
+    # Bitbucket project key
+    project: ""
+    # Repository slug (repo name in URL)
+    repo: ""
+    # Branch to update
+    branch: "main"
+    # Path to the values file within the repo
+    valuesPath: "values.yaml"
+    # Bitbucket credentials (username and app password)
+    username: ""
+    password: ""  # Bitbucket app password or personal access token
+  
   # Allowed MCP server versions
   allowedVersions: "v1.0.0,v1.1.0,v1.2.0,latest"
   
@@ -286,11 +305,14 @@ idaProxy:
     initialDelaySeconds: 5
     periodSeconds: 10
   
-  # Initial port mappings (optional, normally managed by controller)
-  # initialPortMappings:
+  # Port mappings for IDA workstations
+  # This section is managed by the K8s controller (via direct update or Bitbucket GitOps)
+  # ArgoCD will render ConfigMaps from these mappings
+  # Format:
   #   - proxyPort: 9001
   #     upstreamHost: "user1-pc.corp.example.com"
   #     upstreamPort: 13337
+  portMappings: []
 
 # External services
 external:

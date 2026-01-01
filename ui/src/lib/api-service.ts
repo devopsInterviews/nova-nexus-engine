@@ -698,6 +698,38 @@ export interface McpVersionsResponse {
 }
 
 /**
+ * TypeScript interface for admin view of MCP server connections.
+ * Includes user information for administrative oversight.
+ * Used in Admin > Research tab to display all users' IDA MCP servers.
+ */
+export interface AdminMcpConnection {
+  id: number;
+  user_id: number;
+  username: string;
+  email: string | null;
+  hostname_fqdn: string;
+  ida_port: number;
+  proxy_port: number | null;
+  mcp_version: string;
+  mcp_endpoint_url: string | null;
+  status: string;
+  last_error: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_deploy_at: string | null;
+  last_healthcheck_at: string | null;
+}
+
+/**
+ * Response format for admin MCP server list endpoint.
+ * Returns all users' IDA MCP server deployments.
+ */
+export interface AdminMcpListResponse {
+  connections: AdminMcpConnection[];
+  total: number;
+}
+
+/**
  * Research service for managing IDA MCP connections.
  * 
  * This service provides APIs for:
@@ -790,6 +822,49 @@ export const researchService = {
   },
 };
 
+/**
+ * Admin service for system-wide administrative operations.
+ * Only accessible to users with is_admin=true.
+ * 
+ * Current features:
+ * - MCP Server Management: View, delete, and upgrade all users' IDA MCP servers
+ * 
+ * Future expansion: User management, system logs, analytics, billing, etc.
+ */
+export const adminService = {
+  /**
+   * Get all users' IDA bridge configurations (Admin only).
+   * Returns a list of all MCP servers with user information.
+   */
+  getAllMcpServers: async (): Promise<ApiResponse<AdminMcpListResponse>> => {
+    return fetchApi<AdminMcpListResponse>('/api/research/admin/ida-bridge/all');
+  },
+
+  /**
+   * Delete a specific user's MCP server (Admin only).
+   * 
+   * @param userId - The user ID whose MCP server to delete
+   */
+  deleteMcpServer: async (userId: number): Promise<ApiResponse<DeployResponse>> => {
+    return fetchApi<DeployResponse>(`/api/research/admin/ida-bridge/${userId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Upgrade a specific user's MCP server version (Admin only).
+   * 
+   * @param userId - The user ID whose MCP server to upgrade
+   * @param newVersion - The new MCP server version
+   */
+  upgradeMcpServer: async (userId: number, newVersion: string): Promise<ApiResponse<DeployResponse>> => {
+    return fetchApi<DeployResponse>(`/api/research/admin/ida-bridge/${userId}/upgrade`, {
+      method: 'POST',
+      body: JSON.stringify({ new_mcp_version: newVersion }),
+    });
+  },
+};
+
 // TypeScript interface for connection context (shared state between components)
 export interface ConnectionContext {
   currentConnection: DbConnection | null; // Currently selected database connection (null if none selected)
@@ -805,4 +880,5 @@ export default {
   db: dbService,                          // Database operations
   analytics: analyticsService,            // Analytics and monitoring
   research: researchService,              // Research/IDA MCP connections
+  admin: adminService,                    // Admin operations (requires is_admin=true)
 };

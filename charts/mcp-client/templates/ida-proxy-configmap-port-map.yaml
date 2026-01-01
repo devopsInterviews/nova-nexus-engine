@@ -9,19 +9,18 @@ metadata:
     {{- include "mcp-client.labels" . | nindent 4 }}
 data:
   port_map.conf: |
-    # Auto-managed by MCP Client controller
-    # This file maps proxy ports to upstream IDA workstations
+    # IDA Proxy port mapping configuration
+    # Managed by MCP Client controller via GitOps (Bitbucket -> ArgoCD)
     # DO NOT EDIT MANUALLY
     #
     # Format: PROXY_PORT   UPSTREAM_HOST:UPSTREAM_PORT;
     #
-    # Initial mappings from Helm values:
-    {{- if .Values.idaProxy.initialPortMappings }}
-    {{- range .Values.idaProxy.initialPortMappings }}
+    {{- if .Values.idaProxy.portMappings }}
+    {{- range .Values.idaProxy.portMappings }}
     {{ .proxyPort }}          {{ .upstreamHost }}:{{ .upstreamPort }};
     {{- end }}
     {{- else }}
-    # No initial port mappings configured
+    # No port mappings configured
     # Mappings will be added here as users deploy their MCP servers
     # Example:
     # 9001          userA-workstation.corp.example.com:9100;

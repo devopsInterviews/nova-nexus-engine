@@ -9,17 +9,16 @@ metadata:
     {{- include "mcp-client.labels" . | nindent 4 }}
 data:
   listen_ports.conf: |
-    # Auto-managed by MCP Client controller
-    # This file is dynamically updated when users deploy/delete MCP servers
+    # IDA Proxy listen ports configuration
+    # Managed by MCP Client controller via GitOps (Bitbucket -> ArgoCD)
     # DO NOT EDIT MANUALLY
     #
-    # Initial ports from Helm values:
-    {{- if .Values.idaProxy.initialPortMappings }}
-    {{- range .Values.idaProxy.initialPortMappings }}
+    {{- if .Values.idaProxy.portMappings }}
+    {{- range .Values.idaProxy.portMappings }}
     listen {{ .proxyPort }};
     {{- end }}
     {{- else }}
-    # No initial port mappings configured
+    # No port mappings configured
     # Ports will be added here as users deploy their MCP servers
     # Example:
     # listen 9001;

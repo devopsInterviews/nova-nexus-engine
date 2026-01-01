@@ -8,7 +8,8 @@ import {
   Zap,
   CheckSquare,
   Users,
-  Search
+  Search,
+  Shield
 } from "lucide-react";
 import {
   Sidebar,
@@ -23,8 +24,16 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useAuth } from "@/context/auth-context";
 
-const navigationItems = [
+type NavigationItem = {
+  title: string;
+  url: string;
+  icon: any;
+  adminOnly?: boolean;
+};
+
+const navigationItems: NavigationItem[] = [
   {
     title: "Home",
     url: "/",
@@ -56,6 +65,12 @@ const navigationItems = [
     icon: Search,
   },
   {
+    title: "Admin",
+    url: "/admin",
+    icon: Shield,
+    adminOnly: true, // General admin panel - Research/Users/System management
+  },
+  {
     title: "Users",
     url: "/users",
     icon: Users,
@@ -70,6 +85,7 @@ const navigationItems = [
 export function AppSidebar() {
   const { open } = useSidebar();
   const location = useLocation();
+  const { user } = useAuth();
 
   const isActive = (path: string) => {
     if (path === "/") return location.pathname === "/";
@@ -111,7 +127,9 @@ export function AppSidebar() {
           
           <SidebarGroupContent>
             <SidebarMenu className="space-y-2">
-              {navigationItems.map((item, index) => (
+              {navigationItems
+                .filter((item) => !item.adminOnly || user?.is_admin) // Filter out admin-only items for non-admin users
+                .map((item, index) => (
                 <SidebarMenuItem key={item.title}>
                   <motion.div
                     initial={{ opacity: 0, x: -20 }}

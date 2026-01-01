@@ -28,6 +28,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import get_db_session
 from app.models import User, IdaMcpConnection, IdaMcpDeployAudit, IdaMcpConnectionStatus
 from app.routes.auth_routes import get_current_user
+from app.routes.users_routes import is_admin as require_admin  # Admin dependency
 from app.services.k8s_controller import (
     McpServerConfig, 
     deploy_mcp_server, 
@@ -866,3 +867,330 @@ async def k8s_controller_health(
         "proxy_status": health.get("proxy_status", "unknown"),
         "namespace": health.get("namespace", "unknown")
     }
+
+
+# ============================================================
+# Admin Endpoints - Manage All Users' MCP Servers
+# ============================================================
+
+class AdminIdaBridgeResponse(BaseModel):
+    """Extended response model for admin view with user info."""
+    id: int
+    user_id: int
+    username: str
+    email: Optional[str]
+    hostname_fqdn: str
+    ida_port: int
+    proxy_port: Optional[int]
+    mcp_version: str
+    mcp_endpoint_url: Optional[str]
+    status: str
+    last_error: Optional[str]
+    created_at: Optional[str]
+    updated_at: Optional[str]
+    last_deploy_at: Optional[str]
+    last_healthcheck_at: Optional[str]
+
+
+class AdminIdaBridgeListResponse(BaseModel):
+    """Response model for admin list of all IDA bridge connections."""
+    connections: List[AdminIdaBridgeResponse]
+    total: int
+
+
+@router.get("/admin/ida-bridge/all", response_model=AdminIdaBridgeListResponse)
+async def admin_get_all_ida_bridges(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Get all IDA bridge configurations (Admin only).
+    
+    Returns all users' IDA MCP connections for administrative management.
+    """
+    logger.info(f"[RESEARCH] Admin {current_user.username} retrieving all IDA bridge configs")
+    
+    try:
+        # Query all connections with user info
+        connections = db.query(IdaMcpConnection, User).join(
+            User, IdaMcpConnection.user_id == User.id
+        ).all()
+        
+        result = []
+        for conn, user in connections:
+            result.append(AdminIdaBridgeResponse(
+                id=conn.id,
+                user_id=conn.user_id,
+                username=user.username,
+                email=user.email,
+                hostname_fqdn=conn.hostname_fqdn,
+                ida_port=conn.ida_port,
+                proxy_port=conn.proxy_port,
+                mcp_version=conn.mcp_version,
+                mcp_endpoint_url=conn.mcp_endpoint_url,
+                status=conn.status,
+                last_error=conn.last_error,
+                created_at=conn.created_at.isoformat() if conn.created_at else None,
+                updated_at=conn.updated_at.isoformat() if conn.updated_at else None,
+                last_deploy_at=conn.last_deploy_at.isoformat() if conn.last_deploy_at else None,
+                last_healthcheck_at=conn.last_healthcheck_at.isoformat() if conn.last_healthcheck_at else None
+            ))
+        
+        logger.info(f"[RESEARCH] Admin {current_user.username} retrieved {len(result)} IDA bridges")
+        
+        return AdminIdaBridgeListResponse(
+            connections=result,
+            total=len(result)
+        )
+        
+    except SQLAlchemyError as e:
+        logger.error(f"[RESEARCH] Database error in admin get all: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+@router.delete("/admin/ida-bridge/{target_user_id}", response_model=DeployResponse)
+async def admin_delete_ida_bridge(
+    target_user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Delete/undeploy an IDA bridge for a specific user (Admin only).
+    
+    Allows administrators to remove MCP server deployments for any user.
+    """
+    logger.info(f"[RESEARCH] Admin {current_user.username} deleting IDA bridge for user {target_user_id}")
+    
+    try:
+        # Get the target user
+        target_user = db.query(User).filter(User.id == target_user_id).first()
+        if not target_user:
+            logger.warning(f"[RESEARCH] Admin {current_user.username}: User {target_user_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User {target_user_id} not found"
+            )
+        
+        # Get the connection
+        connection = db.query(IdaMcpConnection).filter(
+            IdaMcpConnection.user_id == target_user_id
+        ).first()
+        
+        if not connection:
+            logger.warning(f"[RESEARCH] Admin {current_user.username}: No IDA bridge for user {target_user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No IDA bridge configuration found for user {target_user.username}"
+            )
+        
+        # Log admin action
+        log_audit_action(
+            db=db,
+            user_id=current_user.id,  # Admin who performed the action
+            action="admin_delete",
+            payload={
+                "target_user_id": target_user_id,
+                "target_username": target_user.username,
+                "hostname_fqdn": connection.hostname_fqdn,
+                "proxy_port": connection.proxy_port
+            },
+            action_status="in_progress"
+        )
+        
+        # Delete the MCP server if deployed
+        proxy_port = connection.proxy_port
+        if connection.status == IdaMcpConnectionStatus.DEPLOYED.value and proxy_port:
+            logger.info(f"[RESEARCH] Admin {current_user.username}: Deleting MCP server for user {target_user.username}")
+            success, message = delete_mcp_server(target_user_id, proxy_port)
+            
+            if not success:
+                logger.error(f"[RESEARCH] Admin delete failed for user {target_user_id}: {message}")
+                connection.status = IdaMcpConnectionStatus.ERROR.value
+                connection.last_error = f"Admin delete failed: {message}"
+                db.commit()
+                
+                log_audit_action(
+                    db=db,
+                    user_id=current_user.id,
+                    action="admin_delete",
+                    payload={"target_user_id": target_user_id},
+                    result={"error": message},
+                    action_status="error",
+                    error_message=message
+                )
+                
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to delete MCP server: {message}"
+                )
+        
+        # Delete the database record
+        db.delete(connection)
+        db.commit()
+        
+        log_audit_action(
+            db=db,
+            user_id=current_user.id,
+            action="admin_delete",
+            payload={"target_user_id": target_user_id, "target_username": target_user.username},
+            result={"success": True},
+            action_status="success"
+        )
+        
+        logger.info(f"[RESEARCH] Admin {current_user.username} successfully deleted IDA bridge for user {target_user.username}")
+        
+        return DeployResponse(
+            success=True,
+            message=f"IDA bridge for user {target_user.username} has been deleted by admin",
+            status=IdaMcpConnectionStatus.UNDEPLOYED.value,
+            proxy_port=None,
+            mcp_endpoint_url=None,
+            config=None
+        )
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"[RESEARCH] Database error in admin delete: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+@router.post("/admin/ida-bridge/{target_user_id}/upgrade", response_model=DeployResponse)
+async def admin_upgrade_ida_bridge(
+    target_user_id: int,
+    upgrade_request: IdaBridgeUpgradeRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Upgrade MCP server version for a specific user (Admin only).
+    
+    Allows administrators to upgrade MCP server versions for any user.
+    """
+    logger.info(f"[RESEARCH] Admin {current_user.username} upgrading IDA bridge for user {target_user_id} to {upgrade_request.new_mcp_version}")
+    
+    try:
+        # Get the target user
+        target_user = db.query(User).filter(User.id == target_user_id).first()
+        if not target_user:
+            logger.warning(f"[RESEARCH] Admin {current_user.username}: User {target_user_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User {target_user_id} not found"
+            )
+        
+        # Get the connection
+        connection = db.query(IdaMcpConnection).filter(
+            IdaMcpConnection.user_id == target_user_id
+        ).first()
+        
+        if not connection:
+            logger.warning(f"[RESEARCH] Admin {current_user.username}: No IDA bridge for user {target_user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No IDA bridge configuration found for user {target_user.username}"
+            )
+        
+        if connection.status != IdaMcpConnectionStatus.DEPLOYED.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot upgrade: MCP server is not deployed (status: {connection.status})"
+            )
+        
+        # Log admin action
+        log_audit_action(
+            db=db,
+            user_id=current_user.id,
+            action="admin_upgrade",
+            payload={
+                "target_user_id": target_user_id,
+                "target_username": target_user.username,
+                "old_version": connection.mcp_version,
+                "new_version": upgrade_request.new_mcp_version
+            },
+            action_status="in_progress"
+        )
+        
+        # Perform the upgrade
+        success, message = upgrade_mcp_server(
+            target_user_id,
+            upgrade_request.new_mcp_version
+        )
+        
+        if success:
+            connection.mcp_version = upgrade_request.new_mcp_version
+            connection.updated_at = datetime.utcnow()
+            db.commit()
+            
+            log_audit_action(
+                db=db,
+                user_id=current_user.id,
+                action="admin_upgrade",
+                payload={"target_user_id": target_user_id, "new_version": upgrade_request.new_mcp_version},
+                result={"success": True},
+                action_status="success"
+            )
+            
+            logger.info(f"[RESEARCH] Admin {current_user.username} upgraded user {target_user.username} to {upgrade_request.new_mcp_version}")
+            
+            return DeployResponse(
+                success=True,
+                message=f"MCP server for user {target_user.username} upgraded to {upgrade_request.new_mcp_version} by admin",
+                status=connection.status,
+                proxy_port=connection.proxy_port,
+                mcp_endpoint_url=connection.mcp_endpoint_url,
+                config=IdaBridgeConfigResponse(
+                    id=connection.id,
+                    user_id=connection.user_id,
+                    hostname_fqdn=connection.hostname_fqdn,
+                    ida_port=connection.ida_port,
+                    proxy_port=connection.proxy_port,
+                    mcp_version=connection.mcp_version,
+                    mcp_endpoint_url=connection.mcp_endpoint_url,
+                    status=connection.status,
+                    last_error=connection.last_error,
+                    created_at=connection.created_at.isoformat() if connection.created_at else None,
+                    updated_at=connection.updated_at.isoformat() if connection.updated_at else None,
+                    last_deploy_at=connection.last_deploy_at.isoformat() if connection.last_deploy_at else None,
+                    last_healthcheck_at=connection.last_healthcheck_at.isoformat() if connection.last_healthcheck_at else None
+                )
+            )
+        else:
+            connection.status = IdaMcpConnectionStatus.ERROR.value
+            connection.last_error = f"Admin upgrade failed: {message}"
+            db.commit()
+            
+            log_audit_action(
+                db=db,
+                user_id=current_user.id,
+                action="admin_upgrade",
+                payload={"target_user_id": target_user_id},
+                result={"error": message},
+                action_status="error",
+                error_message=message
+            )
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upgrade MCP server: {message}"
+            )
+            
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"[RESEARCH] Database error in admin upgrade: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
