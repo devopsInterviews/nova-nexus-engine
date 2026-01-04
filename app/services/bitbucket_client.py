@@ -113,9 +113,13 @@ class BitbucketClient:
             logger.warning(f"[BITBUCKET] SSL verification is DISABLED for {project}/{repo}")
         logger.info(f"[BITBUCKET] Initialized client for {project}/{repo}")
     
-    def get_file_content(self) -> Tuple[Optional[str], Optional[str]]:
+    def get_file_content(self, fetch_commit_id: bool = False) -> Tuple[Optional[str], Optional[str]]:
         """
         Get the content of the values file from Bitbucket.
+        
+        Args:
+            fetch_commit_id: If True, also fetch the latest commit ID (extra API call).
+                           Only needed when you plan to update the file for conflict detection.
         
         Returns:
             Tuple of (content, commit_id) or (None, None) on error
@@ -133,30 +137,32 @@ class BitbucketClient:
             )
             
             if content:
-                # Get latest commit ID for the file
-                # get_commits returns a generator, so we convert to list
-                try:
-                    commits_response = self.bitbucket.get_commits(
-                        project_key=self.project,
-                        repository_slug=self.repo,
-                        hash_oldest=None,
-                        hash_newest=self.branch,
-                        limit=1
-                    )
-                    # Handle generator or dict response
-                    if hasattr(commits_response, '__iter__') and not isinstance(commits_response, (dict, str)):
-                        commits = list(commits_response)
-                    elif isinstance(commits_response, dict):
-                        commits = commits_response.get('values', [])
-                    else:
-                        commits = []
-                    
-                    commit_id = commits[0]['id'] if commits and len(commits) > 0 else None
-                except Exception as e:
-                    logger.warning(f"[BITBUCKET] Could not fetch commit ID: {e}")
-                    commit_id = None
+                commit_id = None
                 
-                logger.info(f"[BITBUCKET] Successfully fetched file from branch '{self.branch}' (commit: {commit_id})")
+                # Only fetch commit ID if explicitly requested (for updates/conflict detection)
+                if fetch_commit_id:
+                    try:
+                        commits_response = self.bitbucket.get_commits(
+                            project_key=self.project,
+                            repository_slug=self.repo,
+                            hash_oldest=None,
+                            hash_newest=self.branch,
+                            limit=1
+                        )
+                        # Handle generator or dict response
+                        if hasattr(commits_response, '__iter__') and not isinstance(commits_response, (dict, str)):
+                            commits = list(commits_response)
+                        elif isinstance(commits_response, dict):
+                            commits = commits_response.get('values', [])
+                        else:
+                            commits = []
+                        
+                        commit_id = commits[0]['id'] if commits and len(commits) > 0 else None
+                    except Exception as e:
+                        logger.warning(f"[BITBUCKET] Could not fetch commit ID: {e}")
+                        commit_id = None
+                
+                logger.info(f"[BITBUCKET] Successfully fetched file from branch '{self.branch}'{f' (commit: {commit_id})' if commit_id else ''}")
                 return content, commit_id
             else:
                 logger.error(f"[BITBUCKET] File not found or empty: {self.values_path}")
@@ -225,7 +231,6 @@ class ValuesFileManager:
     def __init__(self, client: Optional[BitbucketClient] = None):
         self.client = client or BitbucketClient()
         self._cached_content: Optional[str] = None
-        self._cached_commit_id: Optional[str] = None
     
     def get_port_mappings(self) -> List[PortMapping]:
         """
@@ -234,14 +239,14 @@ class ValuesFileManager:
         Returns:
             List of PortMapping objects
         """
-        content, commit_id = self.client.get_file_content()
+        content, _ = self.client.get_file_content()
         
         if content is None:
             logger.warning("[BITBUCKET] Could not fetch values file, returning empty mappings")
             return []
         
         self._cached_content = content
-        self._cached_commit_id = commit_id
+
         
         try:
             values = yaml.safe_load(content)
@@ -291,7 +296,7 @@ class ValuesFileManager:
         logger.info(f"[BITBUCKET] Adding port mapping: {proxy_port} -> {upstream_host}:{upstream_port}")
         
         # Fetch current content
-        content, commit_id = self.client.get_file_content()
+        content, _ = self.client.get_file_content()
         
         if content is None:
             return False, "Could not fetch values file"
@@ -330,9 +335,9 @@ class ValuesFileManager:
             # Serialize back to YAML
             new_content = yaml.dump(values, default_flow_style=False, sort_keys=False, allow_unicode=True)
             
-            # Commit to Bitbucket
+            # Commit to Bitbucket (let Bitbucket handle conflicts)
             commit_message = f"[MCP-Client] Add port mapping {proxy_port} for user {username}"
-            return self.client.update_file(new_content, commit_message, commit_id)
+            return self.client.update_file(new_content, commit_message, None)
             
         except yaml.YAMLError as e:
             error_msg = f"Error parsing/generating YAML: {e}"
@@ -351,8 +356,8 @@ class ValuesFileManager:
         """
         logger.info(f"[BITBUCKET] Removing port mapping for port: {proxy_port}")
         
-        # Fetch current content
-        content, commit_id = self.client.get_file_content()
+        # Fetch current content with commit ID for conflict detection
+        content, commit_id = self.client.get_file_content(fetch_commit_id=True)
         
         if content is None:
             return False, "Could not fetch values file"
@@ -377,9 +382,9 @@ class ValuesFileManager:
             # Serialize back to YAML
             new_content = yaml.dump(values, default_flow_style=False, sort_keys=False, allow_unicode=True)
             
-            # Commit to Bitbucket
+            # Commit to Bitbucket (let Bitbucket handle conflicts)
             commit_message = f"[MCP-Client] Remove port mapping {proxy_port}"
-            return self.client.update_file(new_content, commit_message, commit_id)
+            return self.client.update_file(new_content, commit_message, None)
             
         except yaml.YAMLError as e:
             error_msg = f"Error parsing/generating YAML: {e}"
