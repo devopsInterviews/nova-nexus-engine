@@ -122,10 +122,29 @@ class BitbucketClient:
         Get the content of the values file from Bitbucket.
         
         Returns:
-            Tuple of (content, None) - commit_id always None as it's not needed
+            Tuple of (content, commit_id) - commit_id is needed for sourceCommitId when updating
         """
         try:
             logger.info(f"[BITBUCKET] Fetching file: {self.values_path} from {self.project}/{self.repo} (branch: {self.branch})")
+            
+            # Get the latest commit ID for this file (needed for sourceCommitId)
+            commit_id = None
+            try:
+                # Get commits for this file to find the latest commit ID
+                commits_url = f"/rest/api/1.0/projects/{self.project}/repos/{self.repo}/commits"
+                commits_response = self.bitbucket.get(
+                    commits_url,
+                    params={
+                        'path': self.values_path,
+                        'limit': 1,
+                        'until': f"refs/heads/{self.branch}"
+                    }
+                )
+                if commits_response and 'values' in commits_response and len(commits_response['values']) > 0:
+                    commit_id = commits_response['values'][0].get('id')
+                    logger.info(f"[BITBUCKET] Latest commit ID for file: {commit_id}")
+            except Exception as ce:
+                logger.warning(f"[BITBUCKET] Could not fetch commit ID: {ce}")
             
             # Get file content using atlassian-python-api
             content = self.bitbucket.get_content_of_file(
@@ -137,7 +156,7 @@ class BitbucketClient:
             
             if content:
                 logger.info(f"[BITBUCKET] Successfully fetched file from branch '{self.branch}'")
-                return content, None
+                return content, commit_id
             else:
                 logger.error(f"[BITBUCKET] File not found or empty: {self.values_path}")
                 return None, None
@@ -149,30 +168,39 @@ class BitbucketClient:
     def update_file(self, content: str, commit_message: str, source_commit_id: Optional[str] = None) -> Tuple[bool, str]:
         """
         Update the values file in Bitbucket with new content.
-        Uses direct REST API to specify author information.
+        Uses direct REST API.
         
         Args:
             content: New file content
             commit_message: Commit message
-            source_commit_id: Ignored (kept for backwards compatibility)
+            source_commit_id: Required for existing files - the commit ID of the file before editing
             
         Returns:
             Tuple of (success, message or commit_id)
         """
         try:
             logger.info(f"[BITBUCKET] Updating file: {self.values_path} in {self.project}/{self.repo} (branch: {self.branch})")
-            logger.debug(f"[BITBUCKET] Commit message: {commit_message}")
+            logger.debug(f"[BITBUCKET] Commit message: {commit_message}, sourceCommitId: {source_commit_id}")
             
-            # Use the library's internal method to build URL and make request
-            url = f"{self.bitbucket.url}/rest/api/1.0/projects/{self.project}/repos/{self.repo}/browse/{self.values_path}"
+            # Use relative URL path - the library prepends the base URL automatically
+            url = f"/rest/api/1.0/projects/{self.project}/repos/{self.repo}/browse/{self.values_path}"
             
-            # Prepare form data including author field
+            # Prepare form data for the file edit
+            # NOTE: Bitbucket Server uses the authenticated user as commit author.
+            # The user (BITBUCKET_USERNAME) MUST have an email address configured 
+            # in their Bitbucket Server profile, otherwise this will fail with:
+            # "When performing an edit, the author must have an e-mail address"
             data = {
                 'content': content,
                 'message': commit_message,
                 'branch': self.branch,
-                'author': f'MCP Client <{self.email}>'
             }
+            
+            # sourceCommitId is REQUIRED when editing an existing file
+            # It prevents concurrent modification conflicts
+            if source_commit_id:
+                data['sourceCommitId'] = source_commit_id
+                logger.debug(f"[BITBUCKET] Using sourceCommitId: {source_commit_id}")
             
             # Use the library's put method which handles auth and SSL automatically
             response = self.bitbucket.put(url, files=data, headers={'Accept': 'application/json'})
@@ -273,8 +301,8 @@ class ValuesFileManager:
         """
         logger.info(f"[BITBUCKET] Adding port mapping: {proxy_port} -> {upstream_host}:{upstream_port}")
         
-        # Fetch current content
-        content, _ = self.client.get_file_content()
+        # Fetch current content and commit ID
+        content, commit_id = self.client.get_file_content()
         
         if content is None:
             return False, "Could not fetch values file"
@@ -313,9 +341,9 @@ class ValuesFileManager:
             # Serialize back to YAML
             new_content = yaml.dump(values, default_flow_style=False, sort_keys=False, allow_unicode=True)
             
-            # Commit to Bitbucket (let Bitbucket handle conflicts)
+            # Commit to Bitbucket with sourceCommitId to prevent concurrent modifications
             commit_message = f"[MCP-Client] Add port mapping {proxy_port} for user {username}"
-            return self.client.update_file(new_content, commit_message, None)
+            return self.client.update_file(new_content, commit_message, commit_id)
             
         except yaml.YAMLError as e:
             error_msg = f"Error parsing/generating YAML: {e}"
@@ -334,8 +362,8 @@ class ValuesFileManager:
         """
         logger.info(f"[BITBUCKET] Removing port mapping for port: {proxy_port}")
         
-        # Fetch current content
-        content, _ = self.client.get_file_content()
+        # Fetch current content and commit ID
+        content, commit_id = self.client.get_file_content()
         
         if content is None:
             return False, "Could not fetch values file"
@@ -360,9 +388,9 @@ class ValuesFileManager:
             # Serialize back to YAML
             new_content = yaml.dump(values, default_flow_style=False, sort_keys=False, allow_unicode=True)
             
-            # Commit to Bitbucket (let Bitbucket handle conflicts)
+            # Commit to Bitbucket with sourceCommitId to prevent concurrent modifications
             commit_message = f"[MCP-Client] Remove port mapping {proxy_port}"
-            return self.client.update_file(new_content, commit_message, None)
+            return self.client.update_file(new_content, commit_message, commit_id)
             
         except yaml.YAMLError as e:
             error_msg = f"Error parsing/generating YAML: {e}"
