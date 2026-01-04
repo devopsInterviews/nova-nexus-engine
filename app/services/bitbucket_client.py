@@ -113,22 +113,17 @@ class BitbucketClient:
             logger.warning(f"[BITBUCKET] SSL verification is DISABLED for {project}/{repo}")
         logger.info(f"[BITBUCKET] Initialized client for {project}/{repo}")
     
-    def get_file_content(self, fetch_commit_id: bool = False) -> Tuple[Optional[str], Optional[str]]:
+    def get_file_content(self) -> Tuple[Optional[str], Optional[str]]:
         """
         Get the content of the values file from Bitbucket.
         
-        Args:
-            fetch_commit_id: If True, also fetch the latest commit ID (extra API call).
-                           Only needed when you plan to update the file for conflict detection.
-        
         Returns:
-            Tuple of (content, commit_id) or (None, None) on error
+            Tuple of (content, None) - commit_id always None as it's not needed
         """
         try:
             logger.info(f"[BITBUCKET] Fetching file: {self.values_path} from {self.project}/{self.repo} (branch: {self.branch})")
             
             # Get file content using atlassian-python-api
-            # Correct parameters: project_key, repository_slug, filename, at, markup
             content = self.bitbucket.get_content_of_file(
                 project_key=self.project,
                 repository_slug=self.repo,
@@ -137,33 +132,8 @@ class BitbucketClient:
             )
             
             if content:
-                commit_id = None
-                
-                # Only fetch commit ID if explicitly requested (for updates/conflict detection)
-                if fetch_commit_id:
-                    try:
-                        commits_response = self.bitbucket.get_commits(
-                            project_key=self.project,
-                            repository_slug=self.repo,
-                            hash_oldest=None,
-                            hash_newest=self.branch,
-                            limit=1
-                        )
-                        # Handle generator or dict response
-                        if hasattr(commits_response, '__iter__') and not isinstance(commits_response, (dict, str)):
-                            commits = list(commits_response)
-                        elif isinstance(commits_response, dict):
-                            commits = commits_response.get('values', [])
-                        else:
-                            commits = []
-                        
-                        commit_id = commits[0]['id'] if commits and len(commits) > 0 else None
-                    except Exception as e:
-                        logger.warning(f"[BITBUCKET] Could not fetch commit ID: {e}")
-                        commit_id = None
-                
-                logger.info(f"[BITBUCKET] Successfully fetched file from branch '{self.branch}'{f' (commit: {commit_id})' if commit_id else ''}")
-                return content, commit_id
+                logger.info(f"[BITBUCKET] Successfully fetched file from branch '{self.branch}'")
+                return content, None
             else:
                 logger.error(f"[BITBUCKET] File not found or empty: {self.values_path}")
                 return None, None
@@ -175,11 +145,12 @@ class BitbucketClient:
     def update_file(self, content: str, commit_message: str, source_commit_id: Optional[str] = None) -> Tuple[bool, str]:
         """
         Update the values file in Bitbucket with new content.
+        Uses upload_file which doesn't require user email.
         
         Args:
             content: New file content
             commit_message: Commit message
-            source_commit_id: Optional base commit ID for conflict detection
+            source_commit_id: Ignored (kept for backwards compatibility)
             
         Returns:
             Tuple of (success, message or commit_id)
@@ -188,16 +159,15 @@ class BitbucketClient:
             logger.info(f"[BITBUCKET] Updating file: {self.values_path} in {self.project}/{self.repo} (branch: {self.branch})")
             logger.debug(f"[BITBUCKET] Commit message: {commit_message}")
             
-            # Update file using atlassian-python-api
-            # Correct parameters: project_key, repository_slug, content, message, branch, filename, source_commit_id
-            result = self.bitbucket.update_file(
+            # Use upload_file instead of update_file to avoid email requirement
+            # upload_file can be used for both new and existing files
+            result = self.bitbucket.upload_file(
                 project_key=self.project,
                 repository_slug=self.repo,
                 content=content,
                 message=commit_message,
                 branch=self.branch,
-                filename=self.values_path,
-                source_commit_id=source_commit_id
+                filename=self.values_path
             )
             
             # Extract commit ID from result
@@ -356,8 +326,8 @@ class ValuesFileManager:
         """
         logger.info(f"[BITBUCKET] Removing port mapping for port: {proxy_port}")
         
-        # Fetch current content with commit ID for conflict detection
-        content, commit_id = self.client.get_file_content(fetch_commit_id=True)
+        # Fetch current content
+        content, _ = self.client.get_file_content()
         
         if content is None:
             return False, "Could not fetch values file"
