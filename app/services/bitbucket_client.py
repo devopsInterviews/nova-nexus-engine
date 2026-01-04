@@ -36,6 +36,7 @@ BITBUCKET_BRANCH = os.getenv("BITBUCKET_BRANCH", "main")
 BITBUCKET_VALUES_PATH = os.getenv("BITBUCKET_VALUES_PATH", "")  # e.g., "charts/mcp-client/values.yaml"
 BITBUCKET_USERNAME = os.getenv("BITBUCKET_USERNAME", "")
 BITBUCKET_PASSWORD = os.getenv("BITBUCKET_PASSWORD", "")  # App password or access token
+BITBUCKET_EMAIL = os.getenv("BITBUCKET_EMAIL", "mcp-client@system.local")  # Email for commit author
 BITBUCKET_VERIFY_SSL = os.getenv("BITBUCKET_VERIFY_SSL", "true").lower() == "true"  # Set to false for self-signed certs
 
 logger.info(f"[BITBUCKET] Enabled: {BITBUCKET_ENABLED}")
@@ -70,6 +71,7 @@ class BitbucketConfig:
     values_path: str = "values.yaml"
     username: str = ""
     password: str = ""
+    email: str = "mcp-client@system.local"
     verify_ssl: bool = True
 
 
@@ -89,6 +91,7 @@ class BitbucketClient:
         values_path: str = BITBUCKET_VALUES_PATH,
         username: str = BITBUCKET_USERNAME,
         password: str = BITBUCKET_PASSWORD,
+        email: str = BITBUCKET_EMAIL,
         verify_ssl: bool = BITBUCKET_VERIFY_SSL
     ):
         if Bitbucket is None:
@@ -99,6 +102,7 @@ class BitbucketClient:
         self.repo = repo
         self.branch = branch
         self.values_path = values_path
+        self.email = email
         self.verify_ssl = verify_ssl
         
         # Initialize Bitbucket client from atlassian-python-api
@@ -145,7 +149,7 @@ class BitbucketClient:
     def update_file(self, content: str, commit_message: str, source_commit_id: Optional[str] = None) -> Tuple[bool, str]:
         """
         Update the values file in Bitbucket with new content.
-        Uses upload_file which doesn't require user email.
+        Uses direct REST API to specify author information.
         
         Args:
             content: New file content
@@ -159,22 +163,36 @@ class BitbucketClient:
             logger.info(f"[BITBUCKET] Updating file: {self.values_path} in {self.project}/{self.repo} (branch: {self.branch})")
             logger.debug(f"[BITBUCKET] Commit message: {commit_message}")
             
-            # Use upload_file instead of update_file to avoid email requirement
-            # upload_file can be used for both new and existing files
-            result = self.bitbucket.upload_file(
-                project_key=self.project,
-                repository_slug=self.repo,
-                content=content,
-                message=commit_message,
-                branch=self.branch,
-                filename=self.values_path
+            # Use direct REST API with author information to bypass email requirement
+            import requests
+            from requests.auth import HTTPBasicAuth
+            
+            # Prepare the API URL for file upload
+            url = f"{self.base_url}/rest/api/1.0/projects/{self.project}/repos/{self.repo}/browse/{self.values_path}"
+            
+            # Prepare form data for file upload
+            files = {
+                'content': (None, content),
+                'message': (None, commit_message),
+                'branch': (None, self.branch),
+                'author': (None, f'MCP Client <{self.email}>')  # Provide author with email
+            }
+            
+            response = requests.put(
+                url,
+                files=files,
+                auth=HTTPBasicAuth(self.bitbucket.username, self.bitbucket.password),
+                verify=self.verify_ssl
             )
             
-            # Extract commit ID from result
-            commit_id = result.get('id') if isinstance(result, dict) else str(result)
-            
-            logger.info(f"[BITBUCKET] File updated successfully in branch '{self.branch}'. Commit: {commit_id}")
-            return True, commit_id
+            if response.status_code in [200, 201]:
+                result = response.json()
+                commit_id = result.get('id', 'unknown')
+                logger.info(f"[BITBUCKET] File updated successfully in branch '{self.branch}'. Commit: {commit_id}")
+                return True, commit_id
+            else:
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                raise Exception(error_msg)
             
         except Exception as e:
             error_msg = str(e)
