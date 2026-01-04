@@ -194,6 +194,7 @@ idaMcp:
     # Bitbucket credentials (username and app password)
     username: ""
     password: ""  # Bitbucket app password or personal access token
+    email: "mcp-client@system.local"  # Email for commit author
     # SSL certificate verification (set to false for self-signed certificates)
     verifySSL: true
   
