@@ -163,36 +163,26 @@ class BitbucketClient:
             logger.info(f"[BITBUCKET] Updating file: {self.values_path} in {self.project}/{self.repo} (branch: {self.branch})")
             logger.debug(f"[BITBUCKET] Commit message: {commit_message}")
             
-            # Use direct REST API with author information to bypass email requirement
-            import requests
-            from requests.auth import HTTPBasicAuth
+            # Use the library's internal method to build URL and make request
+            url = f"{self.bitbucket.url}/rest/api/1.0/projects/{self.project}/repos/{self.repo}/browse/{self.values_path}"
             
-            # Prepare the API URL for file upload
-            url = f"{self.base_url}/rest/api/1.0/projects/{self.project}/repos/{self.repo}/browse/{self.values_path}"
-            
-            # Prepare form data for file upload
-            files = {
-                'content': (None, content),
-                'message': (None, commit_message),
-                'branch': (None, self.branch),
-                'author': (None, f'MCP Client <{self.email}>')  # Provide author with email
+            # Prepare form data including author field
+            data = {
+                'content': content,
+                'message': commit_message,
+                'branch': self.branch,
+                'author': f'MCP Client <{self.email}>'
             }
             
-            response = requests.put(
-                url,
-                files=files,
-                auth=HTTPBasicAuth(self.bitbucket.username, self.bitbucket.password),
-                verify=self.verify_ssl
-            )
+            # Use the library's put method which handles auth and SSL automatically
+            response = self.bitbucket.put(url, files=data, headers={'Accept': 'application/json'})
             
-            if response.status_code in [200, 201]:
-                result = response.json()
-                commit_id = result.get('id', 'unknown')
+            if response:
+                commit_id = response.get('id', 'unknown') if isinstance(response, dict) else 'unknown'
                 logger.info(f"[BITBUCKET] File updated successfully in branch '{self.branch}'. Commit: {commit_id}")
                 return True, commit_id
             else:
-                error_msg = f"HTTP {response.status_code}: {response.text}"
-                raise Exception(error_msg)
+                raise Exception("Empty response from Bitbucket")
             
         except Exception as e:
             error_msg = str(e)
