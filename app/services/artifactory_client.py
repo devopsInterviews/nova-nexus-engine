@@ -3,25 +3,19 @@ Artifactory API Client for fetching Docker image versions.
 
 This module provides functionality to:
 1. Connect to JFrog Artifactory
-2. Fetch Docker image tags from a repository
+2. Fetch Docker image tags from a repository using Docker Registry V2 API
 3. Cache results to minimize API calls
 
-Uses pyartifactory library for cleaner Artifactory integration.
+Uses the requests library for REST API calls.
 """
 
 import os
+import re
 import logging
 import time
+import requests
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
-
-try:
-    from pyartifactory import Artifactory
-    from pyartifactory.exception import ArtifactoryError
-except ImportError:
-    Artifactory = None
-    ArtifactoryError = Exception
-    logging.warning("pyartifactory not installed. Install with: pip install pyartifactory")
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -32,7 +26,7 @@ logger = logging.getLogger("uvicorn.error")
 ARTIFACTORY_ENABLED = os.getenv("ARTIFACTORY_ENABLED", "false").lower() == "true"
 ARTIFACTORY_URL = os.getenv("ARTIFACTORY_URL", "")  # e.g., https://artifactory.company.internal
 ARTIFACTORY_REPO = os.getenv("ARTIFACTORY_REPO", "docker-local")  # Docker repository name
-ARTIFACTORY_IMAGE = os.getenv("ARTIFACTORY_IMAGE", "ida-pro-mcp")  # Image name
+ARTIFACTORY_IMAGE = os.getenv("ARTIFACTORY_IMAGE", "ida-pro-mcp")  # Image name (can include path like "repo/image")
 ARTIFACTORY_USERNAME = os.getenv("ARTIFACTORY_USERNAME", "")
 ARTIFACTORY_PASSWORD = os.getenv("ARTIFACTORY_PASSWORD", "")  # API key or password
 ARTIFACTORY_VERIFY_SSL = os.getenv("ARTIFACTORY_VERIFY_SSL", "true").lower() == "true"
@@ -50,21 +44,6 @@ if ARTIFACTORY_ENABLED:
     logger.info(f"[ARTIFACTORY] Repo: {ARTIFACTORY_REPO}, Image: {ARTIFACTORY_IMAGE}")
     logger.info(f"[ARTIFACTORY] SSL Verification: {ARTIFACTORY_VERIFY_SSL}")
     logger.info(f"[ARTIFACTORY] Cache TTL: {CACHE_TTL_SECONDS}s")
-
-
-# ============================================================
-# Data Classes
-# ============================================================
-
-@dataclass
-class ArtifactoryConfig:
-    """Configuration for Artifactory client initialization."""
-    url: str
-    repo: str
-    image: str
-    username: str = ""
-    password: str = ""
-    verify_ssl: bool = True
 
 
 # ============================================================
@@ -109,8 +88,24 @@ _version_cache = VersionCache()
 # Artifactory API Client
 # ============================================================
 
+@dataclass
+class ArtifactoryConfig:
+    """Configuration for Artifactory client."""
+    url: str
+    repo: str
+    image: str
+    username: str = ""
+    password: str = ""
+    verify_ssl: bool = True
+
+
 class ArtifactoryClient:
-    """Client for fetching Docker image tags from JFrog Artifactory."""
+    """
+    Client for fetching Docker image tags from JFrog Artifactory.
+    
+    Uses the Docker Registry V2 API:
+    GET /api/docker/<repo>/v2/<image>/tags/list
+    """
     
     def __init__(
         self,
@@ -121,35 +116,34 @@ class ArtifactoryClient:
         password: str = ARTIFACTORY_PASSWORD,
         verify_ssl: bool = ARTIFACTORY_VERIFY_SSL
     ):
-        if Artifactory is None:
-            raise ImportError("pyartifactory is required. Install with: pip install pyartifactory")
-        
         self.url = url.rstrip("/")
         self.repo = repo
         self.image = image
+        self.username = username
+        self.password = password
         self.verify_ssl = verify_ssl
         
-        # Initialize Artifactory client
-        auth = (username, password) if username and password else None
-        self.artifactory = Artifactory(
-            url=self.url,
-            auth=auth,
-            verify=verify_ssl
-        )
-        
         if not verify_ssl:
-            logger.warning(f"[ARTIFACTORY] SSL verification is DISABLED")
+            logger.warning("[ARTIFACTORY] SSL verification is DISABLED")
         logger.info(f"[ARTIFACTORY] Initialized client for {self.url}/{repo}/{image}")
+    
+    def _get_auth(self) -> Optional[Tuple[str, str]]:
+        """Get authentication tuple if credentials are configured."""
+        if self.username and self.password:
+            return (self.username, self.password)
+        return None
     
     def get_docker_tags(self, use_cache: bool = True) -> Tuple[List[str], Optional[str]]:
         """
-        Fetch Docker image tags from Artifactory.
+        Fetch Docker image tags from Artifactory using Docker Registry V2 API.
+        
+        Endpoint: GET /api/docker/<repo>/v2/<image>/tags/list
         
         Args:
             use_cache: Whether to use cached results if available
             
         Returns:
-            Tuple of (list of tags, error message if any)
+            Tuple of (list of tags sorted by version, error message if any)
         """
         global _version_cache
         
@@ -159,25 +153,37 @@ class ArtifactoryClient:
             return _version_cache.get(), None
         
         try:
-            logger.info(f"[ARTIFACTORY] Fetching tags for {self.repo}/{self.image}")
+            # Build the Docker Registry V2 API URL
+            docker_api_url = f"{self.url}/api/docker/{self.repo}/v2/{self.image}/tags/list"
             
-            # Use artifacts API to list Docker tags
-            # Docker images in Artifactory are stored as: repo/image/tag/manifest.json
-            artifact_path = f"{self.repo}/{self.image}"
+            logger.info(f"[ARTIFACTORY] Fetching tags from: {docker_api_url}")
             
-            # Get folder info which lists all tags as subfolders
-            folder_info = self.artifactory.artifacts.info(artifact_path)
+            response = requests.get(
+                docker_api_url,
+                auth=self._get_auth(),
+                verify=self.verify_ssl,
+                timeout=30
+            )
             
-            tags = []
-            if hasattr(folder_info, 'children') and folder_info.children:
-                for child in folder_info.children:
-                    if child.folder:
-                        # Each subfolder is a tag
-                        tag_name = child.uri.strip('/')
-                        if tag_name:
-                            tags.append(tag_name)
+            logger.debug(f"[ARTIFACTORY] Response status: {response.status_code}")
             
-            # Sort tags: put 'latest' first, then sort rest by version
+            if response.status_code == 404:
+                error_msg = f"Docker image not found: {self.repo}/{self.image}"
+                logger.error(f"[ARTIFACTORY] {error_msg}")
+                logger.debug(f"[ARTIFACTORY] Response: {response.text}")
+                return [], error_msg
+            
+            response.raise_for_status()
+            
+            # Parse response: {"name": "image", "tags": ["v1", "v2", ...]}
+            data = response.json()
+            tags = data.get('tags', []) or []
+            
+            if not tags:
+                logger.warning(f"[ARTIFACTORY] No tags found for {self.repo}/{self.image}")
+                return [], "No tags found"
+            
+            # Sort tags: 'latest' first, then by semantic version (newest first)
             tags = self._sort_tags(tags)
             
             logger.info(f"[ARTIFACTORY] Found {len(tags)} tags: {tags[:5]}{'...' if len(tags) > 5 else ''}")
@@ -187,20 +193,23 @@ class ArtifactoryClient:
             
             return tags, None
             
-        except ArtifactoryError as e:
-            error_msg = f"Artifactory API error: {str(e)}"
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Artifactory request error: {str(e)}"
+            logger.error(f"[ARTIFACTORY] {error_msg}")
+            return [], error_msg
+        except ValueError as e:
+            error_msg = f"Failed to parse response: {str(e)}"
             logger.error(f"[ARTIFACTORY] {error_msg}")
             return [], error_msg
         except Exception as e:
-            error_msg = f"Error fetching tags: {str(e)}"
+            error_msg = f"Unexpected error: {str(e)}"
             logger.error(f"[ARTIFACTORY] {error_msg}")
-            import traceback
-            logger.error(traceback.format_exc())
             return [], error_msg
     
-    def _sort_tags(self, tags: List[str]) -> List[str]:
+    @staticmethod
+    def _sort_tags(tags: List[str]) -> List[str]:
         """
-        Sort Docker tags with 'latest' first, then by semantic version.
+        Sort Docker tags with 'latest' first, then by semantic version (descending).
         
         Handles tags like: latest, v1.0.0, v1.2.3, 1.0.0, sha-abc123
         """
@@ -210,11 +219,10 @@ class ArtifactoryClient:
                 return (0, 0, 0, 0, '')
             
             # Try to parse semantic version
-            import re
             version_match = re.match(r'^v?(\d+)\.(\d+)\.(\d+)(.*)$', tag)
             if version_match:
                 major, minor, patch, suffix = version_match.groups()
-                # Sort versions in descending order (newest first)
+                # Negative values for descending order (newest first)
                 return (1, -int(major), -int(minor), -int(patch), suffix)
             
             # Other tags at the end, sorted alphabetically
@@ -262,15 +270,13 @@ def get_mcp_versions(use_cache: bool = True) -> Tuple[List[str], str, Optional[s
     client = get_artifactory_client()
     
     if client is None:
-        # Artifactory not enabled or failed, use fallback
-        logger.debug("[ARTIFACTORY] Using fallback versions")
+        logger.debug("[ARTIFACTORY] Using fallback versions (Artifactory disabled)")
         return FALLBACK_VERSIONS, FALLBACK_VERSIONS[-1] if FALLBACK_VERSIONS else "latest", None
     
     versions, error = client.get_docker_tags(use_cache=use_cache)
     
     if not versions:
-        # Failed to fetch, use fallback
-        logger.warning(f"[ARTIFACTORY] Fetch failed, using fallback versions. Error: {error}")
+        logger.warning(f"[ARTIFACTORY] Fetch failed, using fallback. Error: {error}")
         return FALLBACK_VERSIONS, FALLBACK_VERSIONS[-1] if FALLBACK_VERSIONS else "latest", error
     
     # Default to 'latest' if available, otherwise first version
