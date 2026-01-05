@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -34,13 +34,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { 
-  Search, 
-  Server, 
-  Plug, 
-  Copy, 
-  Check, 
-  RefreshCw, 
+import {
+  Search,
+  Server,
+  Plug,
+  Copy,
+  Check,
+  RefreshCw,
   AlertCircle,
   Rocket,
   Trash2,
@@ -70,12 +70,12 @@ export default function Research() {
   const [hostname, setHostname] = useState("");
   const [idaPort, setIdaPort] = useState<number | "">("");
   const [mcpVersion, setMcpVersion] = useState("");
-  
+
   // API response state
   const [config, setConfig] = useState<IdaBridgeConfig | null>(null);
   const [status, setStatus] = useState<IdaBridgeStatus | null>(null);
   const [versions, setVersions] = useState<McpVersionsResponse | null>(null);
-  
+
   // UI state
   const [isLoading, setIsLoading] = useState(true);
   const [isDeploying, setIsDeploying] = useState(false);
@@ -83,12 +83,14 @@ export default function Research() {
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [newVersionForUpgrade, setNewVersionForUpgrade] = useState("");
-  
+  const [versionSearch, setVersionSearch] = useState("");
+  const [upgradeVersionSearch, setUpgradeVersionSearch] = useState("");
+
   const { toast } = useToast();
 
   /**
@@ -97,7 +99,7 @@ export default function Research() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       // Load MCP versions
       const versionsRes = await researchService.getMcpVersions();
@@ -108,7 +110,7 @@ export default function Research() {
           setMcpVersion(versionsRes.data.default_version);
         }
       }
-      
+
       // Load existing config
       const configRes = await researchService.getIdaBridgeConfig();
       if (configRes.status === "success" && configRes.data) {
@@ -118,7 +120,7 @@ export default function Research() {
         setIdaPort(configRes.data.ida_port || "");
         setMcpVersion(configRes.data.mcp_version || versions?.default_version || "");
       }
-      
+
       // Load status
       const statusRes = await researchService.getIdaBridgeStatus();
       if (statusRes.status === "success" && statusRes.data) {
@@ -154,7 +156,7 @@ export default function Research() {
       });
       return;
     }
-    
+
     if (!idaPort || Number(idaPort) < 1024 || Number(idaPort) > 65535) {
       toast({
         title: "Validation Error",
@@ -163,7 +165,7 @@ export default function Research() {
       });
       return;
     }
-    
+
     if (!mcpVersion) {
       toast({
         title: "Validation Error",
@@ -172,17 +174,17 @@ export default function Research() {
       });
       return;
     }
-    
+
     setIsDeploying(true);
     setError(null);
-    
+
     try {
       const result = await researchService.deployIdaBridge({
         hostname_fqdn: hostname.trim().toLowerCase(),
         ida_port: Number(idaPort),
         mcp_version: mcpVersion,
       });
-      
+
       if (result.status === "success" && result.data) {
         toast({
           title: "Deployment Successful",
@@ -213,10 +215,10 @@ export default function Research() {
     setIsDeleting(true);
     setError(null);
     setShowDeleteDialog(false);
-    
+
     try {
       const result = await researchService.undeployIdaBridge();
-      
+
       if (result.status === "success" && result.data) {
         setConfig(null);
         setStatus(null);
@@ -224,7 +226,7 @@ export default function Research() {
         setHostname("");
         setIdaPort("");
         setMcpVersion(versions?.default_version || "");
-        
+
         toast({
           title: "Deleted Successfully",
           description: "MCP server configuration has been removed.",
@@ -259,14 +261,14 @@ export default function Research() {
       });
       return;
     }
-    
+
     setIsUpgrading(true);
     setError(null);
     setShowUpgradeDialog(false);
-    
+
     try {
       const result = await researchService.upgradeIdaBridge(newVersionForUpgrade);
-      
+
       if (result.status === "success" && result.data) {
         toast({
           title: "Upgrade Successful",
@@ -388,7 +390,7 @@ export default function Research() {
                   {hasConfig && isDeployed ? "Update IDA Connection" : "Deploy IDA Connection"}
                 </CardTitle>
                 <CardDescription>
-                  {hasConfig && isDeployed 
+                  {hasConfig && isDeployed
                     ? "Modify your workstation connection settings and redeploy"
                     : "Configure your workstation to enable IDA integration through MCP"
                   }
@@ -434,7 +436,7 @@ export default function Research() {
                 />
               </div>
 
-              {/* MCP Version Select */}
+              {/* MCP Version Select - with search */}
               <div className="space-y-2">
                 <Label htmlFor="mcp-version">MCP Server Version</Label>
                 <Select
@@ -446,12 +448,26 @@ export default function Research() {
                     <SelectValue placeholder="Select version" />
                   </SelectTrigger>
                   <SelectContent>
-                    {versions?.versions.map((version) => (
-                      <SelectItem key={version} value={version}>
-                        {version}
-                        {version === versions.default_version && " (recommended)"}
-                      </SelectItem>
-                    ))}
+                    {/* Search input for filtering versions */}
+                    <div className="px-2 pb-2">
+                      <Input
+                        placeholder="Search versions..."
+                        value={versionSearch}
+                        onChange={(e) => setVersionSearch(e.target.value)}
+                        className="h-8"
+                      />
+                    </div>
+                    {versions?.versions
+                      .filter(v => v.toLowerCase().includes(versionSearch.toLowerCase()))
+                      .map((version) => (
+                        <SelectItem key={version} value={version}>
+                          {version}
+                          {version === versions.default_version && " (recommended)"}
+                        </SelectItem>
+                      ))}
+                    {versions?.versions.filter(v => v.toLowerCase().includes(versionSearch.toLowerCase())).length === 0 && (
+                      <div className="px-2 py-2 text-sm text-muted-foreground">No matching versions</div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -501,7 +517,7 @@ export default function Research() {
                 <p className="text-muted-foreground">Copy MCP URL to Open WebUI Settings</p>
               </div>
             </div>
-            
+
             <div className="pt-3 border-t text-xs text-muted-foreground">
               <p><strong>Tip:</strong> Use your machine's FQDN, not IP address. Check DNS resolves correctly.</p>
             </div>
@@ -525,8 +541,8 @@ export default function Research() {
                     <Server className="w-5 h-5 text-primary" />
                     Your MCP Server
                   </span>
-                  <Badge 
-                    variant={statusInfo.variant} 
+                  <Badge
+                    variant={statusInfo.variant}
                     className={isDeployed ? 'bg-green-600 text-white' : ''}
                   >
                     {isDeployed && <span className="w-2 h-2 rounded-full bg-white mr-2 animate-pulse" />}
@@ -564,7 +580,7 @@ export default function Research() {
                       <span className="font-medium block">{config.mcp_version}</span>
                     </div>
                   </div>
-                  
+
                   {config.last_deploy_at && (
                     <div className="mt-3 pt-3 border-t text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3 h-3" />
@@ -625,7 +641,7 @@ export default function Research() {
                     )}
                     Upgrade Version
                   </Button>
-                  
+
                   <Button
                     onClick={() => setShowDeleteDialog(true)}
                     disabled={isLoading || isDeploying || isDeleting || isUpgrading}
@@ -651,8 +667,8 @@ export default function Research() {
           <DialogHeader>
             <DialogTitle>Delete MCP Server?</DialogTitle>
             <DialogDescription>
-              This will stop your MCP server pod, remove all routing configuration, 
-              and delete your configuration. You'll need to redeploy to use the 
+              This will stop your MCP server pod, remove all routing configuration,
+              and delete your configuration. You'll need to redeploy to use the
               IDA integration again.
             </DialogDescription>
           </DialogHeader>
@@ -677,20 +693,20 @@ export default function Research() {
               Select a new version to upgrade your MCP server.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             {/* Current Version */}
             <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
               <span className="text-sm text-muted-foreground">Current Version</span>
               <Badge variant="secondary">{config?.mcp_version}</Badge>
             </div>
-            
+
             {/* Arrow */}
             <div className="flex justify-center">
               <ArrowUp className="w-6 h-6 text-primary rotate-180" />
             </div>
-            
-            {/* New Version Selection */}
+
+            {/* New Version Selection - with search */}
             <div className="space-y-2">
               <Label>New Version</Label>
               <Select
@@ -701,24 +717,39 @@ export default function Research() {
                   <SelectValue placeholder="Select new version" />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* Search input for filtering versions */}
+                  <div className="px-2 pb-2">
+                    <Input
+                      placeholder="Search versions..."
+                      value={upgradeVersionSearch}
+                      onChange={(e) => setUpgradeVersionSearch(e.target.value)}
+                      className="h-8"
+                    />
+                  </div>
                   {versions?.versions
                     .filter(v => v !== config?.mcp_version)
+                    .filter(v => v.toLowerCase().includes(upgradeVersionSearch.toLowerCase()))
                     .map((version) => (
                       <SelectItem key={version} value={version}>
                         {version}
                         {version === versions.default_version && " (recommended)"}
                       </SelectItem>
                     ))}
+                  {versions?.versions
+                    .filter(v => v !== config?.mcp_version)
+                    .filter(v => v.toLowerCase().includes(upgradeVersionSearch.toLowerCase())).length === 0 && (
+                      <div className="px-2 py-2 text-sm text-muted-foreground">No matching versions</div>
+                    )}
                 </SelectContent>
               </Select>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUpgradeDialog(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleUpgrade}
               disabled={!newVersionForUpgrade || newVersionForUpgrade === config?.mcp_version}
               className="bg-gradient-primary"

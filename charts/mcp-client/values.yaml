@@ -198,8 +198,28 @@ idaMcp:
     # SSL certificate verification (set to false for self-signed certificates)
     verifySSL: true
   
-  # Allowed MCP server versions
+  # Fallback MCP server versions (used when Artifactory is disabled)
   allowedVersions: "v1.0.0,v1.1.0,v1.2.0,latest"
+  
+  # ============================================================
+  # Artifactory Configuration (for dynamic Docker image versions)
+  # ============================================================
+  artifactory:
+    # Enable dynamic version fetching from Artifactory
+    enabled: false
+    # Artifactory base URL
+    url: "https://artifactory.company.internal"
+    # Docker repository name in Artifactory
+    repo: "docker-local"
+    # Image name to fetch tags for
+    image: "ida-pro-mcp"
+    # Authentication (optional - leave empty for anonymous)
+    username: ""
+    password: ""  # API key or access token
+    # SSL certificate verification
+    verifySSL: true
+    # Cache TTL in seconds (how long to cache version list)
+    cacheTTL: 300
   
   # Hostname validation patterns (comma-separated regex)
   # Leave empty to allow all hostnames

@@ -35,6 +35,9 @@ kubernetes>=28.1.0
 # Bitbucket integration for GitOps
 atlassian-python-api>=3.41.0
 
+# Artifactory integration for Docker image versions
+pyartifactory>=1.13.0
+
 # Optional but recommended
 typing-extensions>=4.8.0
 aiohttp>=3.8.0

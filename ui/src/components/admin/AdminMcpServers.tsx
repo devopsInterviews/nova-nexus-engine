@@ -21,6 +21,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -40,11 +47,13 @@ import { Label } from "@/components/ui/label";
  */
 export function AdminMcpServers() {
   const [servers, setServers] = useState<AdminMcpConnection[]>([]);
+  const [versions, setVersions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
   const [selectedServer, setSelectedServer] = useState<AdminMcpConnection | null>(null);
   const [newVersion, setNewVersion] = useState("");
+  const [versionSearch, setVersionSearch] = useState("");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   // Fetch all MCP servers on component mount
@@ -58,6 +67,7 @@ export function AdminMcpServers() {
   const loadServers = async () => {
     setLoading(true);
     try {
+      // Load MCP servers
       const response = await apiService.admin.getAllMcpServers();
       if (response.status === 'success' && response.data) {
         setServers(response.data.connections || []);
@@ -65,6 +75,12 @@ export function AdminMcpServers() {
         toast.error("Failed to load MCP servers", {
           description: response.error || "Unknown error occurred",
         });
+      }
+
+      // Load available MCP versions
+      const versionsRes = await apiService.research.getMcpVersions();
+      if (versionsRes.status === 'success' && versionsRes.data) {
+        setVersions(versionsRes.data.versions || []);
       }
     } catch (error) {
       toast.error("Error loading MCP servers", {
@@ -319,20 +335,50 @@ export function AdminMcpServers() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
+              <Label>Current Version</Label>
+              <Badge variant="outline" className="w-fit">{selectedServer?.mcp_version}</Badge>
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="version">New Version</Label>
-              <Input
-                id="version"
-                placeholder="e.g., 1.2.0"
+              <Select
                 value={newVersion}
-                onChange={(e) => setNewVersion(e.target.value)}
-              />
+                onValueChange={setNewVersion}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* Search input for filtering versions */}
+                  <div className="px-2 pb-2">
+                    <Input
+                      placeholder="Search versions..."
+                      value={versionSearch}
+                      onChange={(e) => setVersionSearch(e.target.value)}
+                      className="h-8"
+                    />
+                  </div>
+                  {versions
+                    .filter(v => v !== selectedServer?.mcp_version)
+                    .filter(v => v.toLowerCase().includes(versionSearch.toLowerCase()))
+                    .map((version) => (
+                      <SelectItem key={version} value={version}>
+                        {version}
+                      </SelectItem>
+                    ))}
+                  {versions
+                    .filter(v => v !== selectedServer?.mcp_version)
+                    .filter(v => v.toLowerCase().includes(versionSearch.toLowerCase())).length === 0 && (
+                      <div className="px-2 py-2 text-sm text-muted-foreground">No matching versions</div>
+                    )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setUpgradeDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={confirmUpgrade}>
+            <Button onClick={confirmUpgrade} disabled={!newVersion || newVersion === selectedServer?.mcp_version}>
               Upgrade
             </Button>
           </DialogFooter>

@@ -37,6 +37,10 @@ from app.services.k8s_controller import (
     get_mcp_server_status,
     health_check as k8s_health_check
 )
+from app.services.artifactory_client import (
+    get_mcp_versions as get_mcp_versions_from_artifactory,
+    is_artifactory_enabled,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -46,14 +50,23 @@ router = APIRouter(prefix="/research", tags=["Research"])
 # Configuration
 # ============================================================
 
-# Allowed MCP server versions/image tags
-ALLOWED_MCP_VERSIONS = os.getenv(
+# Fallback MCP server versions/image tags (used when Artifactory is disabled)
+FALLBACK_MCP_VERSIONS = os.getenv(
     "ALLOWED_MCP_VERSIONS", 
     "v1.0.0,v1.1.0,v1.2.0,latest"
 ).split(",")
-ALLOWED_MCP_VERSIONS = [v.strip() for v in ALLOWED_MCP_VERSIONS if v.strip()]
+FALLBACK_MCP_VERSIONS = [v.strip() for v in FALLBACK_MCP_VERSIONS if v.strip()]
 
-logger.info(f"[RESEARCH] Loaded MCP versions: {ALLOWED_MCP_VERSIONS}")
+logger.info(f"[RESEARCH] Fallback MCP versions: {FALLBACK_MCP_VERSIONS}")
+logger.info(f"[RESEARCH] Artifactory integration enabled: {is_artifactory_enabled()}")
+
+
+def get_allowed_versions() -> List[str]:
+    """Get allowed MCP versions - from Artifactory or fallback."""
+    versions, default, error = get_mcp_versions_from_artifactory(use_cache=True)
+    if versions:
+        return versions
+    return FALLBACK_MCP_VERSIONS
 
 # Allowed hostname domain patterns (regex) - empty means allow all
 ALLOWED_HOSTNAME_PATTERNS_RAW = os.getenv("ALLOWED_HOSTNAME_PATTERNS", "")
@@ -142,11 +155,12 @@ class IdaBridgeDeployRequest(BaseModel):
     
     @validator('mcp_version')
     def validate_mcp_version(cls, v):
-        """Validate MCP version is in allowed list."""
+        """Validate MCP version is in allowed list (dynamically fetched)."""
         v = v.strip()
         logger.debug(f"[RESEARCH] Validating MCP version: {v}")
-        if v not in ALLOWED_MCP_VERSIONS:
-            error_msg = f"MCP version '{v}' is not allowed. Allowed: {', '.join(ALLOWED_MCP_VERSIONS)}"
+        allowed_versions = get_allowed_versions()
+        if v not in allowed_versions:
+            error_msg = f"MCP version '{v}' is not allowed. Allowed: {', '.join(allowed_versions)}"
             logger.warning(f"[RESEARCH] {error_msg}")
             raise ValueError(error_msg)
         return v
@@ -163,10 +177,11 @@ class IdaBridgeUpgradeRequest(BaseModel):
     
     @validator('new_mcp_version')
     def validate_mcp_version(cls, v):
-        """Validate MCP version is in allowed list."""
+        """Validate MCP version is in allowed list (dynamically fetched)."""
         v = v.strip()
-        if v not in ALLOWED_MCP_VERSIONS:
-            raise ValueError(f"MCP version '{v}' is not allowed. Allowed: {', '.join(ALLOWED_MCP_VERSIONS)}")
+        allowed_versions = get_allowed_versions()
+        if v not in allowed_versions:
+            raise ValueError(f"MCP version '{v}' is not allowed. Allowed: {', '.join(allowed_versions)}")
         return v
 
 
@@ -314,12 +329,18 @@ def log_audit_action(
 
 @router.get("/mcp/versions", response_model=McpVersionsResponse)
 async def get_mcp_versions(current_user: User = Depends(get_current_user)):
-    """Get list of allowed MCP server versions."""
+    """Get list of allowed MCP server versions (from Artifactory or fallback)."""
     logger.info(f"[RESEARCH] User {current_user.id} ({current_user.username}) requesting MCP versions")
     
+    # Fetch versions from Artifactory (with caching) or fallback
+    versions, default_version, error = get_mcp_versions_from_artifactory(use_cache=True)
+    
+    if error:
+        logger.warning(f"[RESEARCH] Artifactory fetch had error: {error}, using fallback versions")
+    
     response = McpVersionsResponse(
-        versions=ALLOWED_MCP_VERSIONS,
-        default_version=ALLOWED_MCP_VERSIONS[-1] if ALLOWED_MCP_VERSIONS else "latest"
+        versions=versions if versions else FALLBACK_MCP_VERSIONS,
+        default_version=default_version if default_version else (FALLBACK_MCP_VERSIONS[-1] if FALLBACK_MCP_VERSIONS else "latest")
     )
     
     logger.debug(f"[RESEARCH] Returning versions: {response.versions}, default: {response.default_version}")

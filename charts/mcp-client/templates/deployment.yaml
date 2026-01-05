@@ -93,6 +93,25 @@ spec:
             - name: BITBUCKET_VERIFY_SSL
               value: "{{ .Values.idaMcp.bitbucket.verifySSL }}"
             {{- end }}
+            {{- if .Values.idaMcp.artifactory.enabled }}
+            # Artifactory Configuration for Docker image versions
+            - name: ARTIFACTORY_ENABLED
+              value: "true"
+            - name: ARTIFACTORY_URL
+              value: "{{ .Values.idaMcp.artifactory.url }}"
+            - name: ARTIFACTORY_REPO
+              value: "{{ .Values.idaMcp.artifactory.repo }}"
+            - name: ARTIFACTORY_IMAGE
+              value: "{{ .Values.idaMcp.artifactory.image }}"
+            - name: ARTIFACTORY_USERNAME
+              value: "{{ .Values.idaMcp.artifactory.username }}"
+            - name: ARTIFACTORY_PASSWORD
+              value: "{{ .Values.idaMcp.artifactory.password }}"
+            - name: ARTIFACTORY_VERIFY_SSL
+              value: "{{ .Values.idaMcp.artifactory.verifySSL }}"
+            - name: ARTIFACTORY_CACHE_TTL
+              value: "{{ .Values.idaMcp.artifactory.cacheTTL }}"
+            {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
