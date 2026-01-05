@@ -104,7 +104,7 @@ class ArtifactoryClient:
     Client for fetching Docker image tags from JFrog Artifactory.
     
     Uses the Docker Registry V2 API:
-    GET /api/docker/<repo>/v2/<image>/tags/list
+    GET /artifactory/api/docker/<repo>/v2/<image>/tags/list
     """
     
     def __init__(
@@ -116,7 +116,12 @@ class ArtifactoryClient:
         password: str = ARTIFACTORY_PASSWORD,
         verify_ssl: bool = ARTIFACTORY_VERIFY_SSL
     ):
-        self.url = url.rstrip("/")
+        # Normalize URL - remove trailing slash and /artifactory suffix if present
+        # This ensures consistent URL construction
+        self.base_url = url.rstrip("/")
+        if self.base_url.endswith("/artifactory"):
+            self.base_url = self.base_url[:-12]  # Remove /artifactory
+        
         self.repo = repo
         self.image = image
         self.username = username
@@ -125,7 +130,7 @@ class ArtifactoryClient:
         
         if not verify_ssl:
             logger.warning("[ARTIFACTORY] SSL verification is DISABLED")
-        logger.info(f"[ARTIFACTORY] Initialized client for {self.url}/{repo}/{image}")
+        logger.info(f"[ARTIFACTORY] Initialized client for {self.base_url}/artifactory - repo: {repo}, image: {image}")
     
     def _get_auth(self) -> Optional[Tuple[str, str]]:
         """Get authentication tuple if credentials are configured."""
@@ -137,7 +142,9 @@ class ArtifactoryClient:
         """
         Fetch Docker image tags from Artifactory using Docker Registry V2 API.
         
-        Endpoint: GET /api/docker/<repo>/v2/<image>/tags/list
+        Tries multiple API path formats:
+        1. /artifactory/api/docker/<repo>/v2/<image>/tags/list (standard)
+        2. /api/docker/<repo>/v2/<image>/tags/list (some installations)
         
         Args:
             use_cache: Whether to use cached results if available
@@ -152,59 +159,70 @@ class ArtifactoryClient:
             logger.debug("[ARTIFACTORY] Returning cached versions")
             return _version_cache.get(), None
         
-        try:
-            # Build the Docker Registry V2 API URL
-            docker_api_url = f"{self.url}/api/docker/{self.repo}/v2/{self.image}/tags/list"
-            
-            logger.info(f"[ARTIFACTORY] Fetching tags from: {docker_api_url}")
-            
-            response = requests.get(
-                docker_api_url,
-                auth=self._get_auth(),
-                verify=self.verify_ssl,
-                timeout=30
-            )
-            
-            logger.debug(f"[ARTIFACTORY] Response status: {response.status_code}")
-            
-            if response.status_code == 404:
-                error_msg = f"Docker image not found: {self.repo}/{self.image}"
-                logger.error(f"[ARTIFACTORY] {error_msg}")
-                logger.debug(f"[ARTIFACTORY] Response: {response.text}")
-                return [], error_msg
-            
-            response.raise_for_status()
-            
-            # Parse response: {"name": "image", "tags": ["v1", "v2", ...]}
-            data = response.json()
-            tags = data.get('tags', []) or []
-            
-            if not tags:
-                logger.warning(f"[ARTIFACTORY] No tags found for {self.repo}/{self.image}")
-                return [], "No tags found"
-            
-            # Sort tags: 'latest' first, then by semantic version (newest first)
-            tags = self._sort_tags(tags)
-            
-            logger.info(f"[ARTIFACTORY] Found {len(tags)} tags: {tags[:5]}{'...' if len(tags) > 5 else ''}")
-            
-            # Update cache
-            _version_cache.set(tags)
-            
-            return tags, None
-            
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Artifactory request error: {str(e)}"
-            logger.error(f"[ARTIFACTORY] {error_msg}")
-            return [], error_msg
-        except ValueError as e:
-            error_msg = f"Failed to parse response: {str(e)}"
-            logger.error(f"[ARTIFACTORY] {error_msg}")
-            return [], error_msg
-        except Exception as e:
-            error_msg = f"Unexpected error: {str(e)}"
-            logger.error(f"[ARTIFACTORY] {error_msg}")
-            return [], error_msg
+        # Try different API path formats
+        api_paths = [
+            f"/artifactory/api/docker/{self.repo}/v2/{self.image}/tags/list",
+        ]
+        
+        last_error = None
+        
+        for api_path in api_paths:
+            try:
+                docker_api_url = f"{self.base_url}{api_path}"
+                
+                logger.info(f"[ARTIFACTORY] Trying: {docker_api_url}")
+                
+                response = requests.get(
+                    docker_api_url,
+                    auth=self._get_auth(),
+                    verify=self.verify_ssl,
+                    timeout=30
+                )
+                
+                logger.debug(f"[ARTIFACTORY] Response status: {response.status_code}")
+                
+                if response.status_code == 404:
+                    logger.debug(f"[ARTIFACTORY] 404 for path: {api_path}")
+                    last_error = f"Not found with path: {api_path}"
+                    continue  # Try next path format
+                
+                response.raise_for_status()
+                
+                # Parse response: {"name": "image", "tags": ["v1", "v2", ...]}
+                data = response.json()
+                tags = data.get('tags', []) or []
+                
+                if not tags:
+                    logger.warning(f"[ARTIFACTORY] No tags found for {self.repo}/{self.image}")
+                    return [], "No tags found"
+                
+                # Sort tags: 'latest' first, then by semantic version (newest first)
+                tags = self._sort_tags(tags)
+                
+                logger.info(f"[ARTIFACTORY] Found {len(tags)} tags: {tags[:5]}{'...' if len(tags) > 5 else ''}")
+                
+                # Update cache
+                _version_cache.set(tags)
+                
+                return tags, None
+                
+            except requests.exceptions.RequestException as e:
+                last_error = f"Request error: {str(e)}"
+                logger.debug(f"[ARTIFACTORY] {last_error}")
+                continue
+            except ValueError as e:
+                last_error = f"Parse error: {str(e)}"
+                logger.debug(f"[ARTIFACTORY] {last_error}")
+                continue
+        
+        # All paths failed
+        error_msg = f"Failed to fetch tags. Last error: {last_error}"
+        logger.error(f"[ARTIFACTORY] {error_msg}")
+        logger.error(f"[ARTIFACTORY] Please verify:")
+        logger.error(f"[ARTIFACTORY]   - Repo name: {self.repo}")
+        logger.error(f"[ARTIFACTORY]   - Image name: {self.image}")
+        logger.error(f"[ARTIFACTORY]   - Test manually: curl -u user:pass {self.base_url}/artifactory/api/docker/{self.repo}/v2/{self.image}/tags/list")
+        return [], error_msg
     
     @staticmethod
     def _sort_tags(tags: List[str]) -> List[str]:
