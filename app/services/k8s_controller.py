@@ -207,6 +207,7 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
         container = client.V1Container(
             name="mcp-server",
             image=f"{IDA_MCP_SERVER_IMAGE_REPO}:{config.mcp_version}",
+            image_pull_policy="Always",  # Always pull to get latest fixes
             ports=[client.V1ContainerPort(container_port=IDA_MCP_SERVER_PORT)],
             env=[
                 # Proxy connection - MCP server uses these to reach IDA via proxy
@@ -224,12 +225,12 @@ def deploy_mcp_server(config: McpServerConfig) -> Tuple[bool, str, Optional[str]
                 limits={"cpu": "500m", "memory": "512Mi"}
             ),
             liveness_probe=client.V1Probe(
-                http_get=client.V1HTTPGetAction(path=IDA_MCP_SERVER_HEALTH_PATH, port=IDA_MCP_SERVER_PORT),
+                tcp_socket=client.V1TCPSocketAction(port=IDA_MCP_SERVER_PORT),
                 initial_delay_seconds=10,
                 period_seconds=30
             ),
             readiness_probe=client.V1Probe(
-                http_get=client.V1HTTPGetAction(path=IDA_MCP_SERVER_HEALTH_PATH, port=IDA_MCP_SERVER_PORT),
+                tcp_socket=client.V1TCPSocketAction(port=IDA_MCP_SERVER_PORT),
                 initial_delay_seconds=5,
                 period_seconds=10
             )

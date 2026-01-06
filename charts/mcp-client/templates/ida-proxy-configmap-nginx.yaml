@@ -57,7 +57,15 @@ data:
           # and uses resolver for DNS)
           proxy_pass http://$ida_upstream;
 
-          proxy_set_header Host $host;
+          # IMPORTANT: Set Host to 127.0.0.1:port to bypass MCP SDK's DNS rebinding protection
+          # The MCP SDK validates Host headers and rejects non-localhost hosts
+          # We extract the port from $ida_upstream (format: hostname:port) and use it with 127.0.0.1
+          set $ida_port 13337;
+          if ($ida_upstream ~ ".*:(\d+)$") {
+            set $ida_port $1;
+          }
+          proxy_set_header Host 127.0.0.1:$ida_port;
+          
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
