@@ -48,7 +48,16 @@ services:
       
       # Authentication
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production-please}
+      SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production-please}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+      
+      # SSO / OIDC (Authentik)
+      SSO_ENABLED: ${SSO_ENABLED:-false}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-openid email profile groups}
       
       # MCP Configuration
       MCP_SERVER_URL: ${MCP_SERVER_URL:-http://localhost:8050/mcp/}

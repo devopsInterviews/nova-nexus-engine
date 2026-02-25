@@ -151,6 +151,7 @@ from app.routes.internal_data_routes import router as internal_data_router  # In
 from app.routes.permissions_routes import router as permissions_router  # Role-based permissions
 from app.routes.analytics_routes import router as analytics_router  # System metrics
 from app.routes.research_routes import router as research_router  # Research/IDA MCP connections
+from app.routes.sso_routes import router as sso_router  # SSO / OIDC authentication
 
 # Register all route modules with the FastAPI app under /api prefix
 # This makes all endpoints accessible at /api/... URLs
@@ -169,6 +170,8 @@ app.include_router(permissions_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 # Expose research routes under /api (IDA MCP connections)
 app.include_router(research_router, prefix="/api")
+# Expose SSO / OIDC routes under /api (Authentik company login)
+app.include_router(sso_router, prefix="/api")
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")  # Decorator registers this function as HTTP middleware that runs on every request
@@ -244,27 +247,34 @@ async def startup_event():
     """
     global _exit_stack, _mcp_session  # Access global variables for MCP connection management
     _exit_stack = AsyncExitStack()  # Create stack to manage multiple async context managers
+    _mcp_session = None
 
-    # Establish HTTP transport connection to MCP server
-    # streamablehttp_client creates bidirectional streaming connection for real-time communication
-    _http_transport = await _exit_stack.enter_async_context(
-        streamablehttp_client(
-            MCP_SERVER_URL,  # Server URL from environment variable
-            timeout = timedelta(seconds=600),  # 10 minute timeout for long operations
-            sse_read_timeout = timedelta(seconds=600)  # Server-sent events read timeout
-        )
-    )
-    # Extract the read and write streams from the transport tuple
-    read_stream, write_stream, _ = _http_transport
+    if MCP_SERVER_URL:
+        try:
+            # Establish HTTP transport connection to MCP server
+            _http_transport = await _exit_stack.enter_async_context(
+                streamablehttp_client(
+                    MCP_SERVER_URL,  # Server URL from environment variable
+                    timeout = timedelta(seconds=600),  # 10 minute timeout for long operations
+                    sse_read_timeout = timedelta(seconds=600)  # Server-sent events read timeout
+                )
+            )
+            # Extract the read and write streams from the transport tuple
+            read_stream, write_stream, _ = _http_transport
 
-    # Create MCP client session using the established streams
-    # ClientSession handles the MCP protocol communication
-    _mcp_session = await _exit_stack.enter_async_context(
-        ClientSession(read_stream, write_stream)  # Pass streams for bidirectional communication
-    )
-    # Initialize the session to complete the MCP handshake
-    await _mcp_session.initialize()
-    logger.info(f"MCP session initialized and connected to {MCP_SERVER_URL}")
+            # Create MCP client session using the established streams
+            _mcp_session = await _exit_stack.enter_async_context(
+                ClientSession(read_stream, write_stream)  # Pass streams for bidirectional communication
+            )
+            # Initialize the session to complete the MCP handshake
+            await _mcp_session.initialize()
+            _mcp_session._url = MCP_SERVER_URL
+            logger.info(f"MCP session initialized and connected to {MCP_SERVER_URL}")
+        except Exception as e:
+            logger.warning(f"Could not connect to MCP server at {MCP_SERVER_URL} during startup: {e}")
+            _mcp_session = None
+    else:
+        logger.info("MCP_SERVER_URL not provided, starting without MCP connection.")
 
     # Initialize the database by creating all tables defined in models.py
     init_db()

@@ -7,12 +7,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 import logging
 
-# Import all models from the models module to ensure they are registered with SQLAlchemy
-# This ensures that Base.metadata.create_all() will create all tables
+# Import all models from the models module to ensure they are registered with SQLAlchemy.
+# Every model must be imported here so that Base.metadata.create_all() creates all tables
+# — including the SSO-related tables (SSOGroup, UserSession, user_group_association).
 from app.models import (
-    Base, User, DatabaseConnection, TestConfiguration, UserActivity, 
-    TestExecution, DatabaseSession, SystemMetrics, RequestLog, 
-    McpServerStatus, PageView, IdaMcpConnection, IdaMcpDeployAudit
+    Base, User, DatabaseConnection, TestConfiguration, UserActivity,
+    TestExecution, DatabaseSession, SystemMetrics, RequestLog,
+    McpServerStatus, PageView, IdaMcpConnection, IdaMcpDeployAudit,
+    SSOGroup, UserSession, user_group_association, TabPermission,
 )
 
 logging.basicConfig(level=logging.INFO)

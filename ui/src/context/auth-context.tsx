@@ -59,20 +59,24 @@ interface User {
   full_name?: string;    // Optional display name
   is_active: boolean;    // Whether account is enabled
   is_admin: boolean;     // Whether user has admin privileges
+  auth_provider?: string; // "local" or "sso" — how this user authenticates
   created_at?: string;   // Account creation timestamp
   last_login?: string;   // Last successful login timestamp
   login_count: number;   // Total number of logins (for analytics)
   preferences: Record<string, any>; // User settings stored as JSON
+  groups?: string[];     // SSO group names (synced from Authentik)
+  allowed_tabs?: string[]; // Tabs this user is allowed to see
 }
 
 // TypeScript interface defining the shape of our authentication context
 interface AuthContextType {
   user: User | null;     // Current authenticated user or null
   token: string | null;  // JWT token or null if not authenticated
-  login: (username: string, password: string) => Promise<void>;  // Login function
+  login: (username: string, password: string) => Promise<void>;  // Local login
   logout: () => void;    // Logout function that clears state
   register: (userData: RegisterData) => Promise<void>;          // Registration function
   updateProfile: (userData: Partial<User>) => Promise<void>;    // Profile update function
+  setSSOSession: (token: string, userData: User) => void;       // Set session after SSO callback
   isLoading: boolean;    // Whether any auth operation is in progress
   initializing: boolean; // Whether initial auth state is being determined
   error: string | null;  // Any error message from auth operations
@@ -415,6 +419,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   /**
+   * Set the authentication session after a successful SSO callback.
+   *
+   * The SSOCallback page calls this after it receives the portal JWT
+   * from the backend redirect and fetches the user profile.  This
+   * mirrors what ``login()`` does but skips the credential exchange
+   * since that already happened server-side with Authentik.
+   *
+   * @param ssoToken — Portal JWT issued by the backend after SSO validation.
+   * @param userData — User profile fetched from /api/me.
+   */
+  const setSSOSession = (ssoToken: string, userData: User) => {
+    setToken(ssoToken);
+    setUser(userData);
+    localStorage.setItem('auth_token', ssoToken);
+    localStorage.setItem('auth_user', JSON.stringify(userData));
+    localStorage.setItem('auth_last_verified', Date.now().toString());
+    console.log('[AuthContext] SSO session established for user:', userData.username);
+  };
+
+  /**
    * Clear user session and redirect to login.
    * 
    * This function handles complete logout by:
@@ -464,14 +488,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Create the context value object that will be provided to child components
   const contextValue: AuthContextType = {
-    user,          // Current authenticated user or null
-    token,         // Current JWT token or null  
-    login,         // Function to authenticate user
-    logout,        // Function to clear authentication
-    register,      // Function to create new user account
-    updateProfile, // Function to update user profile
-    isLoading: isLoading || isInitializing,  // Loading state (auth operations or initialization)
-  initializing: isInitializing,
+    user,
+    token,
+    login,
+    logout,
+    register,
+    updateProfile,
+    setSSOSession,
+    isLoading: isLoading || isInitializing,
+    initializing: isInitializing,
     error,
     clearError,
   };

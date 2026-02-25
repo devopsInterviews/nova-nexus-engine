@@ -59,6 +59,8 @@ export const McpServerTestTab = () => {
   const [testName, setTestName] = useState<string>("");
   const [filterText, setFilterText] = useState("");
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [customMcpUrl, setCustomMcpUrl] = useState<string>("");
+  const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
   // Load auth token and fetch saved tests
   useEffect(() => {
@@ -202,6 +204,36 @@ export const McpServerTestTab = () => {
       console.error("Failed to fetch servers:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const connectToMcpServer = async () => {
+    if (!customMcpUrl) return;
+    
+    try {
+      setIsConnecting(true);
+      const response = await fetch("/api/connect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: customMcpUrl }),
+      });
+      
+      const result = await response.json();
+      if (response.ok && result.status === "success") {
+        // Refresh servers list
+        await fetchServers();
+        setCustomMcpUrl("");
+      } else {
+        console.error("Failed to connect to MCP server:", result.message);
+        alert(`Failed to connect: ${result.message}`);
+      }
+    } catch (err) {
+      console.error("Error connecting to MCP server:", err);
+      alert("Error connecting to MCP server. Check console for details.");
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -378,6 +410,27 @@ export const McpServerTestTab = () => {
         <div className="border rounded-lg p-4">
           <h4 className="font-medium mb-3">1. Select MCP Server</h4>
           <div className="space-y-4">
+            {/* Connect to Custom Server */}
+            <div className="mb-4 p-3 bg-gray-50 rounded border">
+              <label className="block text-sm font-medium mb-2">Connect to MCP Server</label>
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  placeholder="e.g., http://localhost:8050/mcp/"
+                  value={customMcpUrl}
+                  onChange={(e) => setCustomMcpUrl(e.target.value)}
+                  className="flex-1 p-2 border rounded text-sm"
+                />
+                <button
+                  onClick={connectToMcpServer}
+                  disabled={isConnecting || !customMcpUrl}
+                  className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 disabled:bg-gray-400"
+                >
+                  {isConnecting ? "Connecting..." : "Connect"}
+                </button>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium mb-2">Available Servers</label>
               <select 

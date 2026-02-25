@@ -60,6 +60,7 @@ import { LoginScreen } from "./components/auth/LoginScreen";
 import Users from "./pages/Users";
 import Research from "./pages/Research";
 import Admin from "./pages/Admin";
+import SSOCallback from "./pages/SSOCallback";
 import { ConnectionProvider } from "@/context/connection-context";
 import { AuthProvider, useAuth } from "@/context/auth-context";
 
@@ -257,6 +258,9 @@ const App = () => (
             <Routes>
               {/* Public Route: Login page (no authentication required) */}
               <Route path="/login" element={<LoginWrapper />} />
+
+              {/* Public Route: SSO callback — handles redirect from Authentik */}
+              <Route path="/sso/callback" element={<SSOCallback />} />
               
               {/* Protected Routes: Main application (authentication required) */}
               <Route 

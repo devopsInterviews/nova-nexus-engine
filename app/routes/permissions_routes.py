@@ -1,9 +1,9 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db_session
-from app.models import User
+from app.models import User, SSOGroup, TabPermission
 from app.routes.auth_routes import get_current_user
 import logging
 
@@ -12,16 +12,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Permissions"])
 
-class TabPermissions(BaseModel):
+class TabPermissionsUpdate(BaseModel):
     tab_name: str
     user_ids: List[int]
+    group_ids: List[int]
 
 class PermissionsUpdate(BaseModel):
-    permissions: List[TabPermissions]
+    permissions: List[TabPermissionsUpdate]
 
 class PermissionsResponse(BaseModel):
     status: str
-    data: Dict[str, List[int]]
+    data: Dict[str, dict]
 
 def is_admin(current_user: User = Depends(get_current_user)):
     """
@@ -40,22 +41,24 @@ async def get_permissions(
     db: Session = Depends(get_db_session)
 ):
     """
-    Get current tab permissions for all users.
-    Returns a mapping of tab names to user IDs who have access.
+    Get current tab permissions for all users and groups.
     """
     try:
-        # Get all users
-        users = db.query(User).all()
+        tabs = ['Home', 'DevOps', 'BI', 'Analytics', 'Tests', 'Users', 'Settings', 'Admin']
         
-        # Initialize default permissions - all users have access to all tabs
-        tabs = ['Home', 'DevOps', 'BI', 'Analytics', 'Tests', 'Users', 'Settings']
-        permissions = {}
+        # Get all permissions from DB
+        all_perms = db.query(TabPermission).all()
         
-        for tab in tabs:
-            permissions[tab] = [user.id for user in users]
+        # Build the response structure
+        permissions = {tab: {"users": [], "groups": []} for tab in tabs}
         
-        # For now, we store permissions in the user preferences
-        # In the future, this could be moved to a separate permissions table
+        for p in all_perms:
+            if p.tab_name not in permissions:
+                permissions[p.tab_name] = {"users": [], "groups": []}
+            if p.user_id is not None:
+                permissions[p.tab_name]["users"].append(p.user_id)
+            if p.group_id is not None:
+                permissions[p.tab_name]["groups"].append(p.group_id)
         
         return {
             "status": "success",
@@ -76,19 +79,28 @@ async def update_permissions(
     db: Session = Depends(get_db_session)
 ):
     """
-    Update tab permissions for users.
-    This is a basic implementation that stores permissions in user preferences.
+    Update tab permissions for users and groups.
     """
     try:
-        # Convert the permissions to a simple dict format
+        # Clear all existing permissions
+        db.query(TabPermission).delete()
+        
         permissions_dict = {}
         for tab_perm in permissions_update.permissions:
-            permissions_dict[tab_perm.tab_name] = tab_perm.user_ids
+            tab_name = tab_perm.tab_name
+            permissions_dict[tab_name] = {"users": tab_perm.user_ids, "groups": tab_perm.group_ids}
+            
+            # Add new user permissions
+            for uid in tab_perm.user_ids:
+                db.add(TabPermission(tab_name=tab_name, user_id=uid))
+                
+            # Add new group permissions
+            for gid in tab_perm.group_ids:
+                db.add(TabPermission(tab_name=tab_name, group_id=gid))
+                
+        db.commit()
         
-        # Store the permissions globally (in a simple way for now)
-        # In a real implementation, you'd want a separate permissions table
-        
-        logger.info(f"Permissions updated by admin {current_user.username}: {permissions_dict}")
+        logger.info(f"Permissions updated by admin {current_user.username}")
         
         return {
             "status": "success",
@@ -96,6 +108,7 @@ async def update_permissions(
         }
         
     except Exception as e:
+        db.rollback()
         logger.error(f"Error updating permissions: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -110,10 +123,8 @@ async def get_user_permissions(
 ):
     """
     Get permissions for a specific user.
-    Users can check their own permissions, admins can check any user's permissions.
     """
     try:
-        # Users can only check their own permissions unless they're admin
         if current_user.id != user_id and not getattr(current_user, 'is_admin', current_user.username == 'admin'):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         
@@ -121,17 +132,32 @@ async def get_user_permissions(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # For now, return all tabs (since we haven't implemented the storage yet)
-        # In a real implementation, you'd check the actual permissions
-        tabs = ['Home', 'DevOps', 'BI', 'Analytics', 'Tests', 'Users', 'Settings']
-        user_tabs = tabs  # All tabs for now
+        # Determine allowed tabs
+        allowed_tabs = []
+        if user.is_admin or user.username == 'admin':
+            allowed_tabs = ['Home', 'DevOps', 'BI', 'Analytics', 'Tests', 'Users', 'Settings', 'Admin']
+        else:
+            group_ids = [g.id for g in user.groups] if user.groups else []
+            
+            # Query TabPermission for this user or their groups
+            perms = db.query(TabPermission).filter(
+                (TabPermission.user_id == user.id) |
+                (TabPermission.group_id.in_(group_ids))
+            ).all()
+            
+            # Use a set to avoid duplicates
+            allowed_tabs = list(set([p.tab_name for p in perms]))
+            
+            # Everyone gets Home by default
+            if 'Home' not in allowed_tabs:
+                allowed_tabs.append('Home')
         
         return {
             "status": "success",
             "data": {
                 "user_id": user_id,
                 "username": user.username,
-                "allowed_tabs": user_tabs
+                "allowed_tabs": allowed_tabs
             }
         }
         

@@ -48,6 +48,8 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { analyticsService } from "@/lib/api-service";
 
+import { useAuth } from "@/context/auth-context";
+
 // TypeScript interface for system statistics displayed on dashboard
 interface Stat {
   title: string;          // Display name of the metric (e.g., "System Uptime")
@@ -72,6 +74,7 @@ export default function Home() {
   const navigate = useNavigate();
   
   // State management for dashboard data
+  const { user } = useAuth();
   const [stats, setStats] = useState<Stat[]>([]);           // System metrics array
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]); // Activity feed
   const [isLoading, setIsLoading] = useState(true);         // Loading state for data fetching
@@ -224,7 +227,7 @@ export default function Home() {
             transition={{ delay: 0.2, duration: 0.8 }} // Slight delay for staggered effect
           >
             <h1 className="text-4xl font-bold mb-4 gradient-text">
-              Welcome to MCP Control Center
+              Welcome, {user?.full_name || user?.username}!
             </h1>
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
               Your unified command center for DevOps automation, business intelligence, 

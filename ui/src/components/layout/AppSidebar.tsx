@@ -128,7 +128,12 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu className="space-y-2">
               {navigationItems
-                .filter((item) => !item.adminOnly || user?.is_admin) // Filter out admin-only items for non-admin users
+                .filter((item) => {
+                  if (user?.is_admin) return true;
+                  if (item.adminOnly) return false;
+                  if (user?.allowed_tabs && !user.allowed_tabs.includes(item.title)) return false;
+                  return true;
+                })
                 .map((item, index) => (
                 <SidebarMenuItem key={item.title}>
                   <motion.div

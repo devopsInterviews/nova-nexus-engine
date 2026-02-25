@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, User, Lock, Zap, AlertCircle, CheckCircle, Bot, X } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, Zap, AlertCircle, CheckCircle, Bot, X, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
 import { ParticleBackground } from '@/components/effects/ParticleBackground';
 
 interface RobotEyeProps {
@@ -150,6 +151,17 @@ interface LoginScreenProps {
   error?: string | null;
 }
 
+/**
+ * SSO configuration returned by GET /api/sso/config.
+ * The login screen fetches this on mount to decide whether to show the
+ * "Login with Company Credentials" button.
+ */
+interface SSOConfig {
+  enabled: boolean;
+  login_url: string | null;
+  provider_name: string;
+}
+
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = false, error = null }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -159,8 +171,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
   const [activeField, setActiveField] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [ssoConfig, setSsoConfig] = useState<SSOConfig | null>(null);
+  const [ssoError, setSsoError] = useState<string | null>(null);
   
   const blinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fetch SSO configuration on mount
+  useEffect(() => {
+    const fetchSSOConfig = async () => {
+      try {
+        const resp = await fetch('/api/sso/config');
+        if (resp.ok) {
+          const data: SSOConfig = await resp.json();
+          setSsoConfig(data);
+          console.log('[LoginScreen] SSO config loaded — enabled:', data.enabled);
+        }
+      } catch (err) {
+        console.warn('[LoginScreen] Failed to fetch SSO config:', err);
+      }
+    };
+    fetchSSOConfig();
+
+    // Check URL for SSO error passed back from the callback
+    const params = new URLSearchParams(window.location.search);
+    const ssoErr = params.get('sso_error');
+    if (ssoErr) {
+      setSsoError(decodeURIComponent(ssoErr.replace(/\+/g, ' ')));
+      // Clean the URL
+      window.history.replaceState({}, '', '/login');
+    }
+  }, []);
+
+  /**
+   * Redirect the browser to the backend SSO login endpoint which will
+   * initiate the OIDC Authorization Code flow with Authentik.
+   */
+  const handleSSOLogin = () => {
+    if (ssoConfig?.login_url) {
+      console.log('[LoginScreen] Redirecting to SSO login:', ssoConfig.login_url);
+      window.location.href = ssoConfig.login_url;
+    }
+  };
 
   // Handle robot eye tracking based on password cursor position
   const updateEyeDirection = () => {
@@ -386,9 +437,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               )}
             </AnimatePresence>
 
-            {/* Error Message */}
+            {/* Error Messages — local login errors and SSO callback errors */}
             <AnimatePresence>
-              {error && (
+              {(error || ssoError) && (
                 <motion.div
                   initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -398,14 +449,45 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                   <Alert variant="destructive" className="glass border-red-500/50">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      {error}
+                      {error || ssoError}
                     </AlertDescription>
                   </Alert>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Login Form */}
+            {/* SSO Login Button — only rendered when SSO is enabled */}
+            {ssoConfig?.enabled && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-14 text-lg font-semibold border-2 border-primary/50 hover:bg-primary/10 hover:border-primary transition-all duration-300 gap-3"
+                  onClick={handleSSOLogin}
+                  disabled={loading}
+                >
+                  <Building2 className="w-5 h-5" />
+                  Login with {ssoConfig.provider_name}
+                </Button>
+              </motion.div>
+            )}
+
+            {/* Separator between SSO and local login */}
+            {ssoConfig?.enabled && (
+              <div className="flex items-center gap-4">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground uppercase tracking-wider">
+                  or sign in with credentials
+                </span>
+                <Separator className="flex-1" />
+              </div>
+            )}
+
+            {/* Local Login Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
               <FloatingInput
                 id="username"

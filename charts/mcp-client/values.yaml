@@ -137,12 +137,29 @@ auth:
   jwtSecret: "your-super-secret-jwt-key-change-in-production"  # Change this!
   accessTokenExpire: 3600  # 1 hour in seconds
   refreshTokenExpire: 604800  # 7 days in seconds
+  accessTokenExpireMinutes: 120  # Portal JWT lifetime in minutes
   
   # Default admin user (created automatically)
   admin:
     username: "admin"
     password: "admin123"  # Change this immediately after first login!
     email: "admin@mcp-client.local"
+
+# SSO / OIDC Configuration (Authentik)
+# When enabled users see a "Login with Company Credentials" button that
+# redirects to Authentik for authentication.  Local login remains available.
+sso:
+  enabled: false
+  # Authentik OIDC provider URL (e.g. https://authentik.company.com/application/o/portal/)
+  issuerUrl: ""
+  # OAuth 2.0 client credentials from the Authentik application
+  clientId: ""
+  clientSecret: ""
+  # Redirect URI — must match the value registered in Authentik
+  # Example: https://portal.company.com/api/sso/callback
+  redirectUri: ""
+  # Space-separated OIDC scopes
+  scopes: "openid email profile groups"
 
 # Feature flags
 features:

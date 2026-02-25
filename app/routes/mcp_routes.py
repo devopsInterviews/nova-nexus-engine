@@ -24,11 +24,65 @@ from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 
+from pydantic import BaseModel
+from datetime import timedelta
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
 # Set up logging for this module
 logger = logging.getLogger(__name__)
 
 # Create router for MCP-related endpoints
 router = APIRouter(tags=["MCP Testing"])
+
+class ConnectRequest(BaseModel):
+    url: str
+
+@router.post("/connect")
+async def connect_mcp(req: ConnectRequest):
+    """
+    Connect to a new MCP server dynamically.
+    """
+    import app.client as client
+    
+    logger.info(f"Attempting to connect to MCP server at {req.url}")
+    try:
+        # If there's an existing session, we might want to close it or just let the exit stack handle it on shutdown
+        # For simplicity, we just add the new connection to the exit stack and update the global reference
+        
+        http_transport = await client._exit_stack.enter_async_context(
+            streamablehttp_client(
+                req.url,
+                timeout=timedelta(seconds=600),
+                sse_read_timeout=timedelta(seconds=600)
+            )
+        )
+        read_stream, write_stream, _ = http_transport
+        
+        new_session = await client._exit_stack.enter_async_context(
+            ClientSession(read_stream, write_stream)
+        )
+        await new_session.initialize()
+        new_session._url = req.url
+        
+        # Update the global session
+        client._mcp_session = new_session
+        logger.info(f"Successfully connected to MCP server at {req.url}")
+        
+        return JSONResponse({
+            "status": "success",
+            "message": f"Connected to {req.url}",
+            "url": req.url
+        })
+    except Exception as e:
+        logger.error(f"Failed to connect to {req.url}: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to connect: {str(e)}"
+            }
+        )
 
 @router.get("/servers")
 async def get_mcp_servers():

@@ -14,8 +14,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield } from "lucide-react";
+import { Shield, Key } from "lucide-react";
 import { AdminMcpServers } from "@/components/admin/AdminMcpServers";
+import { PermissionsManager } from "@/components/admin/PermissionsManager";
 
 export default function Admin() {
   return (
@@ -38,12 +39,30 @@ export default function Admin() {
         </div>
       </motion.div>
 
-      {/* Research - IDA MCP Section */}
+      {/* Permissions Management Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
       >
+        <div className="flex items-center gap-2 mb-4">
+          <Key className="w-5 h-5 text-primary" />
+          <h2 className="text-xl font-semibold">Access Control</h2>
+        </div>
+        <PermissionsManager />
+      </motion.div>
+
+      {/* Research - IDA MCP Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+        className="mt-8"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-primary" />
+          <h2 className="text-xl font-semibold">Infrastructure</h2>
+        </div>
         <Card className="glass border-0 mb-6">
           <CardHeader>
             <CardTitle>Research - IDA MCP</CardTitle>

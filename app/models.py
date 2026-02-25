@@ -5,7 +5,7 @@ This module defines SQLAlchemy models for user authentication, user management,
 database connections, test configurations, user activity tracking, and IDA MCP connections.
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text, ForeignKey, Index, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text, ForeignKey, Index, Enum, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -16,6 +16,18 @@ import enum
 from werkzeug.security import generate_password_hash, check_password_hash
 
 Base = declarative_base()
+
+
+# ============================================================
+# SSO / Group Management — Association Tables
+# ============================================================
+
+user_group_association = Table(
+    "user_group_association",
+    Base.metadata,
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("group_id", Integer, ForeignKey("sso_groups.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class IdaMcpConnectionStatus(str, enum.Enum):
@@ -68,12 +80,18 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
+    hashed_password = Column(String(255), nullable=True)
     full_name = Column(String(255), nullable=True)
     
     # User status and permissions
     is_active = Column(Boolean, default=True, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
+
+    # SSO / Identity Provider fields
+    # "local" = portal-managed password login, "sso" = Authentik OIDC login
+    auth_provider = Column(String(50), default="local", nullable=False)
+    # Unique subject identifier from the OIDC provider (`sub` claim)
+    sso_subject_id = Column(String(255), unique=True, nullable=True, index=True)
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -91,6 +109,8 @@ class User(Base):
     test_configurations = relationship("TestConfiguration", back_populates="user", cascade="all, delete-orphan")
     test_executions = relationship("TestExecution", back_populates="user", cascade="all, delete-orphan")
     user_activities = relationship("UserActivity", back_populates="user", cascade="all, delete")
+    groups = relationship("SSOGroup", secondary=user_group_association, back_populates="users")
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
@@ -112,12 +132,14 @@ class User(Base):
             "full_name": self.full_name,
             "is_active": self.is_active,
             "is_admin": self.is_admin,
+            "auth_provider": self.auth_provider,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "creation_date": self.created_at.isoformat() if self.created_at else None,  # Alias for compatibility
+            "creation_date": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "login_count": self.login_count,
-            "preferences": self.preferences
+            "preferences": self.preferences,
+            "groups": [g.name for g in self.groups] if self.groups else [],
         }
 
 
@@ -750,6 +772,142 @@ class IdaMcpConnection(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_deploy_at": self.last_deploy_at.isoformat() if self.last_deploy_at else None,
             "last_healthcheck_at": self.last_healthcheck_at.isoformat() if self.last_healthcheck_at else None
+        }
+
+
+class SSOGroup(Base):
+    """
+    Groups synced from the OIDC identity provider (Authentik).
+
+    Groups are created / refreshed on every SSO login based on the ``groups``
+    claim returned in the OIDC ID token or UserInfo response.  They are used
+    for portal-side authorisation decisions (tab visibility, API access).
+
+    Attributes:
+        name: Unique group name as it appears in Authentik.
+        description: Optional human-readable description.
+        source: Origin of the group — always ``"sso"`` today but allows for
+                future local-only groups.
+        users: Many-to-many relationship with :class:`User` via
+               :data:`user_group_association`.
+    """
+    __tablename__ = "sso_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    source = Column(String(50), default="sso", nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+
+    users = relationship("User", secondary=user_group_association, back_populates="groups")
+
+    __table_args__ = (
+        Index("idx_sso_group_name", "name"),
+    )
+
+    def __repr__(self):
+        return f"<SSOGroup(id={self.id}, name='{self.name}')>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialise the group for API responses."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "source": self.source,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "member_count": len(self.users) if self.users else 0,
+        }
+
+
+class UserSession(Base):
+    """
+    Persistent record of every portal session (both local and SSO logins).
+
+    Each row represents a JWT issued to a user.  Storing sessions enables:
+    * Admin visibility into who is currently logged in.
+    * Token revocation — mark ``is_active = False`` to invalidate a session
+      without waiting for JWT expiry.
+    * Login analytics — correlate session duration, frequency, and auth method.
+
+    Attributes:
+        token_hash: SHA-256 hash of the issued JWT (never store the raw token).
+        auth_method: ``"local"`` or ``"sso"``.
+        ip_address / user_agent: Client context captured at login time.
+        expires_at: When the JWT expires (matches the ``exp`` claim).
+        is_active: Allows manual revocation by admins.
+    """
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    auth_method = Column(String(50), nullable=False)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    user = relationship("User", back_populates="sessions")
+
+    __table_args__ = (
+        Index("idx_user_session_user_active", "user_id", "is_active"),
+        Index("idx_user_session_expires", "expires_at"),
+    )
+
+    def __repr__(self):
+        return f"<UserSession(id={self.id}, user_id={self.user_id}, active={self.is_active})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialise the session for API / admin responses."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "auth_method": self.auth_method,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "is_active": self.is_active,
+        }
+
+
+class TabPermission(Base):
+    """
+    Authorization rules for portal tabs.
+    
+    Maps a specific tab name to either a user or a group.
+    If a user or any of their groups has a permission for a tab, they can access it.
+    """
+    __tablename__ = "tab_permissions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    tab_name = Column(String(100), nullable=False, index=True)
+    
+    # Can be assigned to a user OR a group
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    group_id = Column(Integer, ForeignKey("sso_groups.id", ondelete="CASCADE"), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("User")
+    group = relationship("SSOGroup")
+    
+    __table_args__ = (
+        Index("idx_tab_permission_name", "tab_name"),
+    )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "tab_name": self.tab_name,
+            "user_id": self.user_id,
+            "group_id": self.group_id,
         }
 
 
