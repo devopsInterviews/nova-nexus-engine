@@ -213,68 +213,12 @@ class QueryResponse(BaseModel):
 async def startup_event():
     """
     Application startup initialization.
-    
-    This function runs when the FastAPI server starts and performs critical setup:
-    
-    1. **MCP Connection Setup**: Establishes connection to MCP server for AI model interactions
-       - Creates HTTP transport with timeout configuration
-       - Initializes MCP session for tool calling
-       - Logs connection status for monitoring
-    
-    2. **Database Initialization**: 
-       - Creates all database tables if they don't exist
-       - Sets up SQLAlchemy engine and session factory
-       - Ensures database schema is current
-    
-    3. **Analytics Service**: 
-       - Starts background monitoring tasks
-       - Initializes real-time metrics collection
-       - Sets up performance tracking for actual usage data
-    
-    4. **LLM Client Setup**: 
-       - Initializes the Language Model client for MCP interactions
-       - Makes it globally available for request handlers
-       - Configures timeout and retry settings
-    
-    Error Handling:
-    - MCP connection failures are logged but don't stop startup
-    - Database errors are logged with details
-    - Individual component failures are isolated
-    
-    Environment Dependencies:
-    - MCP_SERVER_URL: Must be accessible for MCP functionality
-    - Database connection: Required for data persistence
     """
     global _exit_stack, _mcp_session  # Access global variables for MCP connection management
     _exit_stack = AsyncExitStack()  # Create stack to manage multiple async context managers
     _mcp_session = None
 
-    if MCP_SERVER_URL:
-        try:
-            # Establish HTTP transport connection to MCP server
-            _http_transport = await _exit_stack.enter_async_context(
-                streamablehttp_client(
-                    MCP_SERVER_URL,  # Server URL from environment variable
-                    timeout = timedelta(seconds=600),  # 10 minute timeout for long operations
-                    sse_read_timeout = timedelta(seconds=600)  # Server-sent events read timeout
-                )
-            )
-            # Extract the read and write streams from the transport tuple
-            read_stream, write_stream, _ = _http_transport
-
-            # Create MCP client session using the established streams
-            _mcp_session = await _exit_stack.enter_async_context(
-                ClientSession(read_stream, write_stream)  # Pass streams for bidirectional communication
-            )
-            # Initialize the session to complete the MCP handshake
-            await _mcp_session.initialize()
-            _mcp_session._url = MCP_SERVER_URL
-            logger.info(f"MCP session initialized and connected to {MCP_SERVER_URL}")
-        except Exception as e:
-            logger.warning(f"Could not connect to MCP server at {MCP_SERVER_URL} during startup: {e}")
-            _mcp_session = None
-    else:
-        logger.info("MCP_SERVER_URL not provided, starting without MCP connection.")
+    logger.info("Starting without initial MCP connection. Connect dynamically via the Tests tab.")
 
     # Initialize the database by creating all tables defined in models.py
     init_db()
