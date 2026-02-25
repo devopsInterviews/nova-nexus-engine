@@ -1,0 +1,164 @@
+AI Portal (name TBD) — Phase 1 Design Narrative
+Why this exists
+The portal is meant to feel like a single “front door” for people who work with AI tooling, research tooling, and take action through agents and orchestrators that can reason over what they find and trigger automations across Jenkins, Bitbucket, Jira, Confluence, and more.. Phase 1 is about making it usable inside the company: people should be able to enter using company identity, the system should know who they are, and the portal should guide them toward what they need — whether that’s connecting a research tool like IDA, discovering available agents and MCP servers, or deploying their own agent safely.
+
+This page describes Phase 1 in a way that focuses on user experience, system flow, and what value it gives — not a deep technical guide.
+
+
+
+What Phase 1 will feel like
+A user opens the portal and sees two login paths. Local/system users (like admin) can still log in with credentials. Most users will use a new button: “Login with Company Credentials.” Clicking it redirects to Authentik, the user signs in, and returns to the portal already recognized.
+
+From that moment, the portal behaves like it knows the user: it greets them by name, shows only the tabs they are allowed to access, and captures usage and activity so admins can understand adoption, usage patterns, and ownership. Under the hood, Phase 1 makes the database the source of truth for identity, permissions, registrations, marketplace entries, deployments, and usage metrics — and it establishes a consistent ownership rule: users can manage/delete what they own; admins can manage/delete everything.
+
+
+
+Company login (SSO) and how the portal session works
+When we choose Company Login, Authentik authenticates us and returns a signed identity token that contains user properties (email, full name, groups, and other claims). The portal validates that token and then does two important things.
+
+First, it records the login and identity attributes in the database. This supports the admin view in Analytics: who logged in, when, how many times, and later, how portal activity correlates with usage and adoption.
+
+Second, the portal issues a portal-specific session token for the frontend (this matches what already exists in the code today): after the Authentik login succeeds, we still use the portal token (Authorization: Bearer <portal-token>) for all API calls. The token has an expiration controlled by configuration, and the token details are persisted so the system can manage session lifecycle cleanly.
+
+If this is the user’s first time, the portal automatically creates them in the users table using what came from Authentik (including group membership). If the user already exists, the portal refreshes identity fields and continues the login statistics and activity logging.
+
+The only configuration needed here is the Authentik OIDC connection (issuer/address plus client id/secret and redirect URL) and the portal’s own JWT signing and expiration settings — kept in .env so the portal can be deployed to different environments without code changes.
+
+ASCII flow — SSO login
+
+
+Browser
+  |
+  | Click "Login with Company Credentials"
+  v
+Portal UI  ---------------------->  Authentik
+  |                                  |
+  | <---------------------- redirect back (signed identity token)
+  v
+Portal Backend
+  |
+  | validate token -> upsert user/groups -> log login event -> issue portal token
+  v
+Portal UI (stores portal token; calls /api with Bearer token)
+
+
+Authorization and tab visibility (admin-managed users + groups)
+Phase 1 makes permissions explicit and manageable, not implicit and scattered.
+
+The portal will maintain users and groups in the database. Users are created/updated from Authentik on login. Groups are also derived from Authentik and stored so we can use them consistently for authorization. On top of those tables, Phase 1 adds a clear admin-only authorization experience: an admin can decide which portal areas (tabs/sections) are visible and which actions are allowed for both users and groups.
+
+In practice, this appears as an admin panel that includes a permissions matrix. The admin can assign access for features like Research, Marketplace, DevOps/Investigations, Analytics, BI, and Settings. The same underlying policy is enforced twice: the frontend uses it to render the sidebar and hide tabs that are not permitted, and the backend uses it to block API calls that should not be allowed (even if someone tries to call them directly).
+
+This makes the portal feel clean: users never see tabs they can’t use, and admins get a real control surface to govern the platform as adoption grows.
+
+
+
+Login -> portal knows user + groups
+            |
+            v
+DB permissions decide:
+  - which tabs appear in UI
+  - which API actions are allowed
+            |
+     +------|------+
+     |             |
+UI shows/hides   API allows/denies (403)
+
+
+Research tab (Phase 1 focus: IDA)
+Research is where we connect real researcher tooling to LLM workflows. The Research section contains multiple tool tabs, but Phase 1 intentionally focuses on IDA as the first complete experience. JADX and Ghidra appear as “Coming soon” to show direction without implying full support.
+
+The IDA page tells a simple truth: the IDA MCP server must run next to IDA on the researcher’s own workstation. The portal does not try to host IDA centrally. Instead, the portal makes the connection repeatable, supportable, and governable.
+
+The flow is described in the UI as a guided setup. We install the package via pip using a command we provide, run the package’s install/setup command, then configure the MCP address inside IDA. After the local side is ready, we return to the portal and register the workstation hostname and IDA port. Submitting this form updates the managed Nginx mapping layer (already implemented) and persists the registration to the DB so we can see status, ownership, and history.
+
+Next to that setup area, the page also supports the collaboration model: it points to the Bitbucket repository that produces the pip package, encourages contributions of tools and improvements, and shows version/changelog information so researchers can choose which package version to install.
+
+Finally, Phase 1 documents an optional next step: after registration, the portal can attempt to configure OpenWebUI/LibreChat so the MCP server appears inside the user’s chat environment — but only in a private way (visible only to that user or to a group that effectively contains only them). If the platform cannot guarantee per-user isolation, this step must remain optional and gated; the safe alternative is letting users configure the MCP server locally (e.g., in Cline) without publishing it to a shared central system.
+
+Ownership is explicit: IDA registrations are stored in the DB; users can delete their own registration (which removes both DB record and Nginx mapping), and admins can delete any user’s registration.
+
+
+
+Workstation (IDA)
+  |
+  | pip install + setup command + configure plugin
+  v
+IDA MCP server runs locally (host:port)
+  |
+  | register host + port in Portal UI
+  v
+Portal Backend
+  |  - save registration in DB (owned by user)
+  |  - write Nginx route mapping (stable URL -> user host:port)
+  |  - optionally configure central chat tool entry (private to user)
+  v
+Nginx (managed)  --->  Stable per-user route  --->  Workstation MCP
+Marketplace (agents + MCP servers) and how usage is measured
+The Marketplace is how we avoid “tribal knowledge.” It’s where we can discover what agents and MCP servers exist, who owns them, what they are good for, and how to use them.
+
+Entries are presented as cards with the essentials (name, owner/maintainer, address, version, and optional icon). Clicking into an entry opens a full details view: what it does, when to use it, how it works at a high level, where the Bitbucket repo lives, and for MCP servers, which tools are exposed.
+
+Phase 1 also introduces usage visibility. Each marketplace entry can expose a lightweight usage reporting mechanism: whenever an agent or MCP server is called, it can notify the portal (either directly, or via the gateway/orchestrator layer) so the portal increments a usage counter and records “last used” information. This makes adoption measurable, helps users pick the right tool (sorting/filtering by popularity becomes meaningful), and helps owners understand whether their work is being used.
+
+Like everything else in Phase 1, marketplace data is stored in the DB and follows the ownership model: users can delete or manage entries they own; admins can manage any entry.
+
+ASCII flow — usage reporting
+User calls Agent/MCP
+       |
+       v
+Agent/MCP runs task (with reasoning + evidence)
+       |
+       | report usage (+ optionally metadata)
+       v
+Portal API -> DB updates:
+  - usage_count += 1
+  - last_used timestamp
+  - optional analytics event (for dashboards)
+Build and Deploy (agents and MCP servers) with infra governance
+Phase 1 makes “creating something” and “running something” first-class workflows, but it does so in a way that respects enterprise constraints.
+
+Build Agent is presented as a guided creation flow. We choose a name, and the system creates a new Bitbucket repo from a standard template that already includes Python code structure, .env scaffolding, Dockerfile, and Helm chart. Placeholder fields like __appname__ are replaced automatically. Permissions are applied so everyone can collaborate via PRs, but only the owner can merge (admins can override). At the same time, the system creates a multibranch pipeline so the repo immediately has a standardized CI path.
+
+Deploy Agent is where infra integration becomes explicit. The portal does not deploy charts directly; instead, it triggers the infra deployment mechanism with the user’s identity context. The deployment request includes enough information for infra to deploy into the correct namespace/project and to apply the correct quota/policy. Phase 1 intentionally documents an open decision here: deployments can be triggered either by calling an infra API server or by triggering an infra-owned Jenkins job. The portal supports both patterns; the organization chooses the one that best matches existing guardrails and ownership boundaries.
+
+The portal also introduces lifecycle rules that keep the cluster clean: versions that are not main/master/release are treated as temporary by default and automatically deleted after a configured TTL (for example 10 days). That TTL is configured centrally and presented in the UI so the behavior is predictable.
+
+After deployment succeeds, the portal records the deployment in the DB so it appears in the marketplace and in “My Deployments.” Users can delete their own deployments from the UI, and admins can delete anything.
+
+
+
+ASCII flow — Build Agent
+Portal UI (Build Agent)
+   |
+   v
+Create template repo in Bitbucket -> replace placeholders -> set permissions
+   |
+   v
+Create multibranch pipeline (CI)
+   |
+   v
+Repo becomes ready for changes + PR workflow
+ASCII flow — Deploy Agent via infra
+Portal UI (Deploy Agent)
+   |
+   v
+Portal Backend gathers context:
+  - user + groups
+  - project/namespace mapping
+  - quota/policy context
+  - chart + version + TTL policy
+   |
+   v
+Trigger infra deployment (API server OR Jenkins job)
+   |
+   v
+Infra deploys Helm chart into correct namespace with quota
+   |
+   v
+Portal DB updated -> Marketplace/Deployments reflect status
+
+
+Home page: guidance, not just metrics
+Phase 1 makes Home feel like a welcome page and a navigator. It includes the portal identity (logo/name), a greeting using the authenticated username, and lightweight personal stats (last login, activity highlights, owned deployments, recently used tools). More importantly, it offers curated next steps such as “Connect IDA,” “Browse Marketplace,” or “Investigate a pipeline issue,” and those cards link directly to the relevant Confluence documentation pages so the portal and docs reinforce each other.
+
