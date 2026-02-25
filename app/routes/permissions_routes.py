@@ -44,13 +44,11 @@ async def get_permissions(
     Get current tab permissions for all users and groups.
     """
     try:
-        tabs = ['Home', 'DevOps', 'BI', 'Analytics', 'Tests', 'Users', 'Settings', 'Admin']
-        
         # Get all permissions from DB
         all_perms = db.query(TabPermission).all()
         
         # Build the response structure
-        permissions = {tab: {"users": [], "groups": []} for tab in tabs}
+        permissions = {}
         
         for p in all_perms:
             if p.tab_name not in permissions:
@@ -132,25 +130,8 @@ async def get_user_permissions(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Determine allowed tabs
-        allowed_tabs = []
-        if user.is_admin or user.username == 'admin':
-            allowed_tabs = ['Home', 'DevOps', 'BI', 'Analytics', 'Tests', 'Users', 'Settings', 'Admin']
-        else:
-            group_ids = [g.id for g in user.groups] if user.groups else []
-            
-            # Query TabPermission for this user or their groups
-            perms = db.query(TabPermission).filter(
-                (TabPermission.user_id == user.id) |
-                (TabPermission.group_id.in_(group_ids))
-            ).all()
-            
-            # Use a set to avoid duplicates
-            allowed_tabs = list(set([p.tab_name for p in perms]))
-            
-            # Everyone gets Home by default
-            if 'Home' not in allowed_tabs:
-                allowed_tabs.append('Home')
+        from app.routes.auth_routes import get_user_allowed_tabs
+        allowed_tabs = get_user_allowed_tabs(user, db)
         
         return {
             "status": "success",

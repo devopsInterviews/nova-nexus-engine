@@ -45,6 +45,8 @@ spec:
               value: "{{ .Values.auth.accessTokenExpireMinutes | default 120 }}"
             - name: ADMIN_PASSWORD
               value: "{{ .Values.auth.admin.password }}"
+            - name: DEFAULT_ALLOWED_TABS
+              value: "{{ .Values.defaultAllowedTabs | default "Home,Settings" }}"
             # SSO / OIDC (Authentik)
             - name: SSO_ENABLED
               value: "{{ .Values.sso.enabled }}"

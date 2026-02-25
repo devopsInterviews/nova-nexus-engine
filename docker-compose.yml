@@ -50,6 +50,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production-please}
       SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production-please}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+      DEFAULT_ALLOWED_TABS: ${DEFAULT_ALLOWED_TABS:-Home,Settings}
       
       # SSO / OIDC (Authentik)
       SSO_ENABLED: ${SSO_ENABLED:-false}

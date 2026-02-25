@@ -51,6 +51,10 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+import os
+
+DEFAULT_ALLOWED_TABS = [t.strip() for t in os.getenv("DEFAULT_ALLOWED_TABS", "Home,Settings").split(",")]
+
 class UserResponse(BaseModel):
     """Pydantic model for user data returned by the API."""
     id: int
@@ -84,8 +88,9 @@ def get_user_allowed_tabs(user: User, db: Session) -> list[str]:
     ).all()
     
     allowed_tabs = list(set([p.tab_name for p in perms]))
-    if 'Home' not in allowed_tabs:
-        allowed_tabs.append('Home')
+    for dt in DEFAULT_ALLOWED_TABS:
+        if dt not in allowed_tabs:
+            allowed_tabs.append(dt)
     
     return allowed_tabs
 

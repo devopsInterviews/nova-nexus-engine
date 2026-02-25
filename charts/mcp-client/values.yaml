@@ -145,6 +145,9 @@ auth:
     password: "admin123"  # Change this immediately after first login!
     email: "admin@mcp-client.local"
 
+# Default tabs allowed for non-admin users
+defaultAllowedTabs: "Home,Settings"
+
 # SSO / OIDC Configuration (Authentik)
 # When enabled users see a "Login with Company Credentials" button that
 # redirects to Authentik for authentication.  Local login remains available.

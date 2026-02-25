@@ -26,14 +26,14 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useAuth } from "@/context/auth-context";
 
-type NavigationItem = {
+export type NavigationItem = {
   title: string;
   url: string;
   icon: any;
   adminOnly?: boolean;
 };
 
-const navigationItems: NavigationItem[] = [
+export const navigationItems: NavigationItem[] = [
   {
     title: "Home",
     url: "/",
