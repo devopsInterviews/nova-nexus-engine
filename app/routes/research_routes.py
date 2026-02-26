@@ -39,6 +39,7 @@ from app.services.k8s_controller import (
 )
 from app.services.artifactory_client import (
     get_mcp_versions as get_mcp_versions_from_artifactory,
+    get_pypi_versions,
     is_artifactory_enabled,
 )
 
@@ -58,12 +59,10 @@ FALLBACK_MCP_VERSIONS = os.getenv(
 FALLBACK_MCP_VERSIONS = [v.strip() for v in FALLBACK_MCP_VERSIONS if v.strip()]
 
 logger.info(f"[RESEARCH] Fallback MCP versions: {FALLBACK_MCP_VERSIONS}")
-logger.info(f"[RESEARCH] Artifactory integration enabled: {is_artifactory_enabled()}")
-
 
 def get_allowed_versions() -> List[str]:
-    """Get allowed MCP versions - from Artifactory or fallback."""
-    versions, default, error = get_mcp_versions_from_artifactory(use_cache=True)
+    """Get allowed MCP versions - from PyPI or fallback."""
+    versions, default, error = get_pypi_versions(use_cache=True)
     if versions:
         return versions
     return FALLBACK_MCP_VERSIONS
@@ -95,6 +94,12 @@ class McpVersionsResponse(BaseModel):
     """Response model for MCP versions list."""
     versions: List[str]
     default_version: str
+    pip_cmd_base: str
+    openwebui_url: str
+    mcp_nginx_dns: str
+    infra_api_server: str
+    bitbucket_url: str = ""
+    changelog_content: str = ""
 
 
 class IdaBridgeDeployRequest(BaseModel):
@@ -329,18 +334,33 @@ def log_audit_action(
 
 @router.get("/mcp/versions", response_model=McpVersionsResponse)
 async def get_mcp_versions(current_user: User = Depends(get_current_user)):
-    """Get list of allowed MCP server versions (from Artifactory or fallback)."""
+    """Get list of allowed MCP server versions (from PyPI or fallback) and configuration."""
     logger.info(f"[RESEARCH] User {current_user.id} ({current_user.username}) requesting MCP versions")
     
-    # Fetch versions from Artifactory (with caching) or fallback
-    versions, default_version, error = get_mcp_versions_from_artifactory(use_cache=True)
+    # Fetch versions from PyPI (with caching) or fallback
+    versions, default_version, error = get_pypi_versions(use_cache=True)
     
     if error:
-        logger.warning(f"[RESEARCH] Artifactory fetch had error: {error}, using fallback versions")
+        logger.warning(f"[RESEARCH] PyPI fetch had error: {error}, using fallback versions")
+        
+    changelog_content = ""
+    changelog_path = os.getenv("CHANGELOG_PATH", "CHANGELOG.md")
+    if os.path.exists(changelog_path):
+        try:
+            with open(changelog_path, "r", encoding="utf-8") as f:
+                changelog_content = f.read()
+        except Exception as e:
+            logger.error(f"[RESEARCH] Error reading changelog: {e}")
     
     response = McpVersionsResponse(
         versions=versions if versions else FALLBACK_MCP_VERSIONS,
-        default_version=default_version if default_version else (FALLBACK_MCP_VERSIONS[-1] if FALLBACK_MCP_VERSIONS else "latest")
+        default_version=default_version if default_version else (FALLBACK_MCP_VERSIONS[-1] if FALLBACK_MCP_VERSIONS else "latest"),
+        pip_cmd_base=os.getenv("PIP_INSTALL_CMD_BASE", "pip install my-company-ida-mcp-plugin"),
+        openwebui_url=os.getenv("OPENWEBUI_URL", "https://chat.company.internal"),
+        mcp_nginx_dns=os.getenv("MCP_NGINX_DNS", "https://mcp-gateway.company.internal"),
+        infra_api_server=os.getenv("INFRA_API_SERVER", "infra-api.company.internal"),
+        bitbucket_url=os.getenv("BITBUCKET_IDA_MCP_REPO", "https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp"),
+        changelog_content=changelog_content
     )
     
     logger.debug(f"[RESEARCH] Returning versions: {response.versions}, default: {response.default_version}")

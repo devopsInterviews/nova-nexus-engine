@@ -695,6 +695,12 @@ export interface DeployResponse {
 export interface McpVersionsResponse {
   versions: string[];                     // Available MCP server versions
   default_version: string;                // Default/recommended version
+  pip_cmd_base: string;
+  openwebui_url: string;
+  mcp_nginx_dns: string;
+  infra_api_server: string;
+  bitbucket_url: string;
+  changelog_content: string;
 }
 
 /**

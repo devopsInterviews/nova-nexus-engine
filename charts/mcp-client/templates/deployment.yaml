@@ -82,10 +82,18 @@ spec:
               value: "{{ .Values.idaMcp.k8s.mcpServerHealthPath | default "/" }}"
             - name: IDA_MCP_SERVICE_NETWORK_POOL
               value: "{{ .Values.service.networkPool }}"
-            - name: ALLOWED_MCP_VERSIONS
-              value: "{{ .Values.idaMcp.allowedVersions }}"
-            - name: ALLOWED_HOSTNAME_PATTERNS
-              value: "{{ .Values.idaMcp.allowedHostnamePatterns }}"
+          - name: ALLOWED_MCP_VERSIONS
+            value: "{{ .Values.idaMcp.allowedVersions }}"
+          - name: PIP_INSTALL_CMD_BASE
+            value: "{{ .Values.idaMcp.pipInstallCmdBase }}"
+          - name: OPENWEBUI_URL
+            value: "{{ .Values.idaMcp.openwebuiUrl }}"
+          - name: MCP_NGINX_DNS
+            value: "{{ .Values.idaMcp.mcpNginxDns }}"
+          - name: INFRA_API_SERVER
+            value: "{{ .Values.idaMcp.infraApiServer }}"
+          - name: ALLOWED_HOSTNAME_PATTERNS
+            value: "{{ .Values.idaMcp.allowedHostnamePatterns }}"
             - name: PROXY_PORT_MIN
               value: "{{ .Values.idaMcp.proxyPortMin }}"
             - name: PROXY_PORT_MAX

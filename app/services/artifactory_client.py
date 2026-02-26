@@ -27,6 +27,11 @@ ARTIFACTORY_ENABLED = os.getenv("ARTIFACTORY_ENABLED", "false").lower() == "true
 ARTIFACTORY_URL = os.getenv("ARTIFACTORY_URL", "")  # e.g., https://artifactory.company.internal
 ARTIFACTORY_REPO = os.getenv("ARTIFACTORY_REPO", "docker-local")  # Docker repository name
 ARTIFACTORY_IMAGE = os.getenv("ARTIFACTORY_IMAGE", "ida-pro-mcp")  # Image name (can include path like "repo/image")
+
+# PyPI specific configuration in Artifactory
+ARTIFACTORY_PYPI_REPO = os.getenv("ARTIFACTORY_PYPI_REPO", "pypi-local")
+ARTIFACTORY_PYPI_PACKAGE = os.getenv("ARTIFACTORY_PYPI_PACKAGE", "ida-pro-mcp")
+
 ARTIFACTORY_USERNAME = os.getenv("ARTIFACTORY_USERNAME", "")
 ARTIFACTORY_PASSWORD = os.getenv("ARTIFACTORY_PASSWORD", "")  # API key or password
 ARTIFACTORY_VERIFY_SSL = os.getenv("ARTIFACTORY_VERIFY_SSL", "true").lower() == "true"
@@ -114,7 +119,9 @@ class ArtifactoryClient:
         image: str = ARTIFACTORY_IMAGE,
         username: str = ARTIFACTORY_USERNAME,
         password: str = ARTIFACTORY_PASSWORD,
-        verify_ssl: bool = ARTIFACTORY_VERIFY_SSL
+        verify_ssl: bool = ARTIFACTORY_VERIFY_SSL,
+        pypi_repo: str = ARTIFACTORY_PYPI_REPO,
+        pypi_package: str = ARTIFACTORY_PYPI_PACKAGE
     ):
         # Normalize URL - remove trailing slash and /artifactory suffix if present
         # This ensures consistent URL construction
@@ -124,6 +131,8 @@ class ArtifactoryClient:
         
         self.repo = repo
         self.image = image
+        self.pypi_repo = pypi_repo
+        self.pypi_package = pypi_package
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
@@ -248,6 +257,68 @@ class ArtifactoryClient:
         
         return sorted(tags, key=tag_sort_key)
 
+    def get_pypi_tags(self, use_cache: bool = True) -> Tuple[List[str], Optional[str]]:
+        """
+        Fetch PyPI package versions from Artifactory using the PyPI JSON API.
+        
+        Args:
+            use_cache: Whether to use cached results if available
+            
+        Returns:
+            Tuple of (list of versions sorted newest first, error message if any)
+        """
+        global _version_cache
+        
+        if use_cache and _version_cache.is_valid():
+            logger.debug("[ARTIFACTORY] Returning cached PyPI versions")
+            return _version_cache.get(), None
+            
+        pypi_api_url = f"{self.base_url}/api/pypi/{self.pypi_repo}/pypi/{self.pypi_package}/json"
+        logger.info(f"[ARTIFACTORY] Trying PyPI API: {pypi_api_url}")
+        
+        try:
+            response = requests.get(
+                pypi_api_url,
+                auth=self._get_auth(),
+                verify=self.verify_ssl,
+                timeout=30
+            )
+            
+            if response.status_code == 404:
+                return [], f"Not found with path: {pypi_api_url}"
+                
+            response.raise_for_status()
+            
+            data = response.json()
+            releases = data.get("releases", {})
+            tags = list(releases.keys())
+            
+            if not tags:
+                logger.warning(f"[ARTIFACTORY] No tags found for PyPI package {self.pypi_package}")
+                return [], "No tags found"
+                
+            # Sort tags semantically, newest first
+            def sort_key(v):
+                parts = re.split(r'[.-]', v.lstrip('v'))
+                return [-int(p) if p.isdigit() else 0 for p in parts]
+                
+            try:
+                tags.sort(key=sort_key)
+            except Exception:
+                tags.sort(reverse=True)
+                
+            logger.info(f"[ARTIFACTORY] Found {len(tags)} PyPI versions: {tags[:5]}{'...' if len(tags) > 5 else ''}")
+            
+            _version_cache.set(tags)
+            return tags, None
+            
+        except requests.exceptions.RequestException as e:
+            return [], f"Request error: {str(e)}"
+        except ValueError as e:
+            return [], f"Parse error: {str(e)}"
+        except Exception as e:
+            return [], f"Unexpected error: {str(e)}"
+
 
 # ============================================================
 # Module-level Functions
@@ -275,7 +346,7 @@ def get_artifactory_client() -> Optional[ArtifactoryClient]:
 
 def get_mcp_versions(use_cache: bool = True) -> Tuple[List[str], str, Optional[str]]:
     """
-    Get available MCP server versions.
+    Get available MCP server versions (Docker tags).
     
     Tries Artifactory first, falls back to FALLBACK_VERSIONS if unavailable.
     
@@ -299,6 +370,35 @@ def get_mcp_versions(use_cache: bool = True) -> Tuple[List[str], str, Optional[s
     
     # Default to 'latest' if available, otherwise first version
     default = "latest" if "latest" in versions else (versions[0] if versions else "latest")
+    
+    return versions, default, None
+
+
+def get_pypi_versions(use_cache: bool = True) -> Tuple[List[str], str, Optional[str]]:
+    """
+    Get available PyPI package versions.
+    
+    Tries Artifactory PyPI API first, falls back to FALLBACK_VERSIONS if unavailable.
+    
+    Args:
+        use_cache: Whether to use cached results
+        
+    Returns:
+        Tuple of (versions list, default version, error message if any)
+    """
+    client = get_artifactory_client()
+    
+    if client is None:
+        logger.debug("[ARTIFACTORY] Using fallback versions for PyPI (Artifactory disabled)")
+        return FALLBACK_VERSIONS, FALLBACK_VERSIONS[0] if FALLBACK_VERSIONS else "latest", None
+        
+    versions, error = client.get_pypi_tags(use_cache=use_cache)
+    
+    if not versions:
+        logger.warning(f"[ARTIFACTORY] PyPI fetch failed, using fallback. Error: {error}")
+        return FALLBACK_VERSIONS, FALLBACK_VERSIONS[0] if FALLBACK_VERSIONS else "latest", error
+        
+    default = versions[0] if versions else "latest"
     
     return versions, default, None
 

@@ -22,6 +22,7 @@ from app.services.k8s_controller import (
 
 from app.services.artifactory_client import (
     get_mcp_versions as get_mcp_versions_from_artifactory,
+    get_pypi_versions,
     invalidate_version_cache,
     is_artifactory_enabled,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "update_proxy_config_remove",
     "reload_nginx_proxy",
     "get_mcp_versions_from_artifactory",
+    "get_pypi_versions",
     "invalidate_version_cache",
     "is_artifactory_enabled",
 ]

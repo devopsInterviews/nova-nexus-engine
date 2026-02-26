@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,10 +48,14 @@ import {
   Info,
   ExternalLink,
   Clock,
-  Network
+  Network,
+  GitBranch,
+  Terminal,
+  BookOpen
 } from "lucide-react";
 import { researchService, IdaBridgeConfig, IdaBridgeStatus, McpVersionsResponse } from "@/lib/api-service";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 
 /**
  * Status badge variant mapping based on deployment status
@@ -87,11 +91,14 @@ export default function Research() {
   // Dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const [showChangelogDialog, setShowChangelogDialog] = useState(false);
   const [newVersionForUpgrade, setNewVersionForUpgrade] = useState("");
   const [versionSearch, setVersionSearch] = useState("");
   const [upgradeVersionSearch, setUpgradeVersionSearch] = useState("");
+  const [isProvisioningMcp, setIsProvisioningMcp] = useState(false);
 
   const { toast } = useToast();
+  const { user } = useAuth();
 
   /**
    * Load initial data: MCP versions, existing config, and status
@@ -293,6 +300,55 @@ export default function Research() {
   };
 
   /**
+   * Provision MCP server in OpenWebUI using infrastructure API
+   */
+  const handleProvisionMcp = async () => {
+    if (!status?.mcp_endpoint_url && !config?.mcp_endpoint_url) return;
+    if (!versions?.infra_api_server || !versions?.mcp_nginx_dns || !user?.email) {
+      toast({
+        title: "Configuration Error",
+        description: "Missing required configuration for MCP provisioning.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsProvisioningMcp(true);
+    try {
+      const response = await fetch(`http://${versions.infra_api_server}/add-mcp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: user.email,
+          mcp_id: `ida-mcp-${user.id}-${config?.id || Date.now()}`,
+          mcp_name: `IDA MCP - ${config?.hostname_fqdn || hostname}`,
+          mcp_url: `${versions.mcp_nginx_dns}/mcp`,
+          description: `Personal IDA MCP connection for ${user.username}`,
+          auth_type: "none",
+          key: ""
+        })
+      });
+
+      if (!response.ok) throw new Error("Failed to provision MCP in OpenWebUI");
+
+      toast({
+        title: "Success",
+        description: "MCP server provisioned in OpenWebUI.",
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to provision MCP",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProvisioningMcp(false);
+    }
+  };
+
+  /**
    * Copy MCP URL to clipboard
    */
   const handleCopyUrl = async () => {
@@ -346,14 +402,45 @@ export default function Research() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
+        className="flex flex-col md:flex-row md:items-start justify-between gap-4"
       >
-        <h1 className="text-3xl font-bold gradient-text mb-2 flex items-center gap-3">
-          <Search className="w-8 h-8" />
-          Research
-        </h1>
-        <p className="text-muted-foreground">
-          Connect Open WebUI to your local IDA instance via MCP server
-        </p>
+        <div>
+          <h1 className="text-3xl font-bold gradient-text mb-2 flex items-center gap-3">
+            <Search className="w-8 h-8" />
+            Research (Phase 1: IDA)
+          </h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Research is where we connect real researcher tooling to LLM workflows. The portal does not try to host IDA centrally. Instead, the portal makes the connection repeatable, supportable, and governable. <span className="text-xs opacity-75">(JADX & Ghidra coming soon)</span>
+          </p>
+        </div>
+        
+        {/* Bitbucket Repository Link Box */}
+        <Card className="glass border-border/50 max-w-sm w-full md:w-auto shrink-0">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+              <GitBranch className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h4 className="font-medium text-sm">Contribute to the Plugin</h4>
+              <a 
+                href={versions?.bitbucket_url || "https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp"}
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+              >
+                View on Bitbucket <ExternalLink className="w-3 h-3" />
+              </a>
+              {versions?.changelog_content && (
+                <button
+                  onClick={() => setShowChangelogDialog(true)}
+                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1 bg-transparent border-none p-0 cursor-pointer"
+                >
+                  View Changelog <BookOpen className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Error Alert */}
@@ -387,12 +474,12 @@ export default function Research() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Plug className="w-5 h-5 text-primary" />
-                  {hasConfig && isDeployed ? "Update IDA Connection" : "Deploy IDA Connection"}
+                  {hasConfig && isDeployed ? "Update IDA Connection" : "Connect Workstation"}
                 </CardTitle>
                 <CardDescription>
                   {hasConfig && isDeployed
-                    ? "Modify your workstation connection settings and redeploy"
-                    : "Configure your workstation to enable IDA integration through MCP"
+                    ? "Modify your workstation connection settings and reconnect"
+                    : "Register your workstation hostname and port to establish the bridge."
                   }
                 </CardDescription>
               </div>
@@ -408,32 +495,34 @@ export default function Research() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Configuration Form */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Hostname Field */}
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="hostname">Workstation Hostname (FQDN)</Label>
-                <Input
-                  id="hostname"
-                  placeholder="mypc.corp.example.com or localhost"
-                  value={hostname}
-                  onChange={(e) => setHostname(e.target.value)}
-                  disabled={isLoading || isDeploying || isDeleting || isUpgrading}
-                />
-              </div>
+            <div className="grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Hostname Field */}
+                <div className="space-y-2">
+                  <Label htmlFor="hostname">Workstation Hostname (FQDN)</Label>
+                  <Input
+                    id="hostname"
+                    placeholder="mypc.corp.example.com or localhost"
+                    value={hostname}
+                    onChange={(e) => setHostname(e.target.value)}
+                    disabled={isLoading || isDeploying || isDeleting || isUpgrading}
+                  />
+                </div>
 
-              {/* IDA Port Field */}
-              <div className="space-y-2">
-                <Label htmlFor="ida-port">IDA Plugin Port</Label>
-                <Input
-                  id="ida-port"
-                  type="number"
-                  placeholder="9100"
-                  min={1024}
-                  max={65535}
-                  value={idaPort}
-                  onChange={(e) => setIdaPort(e.target.value ? parseInt(e.target.value) : "")}
-                  disabled={isLoading || isDeploying || isDeleting || isUpgrading}
-                />
+                {/* IDA Port Field */}
+                <div className="space-y-2">
+                  <Label htmlFor="ida-port">IDA Plugin Port</Label>
+                  <Input
+                    id="ida-port"
+                    type="number"
+                    placeholder="13337"
+                    min={1024}
+                    max={65535}
+                    value={idaPort}
+                    onChange={(e) => setIdaPort(e.target.value ? parseInt(e.target.value) : "")}
+                    disabled={isLoading || isDeploying || isDeleting || isUpgrading}
+                  />
+                </div>
               </div>
 
               {/* MCP Version Select - with search */}
@@ -473,20 +562,36 @@ export default function Research() {
               </div>
             </div>
 
-            {/* Deploy Button */}
+            {/* Connect Button */}
             <Button
               onClick={handleDeploy}
               disabled={isLoading || isDeploying || isDeleting || isUpgrading || !hostname || !idaPort || !mcpVersion}
-              className="w-full bg-gradient-primary"
+              className="w-full bg-gradient-primary mt-4"
               size="lg"
             >
               {isDeploying ? (
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
               ) : (
-                <Rocket className="w-4 h-4 mr-2" />
+                <Network className="w-4 h-4 mr-2" />
               )}
-              {hasConfig && isDeployed ? "Update & Redeploy" : "Deploy MCP Server"}
+              {hasConfig && isDeployed ? "Update & Reconnect" : "Connect"}
             </Button>
+            
+            <div className="flex justify-between items-center pt-4 border-t mt-4">
+              <span className="text-sm font-medium">Auto-Provision in Chat</span>
+              <Button 
+                onClick={handleProvisionMcp} 
+                disabled={isProvisioningMcp || !isDeployed}
+                className="bg-gradient-primary shadow-sm h-9"
+              >
+                {isProvisioningMcp ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4 mr-2" />
+                )}
+                Add to OpenWebUI
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -494,32 +599,118 @@ export default function Research() {
         <Card className="glass border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Info className="w-5 h-5 text-primary" />
-              Quick Setup
+              <BookOpen className="w-5 h-5 text-primary" />
+              Installation & Setup
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-3 text-sm">
-              <div className="flex gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">1</span>
-                <p className="text-muted-foreground">Install IDA MCP plugin on your workstation</p>
+            <div className="space-y-4 text-sm">
+              <div className="bg-surface/50 p-3 rounded-lg border">
+                <h4 className="font-semibold mb-2 text-primary">Prerequisites</h4>
+                <ul className="list-disc pl-4 space-y-1 text-muted-foreground text-xs">
+                  <li>Python (3.11 or higher)</li>
+                  <li>Use <code className="bg-muted px-1 py-0.5 rounded">idapyswitch</code> to switch to the newest Python version</li>
+                  <li>IDA Pro (8.3 or higher, 9 recommended). <em>IDA Free is not supported.</em></li>
+                </ul>
               </div>
-              <div className="flex gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">2</span>
-                <p className="text-muted-foreground">Allow firewall for your IDA port</p>
-              </div>
-              <div className="flex gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">3</span>
-                <p className="text-muted-foreground">Enter hostname & port, then Deploy</p>
-              </div>
-              <div className="flex gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">4</span>
-                <p className="text-muted-foreground">Copy MCP URL to Open WebUI Settings</p>
+
+              <div className="space-y-3">
+                <div className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary">1</span>
+                  <div className="space-y-2 w-full">
+                    <p className="text-muted-foreground font-medium">Install the plugin via pip</p>
+                    <div className="flex gap-2">
+                      <Input 
+                        readOnly 
+                        value={versions?.pip_cmd_base && mcpVersion ? `${versions.pip_cmd_base}==${mcpVersion}` : "Loading..."} 
+                        className="font-mono text-xs h-8 bg-muted" 
+                      />
+                      <Button 
+                        size="icon" 
+                        variant="outline" 
+                        className="h-8 w-8 flex-shrink-0"
+                        onClick={() => {
+                          if (versions?.pip_cmd_base && mcpVersion) {
+                            navigator.clipboard.writeText(`${versions.pip_cmd_base}==${mcpVersion}`);
+                            toast({ title: "Copied pip command" });
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary">2</span>
+                  <div className="space-y-2 w-full">
+                    <p className="text-muted-foreground font-medium">Run setup command</p>
+                    <div className="flex gap-2">
+                      <Input readOnly value="ida-pro-mcp --install" className="font-mono text-xs h-8 bg-muted" />
+                      <Button 
+                        size="icon" 
+                        variant="outline" 
+                        className="h-8 w-8 flex-shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText("ida-pro-mcp --install");
+                          toast({ title: "Copied setup command" });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="text-xs text-yellow-500 mt-1">
+                      <strong>Important:</strong> Make sure you completely restart IDA after running this command.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary">3</span>
+                  <div>
+                    <p className="text-muted-foreground font-medium">Start the server in IDA</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Open any file in IDA, then navigate to:
+                    </p>
+                    <div className="font-mono bg-muted px-2 py-1 rounded inline-block mt-2 text-xs">Edit &rarr; Plugins &rarr; MCP</div>
+                  </div>
+                </div>
+                
+                <div className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary">4</span>
+                  <div>
+                    <p className="text-muted-foreground font-medium">Register connection</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enter your workstation hostname and the port shown in IDA in the form on the left, then click Connect.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="pt-3 border-t text-xs text-muted-foreground">
-              <p><strong>Tip:</strong> Use your machine's FQDN, not IP address. Check DNS resolves correctly.</p>
+            <div className="pt-4 border-t space-y-3">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-primary" /> 
+                Local Client Alternative
+              </h4>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                If you prefer to connect a local client like Cline instead of using the portal, you can directly configure it to communicate with the local server:
+              </p>
+              <div className="flex gap-2">
+                <Input readOnly value="http://localhost:13337" className="font-mono text-xs h-8 bg-muted" />
+                <Button 
+                  size="icon" 
+                  variant="outline" 
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText("http://localhost:13337");
+                    toast({ title: "Copied localhost URL" });
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -589,32 +780,52 @@ export default function Research() {
                   )}
                 </div>
 
-                {/* MCP URL (when deployed) */}
+                {/* MCP URL & Provisioning (when deployed) */}
                 {isDeployed && mcpUrl && (
-                  <div className="space-y-2">
-                    <Label>MCP Server URL (add this to Open WebUI)</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={mcpUrl}
-                        readOnly
-                        className="font-mono text-sm bg-muted"
-                      />
-                      <Button
-                        onClick={handleCopyUrl}
-                        variant="outline"
-                        size="icon"
-                      >
-                        {copied ? (
-                          <Check className="w-4 h-4 text-green-500" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </Button>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>MCP Server URL</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={mcpUrl}
+                          readOnly
+                          className="font-mono text-sm bg-muted"
+                        />
+                        <Button
+                          onClick={handleCopyUrl}
+                          variant="outline"
+                          size="icon"
+                        >
+                          {copied ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <ExternalLink className="w-3 h-3" />
-                      Open WebUI → Settings → Connections → MCP Servers → Add Streamable HTTP
-                    </p>
+
+                    <div className="bg-surface/50 p-4 rounded-lg border space-y-3">
+                      <h4 className="font-semibold text-sm flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-primary" />
+                        Use in OpenWebUI
+                      </h4>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        To use this connection, it must be added to your OpenWebUI profile. 
+                        You can do this automatically or manually.
+                      </p>
+                      
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <Button 
+                          variant="outline" 
+                          className="w-full"
+                          onClick={() => window.open(versions?.openwebui_url || "https://chat.company.internal", "_blank")}
+                        >
+                          <ExternalLink className="w-4 h-4 mr-2" />
+                          Open WebUI Manually
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -756,6 +967,28 @@ export default function Research() {
             >
               <ArrowUp className="w-4 h-4 mr-2" />
               Upgrade
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Changelog Dialog */}
+      <Dialog open={showChangelogDialog} onOpenChange={setShowChangelogDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Changelog</DialogTitle>
+            <DialogDescription>
+              Recent updates and changes to the IDA MCP Plugin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 p-4 bg-muted rounded-md overflow-x-auto">
+            <pre className="text-sm whitespace-pre-wrap font-mono">
+              {versions?.changelog_content || "No changelog available."}
+            </pre>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChangelogDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

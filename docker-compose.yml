@@ -69,9 +69,11 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_SSL_VERIFY: ${LLM_SSL_VERIFY:-true}
       
-      # Environment
-      ENVIRONMENT: production
-      DEBUG: ${DEBUG:-false}
+      # Research / IDA Configuration
+      PIP_INSTALL_CMD_BASE: ${PIP_INSTALL_CMD_BASE:-"pip install my-company-ida-mcp-plugin"}
+      OPENWEBUI_URL: ${OPENWEBUI_URL:-"https://chat.company.internal"}
+      MCP_NGINX_DNS: ${MCP_NGINX_DNS:-"https://mcp-gateway.company.internal"}
+      INFRA_API_SERVER: ${INFRA_API_SERVER:-"infra-api.company.internal"}
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:
