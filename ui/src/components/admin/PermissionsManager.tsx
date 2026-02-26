@@ -20,6 +20,7 @@ interface Permissions {
 interface User {
   id: number;
   username: string;
+  is_admin?: boolean;
 }
 
 interface Group {
@@ -73,7 +74,9 @@ export function PermissionsManager() {
       setPermissions(initialPermissions);
       
       if (uData.status === 'success' && uData.data && uData.data.users) {
-        setUsers(uData.data.users.filter((u: User) => u.username !== 'admin'));
+        // Filter out the main admin user, and any user marked as is_admin
+        // This ensures admins (who implicitly have all permissions) cannot have their access revoked
+        setUsers(uData.data.users.filter((u: User) => u.username !== 'admin' && !u.is_admin));
       }
       setGroups(gData.groups || []);
       
