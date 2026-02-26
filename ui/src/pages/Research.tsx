@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { researchService, IdaBridgeConfig, IdaBridgeStatus, McpVersionsResponse } from "@/lib/api-service";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/auth-context";
+import { useAuth } from "@/context/auth-context";
 
 /**
  * Status badge variant mapping based on deployment status

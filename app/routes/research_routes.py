@@ -497,12 +497,90 @@ async def deploy_ida_bridge(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Kubernetes deployment failed: {k8s_message}"
             )
+            
+        # Write to proxy config
+        logger.info(f"[RESEARCH] Writing proxy port config")
+        from app.services.k8s_controller import update_proxy_config_add, reload_nginx_proxy
+        proxy_success, proxy_msg = update_proxy_config_add(
+            proxy_port=connection.proxy_port,
+            upstream_host=config.hostname_fqdn,
+            upstream_port=config.ida_port,
+            user_id=current_user.id,
+            username=current_user.username
+        )
+        
+        if not proxy_success:
+            logger.error(f"[RESEARCH] Proxy config update failed: {proxy_msg}")
+            
+        # Trigger reload of Nginx (only if not using GitOps which will sync automatically)
+        from app.services.bitbucket_client import BITBUCKET_ENABLED
+        if not BITBUCKET_ENABLED:
+            reload_nginx_proxy()
+            
+        # Register the new MCP server with the infrastructure API
+        infra_api_server = os.getenv("INFRA_API_SERVER")
+        mcp_nginx_dns = os.getenv("MCP_NGINX_DNS")
+        if infra_api_server and mcp_nginx_dns:
+            logger.info(f"[RESEARCH] Registering MCP server with infra API: {infra_api_server}")
+            try:
+                import requests
+                
+                # Make sure mcp_nginx_dns is a proper URL without trailing slash
+                nginx_url = mcp_nginx_dns.rstrip('/')
+                if not nginx_url.startswith('http'):
+                    nginx_url = f"http://{nginx_url}"
+                
+                # NGINX proxy runs as a kubernetes service. The user connects directly to 
+                # a specific port that maps to their workstation.
+                mcp_url = f"{nginx_url}:{connection.proxy_port}/"
+                
+                infra_payload = {
+                    "username": current_user.email or current_user.username,
+                    "mcp_id": f"ida-mcp-{current_user.id}-{connection.id}",
+                    "mcp_name": f"IDA MCP - {config.hostname_fqdn}",
+                    "mcp_url": mcp_url,
+                    "description": f"Personal IDA MCP connection for {current_user.username}",
+                    "auth_type": "none",
+                    "key": ""
+                }
+                
+                # Add http:// if missing from infra_api_server
+                api_url = infra_api_server
+                if not api_url.startswith('http'):
+                    api_url = f"http://{api_url}"
+                
+                # Use a timeout to not block the deployment response for too long
+                res = requests.post(
+                    f"{api_url}/add-mcp",
+                    json=infra_payload,
+                    timeout=10
+                )
+                
+                if res.status_code >= 200 and res.status_code < 300:
+                    logger.info(f"[RESEARCH] Successfully registered MCP with infra API: {res.status_code}")
+                else:
+                    logger.warning(f"[RESEARCH] Failed to register MCP with infra API. Status: {res.status_code}, Body: {res.text}")
+                    
+            except Exception as req_err:
+                logger.error(f"[RESEARCH] Exception while registering MCP with infra API: {req_err}")
+                # Don't fail the whole deployment just because the API call failed
+        else:
+            logger.warning("[RESEARCH] INFRA_API_SERVER or MCP_NGINX_DNS not set, skipping OpenWebUI registration")
         
         # Update with MCP endpoint URL from K8s controller
         # Also allow override via environment variable for external access
-        mcp_base_url = os.getenv("MCP_GATEWAY_BASE_URL", "")
+        mcp_base_url = os.getenv("MCP_NGINX_DNS", "")
         if mcp_base_url:
-            connection.mcp_endpoint_url = f"{mcp_base_url}:{connection.proxy_port}/"
+            # Format mcp_base_url properly without trailing slash
+            clean_base_url = mcp_base_url.rstrip('/')
+            if not clean_base_url.startswith('http'):
+                clean_base_url = f"http://{clean_base_url}"
+            connection.mcp_endpoint_url = f"{clean_base_url}:{connection.proxy_port}/"
+        elif os.getenv("MCP_GATEWAY_BASE_URL", ""):
+            clean_gateway_url = os.getenv('MCP_GATEWAY_BASE_URL').rstrip('/')
+            if not clean_gateway_url.startswith('http'):
+                clean_gateway_url = f"http://{clean_gateway_url}"
+            connection.mcp_endpoint_url = f"{clean_gateway_url}:{connection.proxy_port}/"
         else:
             connection.mcp_endpoint_url = mcp_url
         
@@ -645,7 +723,47 @@ async def delete_ida_bridge(
         if not k8s_success:
             logger.warning(f"[RESEARCH] K8s deletion had issues: {k8s_message}")
             # Continue anyway - we still want to delete from database
-        
+            
+        # Remove proxy port from Nginx ConfigMap / Bitbucket
+        if old_proxy_port:
+            logger.info(f"[RESEARCH] Removing proxy port {old_proxy_port} from Nginx")
+            from app.services.k8s_controller import update_proxy_config_remove, reload_nginx_proxy
+            proxy_success, proxy_msg = update_proxy_config_remove(old_proxy_port)
+            if not proxy_success:
+                logger.warning(f"[RESEARCH] Failed to remove proxy mapping: {proxy_msg}")
+            
+            # Trigger Nginx reload (only if not using GitOps which will sync automatically)
+            from app.services.bitbucket_client import BITBUCKET_ENABLED
+            if not BITBUCKET_ENABLED:
+                reload_nginx_proxy()
+            
+            # Remove MCP server from OpenWebUI via infra API
+            infra_api_server = os.getenv("INFRA_API_SERVER")
+            if infra_api_server:
+                logger.info(f"[RESEARCH] Removing MCP server from OpenWebUI via infra API: {infra_api_server}")
+                try:
+                    import requests
+                    
+                    api_url = infra_api_server
+                    if not api_url.startswith('http'):
+                        api_url = f"http://{api_url}"
+                        
+                    mcp_id = f"ida-mcp-{current_user.id}-{connection.id}"
+                    
+                    # Usually delete APIs use DELETE
+                    res = requests.delete(
+                        f"{api_url}/remove-mcp/{mcp_id}",
+                        timeout=10
+                    )
+                    
+                    if res.status_code >= 200 and res.status_code < 300:
+                        logger.info(f"[RESEARCH] Successfully removed MCP from OpenWebUI: {res.status_code}")
+                    else:
+                        logger.warning(f"[RESEARCH] Failed to remove MCP from OpenWebUI. Status: {res.status_code}")
+                        
+                except Exception as req_err:
+                    logger.error(f"[RESEARCH] Exception while removing MCP from OpenWebUI: {req_err}")
+            
         # Delete the configuration
         db.delete(connection)
         db.commit()
@@ -1068,6 +1186,16 @@ async def admin_delete_ida_bridge(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Failed to delete MCP server: {message}"
                 )
+                
+            # Remove proxy port from Nginx ConfigMap / Bitbucket
+            logger.info(f"[RESEARCH] Admin {current_user.username}: Removing proxy port {proxy_port} from Nginx")
+            from app.services.k8s_controller import update_proxy_config_remove, reload_nginx_proxy
+            proxy_success, proxy_msg = update_proxy_config_remove(proxy_port)
+            if not proxy_success:
+                logger.warning(f"[RESEARCH] Failed to remove proxy mapping: {proxy_msg}")
+            
+            # Trigger Nginx reload
+            reload_nginx_proxy()
         
         # Delete the database record
         db.delete(connection)

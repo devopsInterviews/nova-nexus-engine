@@ -218,14 +218,6 @@ idaMcp:
     # SSL certificate verification (set to false for self-signed certificates)
     verifySSL: true
   
-          # Fallback MCP server versions (used when Artifactory is disabled)
-          allowedVersions: "v1.0.0,v1.1.0,v1.2.0,latest"
-          
-          # Research / IDA Configuration
-          pipInstallCmdBase: "pip install my-company-ida-mcp-plugin"
-          openwebuiUrl: "https://chat.company.internal"
-          mcpNginxDns: "https://mcp-gateway.company.internal"
-          infraApiServer: "infra-api.company.internal"
   
   # The base pip install command for the IDA plugin
   pipInstallCmdBase: "pip install my-company-ida-mcp-plugin"
@@ -239,17 +231,6 @@ idaMcp:
   # The infrastructure API server for provisioning MCPs
   infraApiServer: "infra-api.company.internal"
   
-  # The base pip install command for the IDA plugin
-  pipInstallCmdBase: "pip install my-company-ida-mcp-plugin"
-  
-  # The OpenWebUI URL for users to log into
-  openwebuiUrl: "https://chat.company.internal"
-  
-  # The DNS name of the Nginx server routing to MCPs
-  mcpNginxDns: "https://mcp-gateway.company.internal"
-  
-  # The infrastructure API server for provisioning MCPs
-  infraApiServer: "infra-api.company.internal"
   
   # ============================================================
   # Artifactory Configuration (for dynamic Docker image versions)
