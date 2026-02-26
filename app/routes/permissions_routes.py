@@ -37,7 +37,7 @@ def is_admin(current_user: User = Depends(get_current_user)):
 
 @router.get("/permissions")
 async def get_permissions(
-    current_user: User = Depends(is_admin),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session)
 ):
     """
@@ -73,7 +73,7 @@ async def get_permissions(
 @router.post("/permissions", response_model=PermissionsResponse)
 async def update_permissions(
     permissions_update: PermissionsUpdate,
-    current_user: User = Depends(is_admin),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session)
 ):
     """
@@ -98,7 +98,7 @@ async def update_permissions(
                 
         db.commit()
         
-        logger.info(f"Permissions updated by admin {current_user.username}")
+        logger.info(f"Permissions updated by user {current_user.username}")
         
         return {
             "status": "success",
