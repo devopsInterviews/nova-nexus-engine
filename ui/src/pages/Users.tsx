@@ -11,6 +11,7 @@ import { useAuth } from '@/context/auth-context';
 import { useConnectionContext } from '@/context/connection-context';
 import { dbService } from '@/lib/api-service';
 import { PermissionsManager } from '@/components/admin/PermissionsManager';
+import TableDataPreview from '@/components/admin/TableDataPreview';
 
 interface User {
   id: number;
