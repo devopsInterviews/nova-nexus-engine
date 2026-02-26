@@ -56,6 +56,7 @@ import Analytics from "./pages/Analytics";
 import Tests from "./pages/Tests";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import Forbidden from "./pages/Forbidden";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import Users from "./pages/Users";
 import Research from "./pages/Research";
@@ -98,7 +99,7 @@ const queryClient = new QueryClient();
  * @param children - Protected component to render if authenticated
  * @returns Loading state, protected content, or redirect to login
  */
-const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
+const PrivateRoute = ({ children, requiredTab }: { children: React.ReactElement, requiredTab?: string }) => {
   const { user, token, initializing } = useAuth(); // Get authentication state from context
   
   // Show loading state while determining authentication status
@@ -107,8 +108,17 @@ const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
     return <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">Restoring session...</div>;
   }
   
-  // User is authenticated - render the protected content
-  if (user && token) return children;
+  // User is authenticated
+  if (user && token) {
+    // Check tab permissions if a required tab is specified
+    if (requiredTab) {
+      const hasPermission = user.is_admin || (user.allowed_tabs && user.allowed_tabs.includes(requiredTab));
+      if (!hasPermission) {
+        return <Forbidden />;
+      }
+    }
+    return children;
+  }
   
   // Debug logging for authentication troubleshooting
   console.debug('PrivateRoute redirecting to /login', { 
@@ -271,14 +281,14 @@ const App = () => (
                 }
               >
                 {/* Nested Routes within AppLayout */}
-                <Route index element={<Home />} />                    {/* Dashboard home page */}
-                <Route path="devops/*" element={<DevOps />} />        {/* DevOps tools with sub-routing */}
-                <Route path="bi/*" element={<BI />} />                {/* Business Intelligence with sub-routing */}
-                <Route path="analytics" element={<Analytics />} />    {/* System analytics and metrics */}
-                <Route path="tests" element={<Tests />} />            {/* Test execution and management */}
-                <Route path="research" element={<Research />} />      {/* Research/IDA MCP connection */}
-                <Route path="settings" element={<Settings />} />      {/* User preferences and configuration */}
-                <Route path="users" element={<Users />} />            {/* User management and admin features */}
+                <Route index element={<PrivateRoute requiredTab="Home"><Home /></PrivateRoute>} />
+                <Route path="devops/*" element={<PrivateRoute requiredTab="DevOps"><DevOps /></PrivateRoute>} />
+                <Route path="bi/*" element={<PrivateRoute requiredTab="BI"><BI /></PrivateRoute>} />
+                <Route path="analytics" element={<PrivateRoute requiredTab="Analytics"><Analytics /></PrivateRoute>} />
+                <Route path="tests" element={<PrivateRoute requiredTab="Tests"><Tests /></PrivateRoute>} />
+                <Route path="research" element={<PrivateRoute requiredTab="Research"><Research /></PrivateRoute>} />
+                <Route path="settings" element={<PrivateRoute requiredTab="Settings"><Settings /></PrivateRoute>} />
+                <Route path="users" element={<PrivateRoute requiredTab="Users"><Users /></PrivateRoute>} />
               </Route>
               
               {/* Catch-all Route: 404 Not Found (MUST BE LAST) */}

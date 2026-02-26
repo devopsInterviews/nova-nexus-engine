@@ -95,6 +95,28 @@ def get_user_allowed_tabs(user: User, db: Session) -> list[str]:
     return allowed_tabs
 
 
+def require_tab_permission(tab_names: str | list[str]):
+    """
+    Factory function that returns a FastAPI dependency.
+    The dependency checks if the current user has permission to access ANY of the specified tabs.
+    """
+    if isinstance(tab_names, str):
+        tab_names = [tab_names]
+        
+    async def tab_permission_dependency(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db_session)
+    ) -> User:
+        allowed_tabs = get_user_allowed_tabs(current_user, db)
+        if not any(tab in allowed_tabs for tab in tab_names):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You do not have permission to access the required tab(s): {', '.join(tab_names)}.",
+            )
+        return current_user
+    return tab_permission_dependency
+
+
 async def get_current_user(request: Request, db: Session = Depends(get_db_session)) -> User:
     """
     FastAPI dependency to get the current authenticated user from a token.

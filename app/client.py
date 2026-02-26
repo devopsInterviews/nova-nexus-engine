@@ -25,7 +25,7 @@ import json
 import logging
 import re
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -155,21 +155,23 @@ from app.routes.sso_routes import router as sso_router  # SSO / OIDC authenticat
 
 # Register all route modules with the FastAPI app under /api prefix
 # This makes all endpoints accessible at /api/... URLs
-app.include_router(db_router, prefix="/api")  # Database routes: /api/database/*
-app.include_router(mcp_router, prefix="/api")  # MCP routes: /api/mcp/*
+from app.routes.auth_routes import require_tab_permission
+
+app.include_router(db_router, prefix="/api", dependencies=[Depends(require_tab_permission("BI"))])  # Database routes: /api/database/*
+app.include_router(mcp_router, prefix="/api", dependencies=[Depends(require_tab_permission(["Tests", "Research"]))])  # MCP routes: /api/mcp/*
 # Expose auth routes under /api
 app.include_router(auth_router, prefix="/api")
 # Expose user routes under /api
-app.include_router(users_router, prefix="/api")
+app.include_router(users_router, prefix="/api", dependencies=[Depends(require_tab_permission("Users"))])
 # Expose test routes under /api
-app.include_router(test_router, prefix="/api")
-app.include_router(internal_data_router, prefix="/api")
+app.include_router(test_router, prefix="/api", dependencies=[Depends(require_tab_permission("Tests"))])
+app.include_router(internal_data_router, prefix="/api", dependencies=[Depends(require_tab_permission("Users"))])
 # Expose permissions routes under /api
-app.include_router(permissions_router, prefix="/api")
+app.include_router(permissions_router, prefix="/api", dependencies=[Depends(require_tab_permission("Users"))])
 # Expose analytics routes under /api
-app.include_router(analytics_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api", dependencies=[Depends(require_tab_permission("Analytics"))])
 # Expose research routes under /api (IDA MCP connections)
-app.include_router(research_router, prefix="/api")
+app.include_router(research_router, prefix="/api", dependencies=[Depends(require_tab_permission("Research"))])
 # Expose SSO / OIDC routes under /api (Authentik company login)
 app.include_router(sso_router, prefix="/api")
 
