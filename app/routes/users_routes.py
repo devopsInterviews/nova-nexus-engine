@@ -66,7 +66,7 @@ def is_admin(current_user: User = Depends(get_current_user)):
     return current_user
 
 @router.get("/users")
-async def get_all_users(db: Session = Depends(get_db_session), current_user: User = Depends(is_admin)):
+async def get_all_users(db: Session = Depends(get_db_session), current_user: User = Depends(get_current_user)):
     """
     Retrieves a list of all users from the database.
     Returns data in the format expected by the frontend.
@@ -99,10 +99,10 @@ async def get_all_users(db: Session = Depends(get_db_session), current_user: Use
 async def change_user_password(
     user_id: int,
     password_request: PasswordChangeRequest,
-    current_user: User = Depends(is_admin),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session)
 ):
-    """Change user password (admin only)"""
+    """Change user password"""
     try:
         # Find the user
         user = db.query(User).filter(User.id == user_id).first()
@@ -141,7 +141,7 @@ async def change_user_password(
             detail="Internal server error"
         )
 
-@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(is_admin)])
+@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(get_current_user)])
 async def create_user(user: UserCreate, db: Session = Depends(get_db_session)):
     """
     Creates a new user in the database.
@@ -186,7 +186,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db_session)):
     
     return new_user
 
-@router.put("/users/{user_id}", response_model=UserResponse, dependencies=[Depends(is_admin)])
+@router.put("/users/{user_id}", response_model=UserResponse, dependencies=[Depends(get_current_user)])
 async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db_session)):
     """
     Updates an existing user's information.
@@ -237,7 +237,7 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: int, 
-    current_user: User = Depends(is_admin),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session)
 ):
     """

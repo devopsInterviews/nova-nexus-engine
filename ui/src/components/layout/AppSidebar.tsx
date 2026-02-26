@@ -68,7 +68,6 @@ export const navigationItems: NavigationItem[] = [
     title: "Users",
     url: "/users",
     icon: Users,
-    adminOnly: true, // Only admins should manage users
   },
   {
     title: "Settings",
