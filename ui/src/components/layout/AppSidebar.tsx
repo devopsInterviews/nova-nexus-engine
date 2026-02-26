@@ -65,15 +65,10 @@ export const navigationItems: NavigationItem[] = [
     icon: Search,
   },
   {
-    title: "Admin",
-    url: "/admin",
-    icon: Shield,
-    adminOnly: true, // General admin panel - Research/Users/System management
-  },
-  {
     title: "Users",
     url: "/users",
     icon: Users,
+    adminOnly: true, // Only admins should manage users
   },
   {
     title: "Settings",

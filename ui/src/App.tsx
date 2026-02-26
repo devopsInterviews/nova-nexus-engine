@@ -59,7 +59,6 @@ import NotFound from "./pages/NotFound";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import Users from "./pages/Users";
 import Research from "./pages/Research";
-import Admin from "./pages/Admin";
 import SSOCallback from "./pages/SSOCallback";
 import { ConnectionProvider } from "@/context/connection-context";
 import { AuthProvider, useAuth } from "@/context/auth-context";
@@ -278,7 +277,6 @@ const App = () => (
                 <Route path="analytics" element={<Analytics />} />    {/* System analytics and metrics */}
                 <Route path="tests" element={<Tests />} />            {/* Test execution and management */}
                 <Route path="research" element={<Research />} />      {/* Research/IDA MCP connection */}
-                <Route path="admin" element={<Admin />} />            {/* Admin dashboard (is_admin only) */}
                 <Route path="settings" element={<Settings />} />      {/* User preferences and configuration */}
                 <Route path="users" element={<Users />} />            {/* User management and admin features */}
               </Route>

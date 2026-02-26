@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Search, Save, CheckSquare, Square, Shield } from "lucide-react";
+import { Search, Save, Shield, Users, UsersRound, Plus, Trash2, Eye, LayoutDashboard } from "lucide-react";
 import { navigationItems } from "@/components/layout/AppSidebar";
 
 interface PermissionData {
@@ -31,6 +33,10 @@ export function PermissionsManager() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Dialog state
+  const [selectedTab, setSelectedTab] = useState<string | null>(null);
+  const [dialogMode, setDialogMode] = useState<'view' | 'add'>('view');
   const [searchQuery, setSearchQuery] = useState("");
 
   const TABS = navigationItems.map(item => item.title);
@@ -44,36 +50,32 @@ export function PermissionsManager() {
       const token = localStorage.getItem('auth_token');
       const headers = { 'Authorization': `Bearer ${token}` };
 
-      // Fetch permissions
-      const pRes = await fetch('/api/permissions', { headers });
+      const [pRes, uRes, gRes] = await Promise.all([
+        fetch('/api/permissions', { headers }),
+        fetch('/api/users', { headers }),
+        fetch('/api/sso/groups', { headers }).catch(() => null)
+      ]);
+
       const pData = await pRes.json();
-      
+      const uData = await uRes.json();
+      let gData = { groups: [] };
+      if (gRes && gRes.ok) {
+        gData = await gRes.json();
+      }
+
       const initialPermissions: Permissions = {};
-      // Initialize all tabs
       TABS.forEach(tab => {
         initialPermissions[tab] = pData.status === 'success' && pData.data[tab] 
           ? pData.data[tab] 
           : { users: [], groups: [] };
       });
+
       setPermissions(initialPermissions);
-
-      // Fetch users
-      const uRes = await fetch('/api/users', { headers });
-      const uData = await uRes.json();
+      
       if (uData.status === 'success' && uData.data && uData.data.users) {
-        setUsers(uData.data.users);
+        setUsers(uData.data.users.filter((u: User) => u.username !== 'admin'));
       }
-
-      // Fetch groups
-      try {
-        const gRes = await fetch('/api/sso/groups', { headers });
-        if (gRes.ok) {
-            const gData = await gRes.json();
-            setGroups(gData.groups || []);
-        }
-      } catch (e) {
-          console.warn("Could not fetch groups", e);
-      }
+      setGroups(gData.groups || []);
       
     } catch (err) {
       console.error("Failed to fetch permissions data:", err);
@@ -83,40 +85,10 @@ export function PermissionsManager() {
     }
   };
 
-  const handleUserToggle = (tab: string, userId: number) => {
-    setPermissions(prev => {
-      const next = { ...prev };
-      if (!next[tab]) next[tab] = { users: [], groups: [] };
-      
-      if (next[tab].users.includes(userId)) {
-        next[tab].users = next[tab].users.filter(id => id !== userId);
-      } else {
-        next[tab].users = [...next[tab].users, userId];
-      }
-      return next;
-    });
-  };
-
-  const handleGroupToggle = (tab: string, groupId: number) => {
-    setPermissions(prev => {
-      const next = { ...prev };
-      if (!next[tab]) next[tab] = { users: [], groups: [] };
-      
-      if (next[tab].groups.includes(groupId)) {
-        next[tab].groups = next[tab].groups.filter(id => id !== groupId);
-      } else {
-        next[tab].groups = [...next[tab].groups, groupId];
-      }
-      return next;
-    });
-  };
-
   const savePermissions = async () => {
     setSaving(true);
     try {
       const token = localStorage.getItem('auth_token');
-      
-      // Convert to array format expected by backend
       const payload = {
         permissions: Object.keys(permissions).map(tab => ({
           tab_name: tab,
@@ -147,6 +119,72 @@ export function PermissionsManager() {
     }
   };
 
+  const handleAddUser = (userId: number) => {
+    if (!selectedTab) return;
+    setPermissions(prev => {
+      const next = { ...prev };
+      if (!next[selectedTab].users.includes(userId)) {
+        next[selectedTab].users = [...next[selectedTab].users, userId];
+      }
+      return next;
+    });
+  };
+
+  const handleRemoveUser = (userId: number) => {
+    if (!selectedTab) return;
+    setPermissions(prev => {
+      const next = { ...prev };
+      next[selectedTab].users = next[selectedTab].users.filter(id => id !== userId);
+      return next;
+    });
+  };
+
+  const handleAddGroup = (groupId: number) => {
+    if (!selectedTab) return;
+    setPermissions(prev => {
+      const next = { ...prev };
+      if (!next[selectedTab].groups.includes(groupId)) {
+        next[selectedTab].groups = [...next[selectedTab].groups, groupId];
+      }
+      return next;
+    });
+  };
+
+  const handleRemoveGroup = (groupId: number) => {
+    if (!selectedTab) return;
+    setPermissions(prev => {
+      const next = { ...prev };
+      next[selectedTab].groups = next[selectedTab].groups.filter(id => id !== groupId);
+      return next;
+    });
+  };
+
+  const openDialog = (tab: string, mode: 'view' | 'add') => {
+    setSelectedTab(tab);
+    setDialogMode(mode);
+    setSearchQuery("");
+  };
+
+  const closeDialog = () => {
+    setSelectedTab(null);
+    setSearchQuery("");
+  };
+
+  // Filter logic for the dialog
+  const currentTabPerms = selectedTab ? permissions[selectedTab] : { users: [], groups: [] };
+  
+  const authorizedUsers = users.filter(u => currentTabPerms.users.includes(u.id));
+  const authorizedGroups = groups.filter(g => currentTabPerms.groups.includes(g.id));
+  
+  const unauthorizedUsers = users.filter(u => !currentTabPerms.users.includes(u.id));
+  const unauthorizedGroups = groups.filter(g => !currentTabPerms.groups.includes(g.id));
+
+  const filteredAuthUsers = authorizedUsers.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredAuthGroups = authorizedGroups.filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  
+  const filteredUnauthUsers = unauthorizedUsers.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredUnauthGroups = unauthorizedGroups.filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
   if (loading) {
     return (
       <Card className="glass border-0">
@@ -160,157 +198,210 @@ export function PermissionsManager() {
     );
   }
 
-  const filteredUsers = users.filter(u => 
-    u.username !== 'admin' && 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
-  const filteredGroups = groups.filter(g => 
-    g.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   return (
-    <Card className="glass border-0 shadow-lg">
-      <CardHeader className="pb-4 border-b border-border/30">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <CardTitle className="text-2xl flex items-center gap-2">
-              <Shield className="w-5 h-5 text-primary" />
-              Tab Permissions Matrix
-            </CardTitle>
-            <CardDescription className="mt-1.5">
-              Assign which users and groups can access specific tabs in the application.
-            </CardDescription>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between bg-surface/50 p-4 rounded-xl border border-border/50">
+        <div>
+          <h3 className="font-semibold flex items-center gap-2 text-lg">
+            <Shield className="w-5 h-5 text-primary" />
+            Global Tab Access
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Configure which users and groups have access to specific portal functionalities. Admins always have access.
+          </p>
+        </div>
+        <Button 
+          onClick={savePermissions} 
+          disabled={saving}
+          className="bg-primary hover:bg-primary/90 min-w-[140px] shadow-glow"
+        >
+          {saving ? (
+            <span className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+              Saving...
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Save className="w-4 h-4" />
+              Save Changes
+            </span>
+          )}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {TABS.map((tab) => {
+          const userCount = permissions[tab]?.users?.length || 0;
+          const groupCount = permissions[tab]?.groups?.length || 0;
+
+          return (
+            <Card key={tab} className="hover:border-primary/30 transition-all duration-300">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <LayoutDashboard className="w-5 h-5 text-muted-foreground" />
+                  {tab}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-3 mb-6">
+                  <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
+                    <Users className="w-3.5 h-3.5" />
+                    {userCount} {userCount === 1 ? 'User' : 'Users'}
+                  </Badge>
+                  <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20">
+                    <UsersRound className="w-3.5 h-3.5" />
+                    {groupCount} {groupCount === 1 ? 'Group' : 'Groups'}
+                  </Badge>
+                </div>
+                
+                <div className="flex gap-2 w-full">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 border-border/50 hover:bg-surface/50" 
+                    onClick={() => openDialog(tab, 'view')}
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    View Access
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 border-border/50 hover:bg-primary/10 hover:text-primary hover:border-primary/30"
+                    onClick={() => openDialog(tab, 'add')}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Access
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Access Management Dialog */}
+      <Dialog open={!!selectedTab} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-background">
+          <div className="p-6 border-b border-border/50 bg-surface/30">
+            <DialogTitle className="text-2xl flex items-center gap-2 mb-2">
+              <Shield className="w-6 h-6 text-primary" />
+              Manage Access: <span className="text-primary">{selectedTab}</span>
+            </DialogTitle>
+            <DialogDescription>
+              {dialogMode === 'view' 
+                ? 'View and remove currently authorized users and groups.'
+                : 'Search and add new users or groups to this tab.'}
+            </DialogDescription>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+
+          <div className="flex border-b border-border/50">
+            <button 
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${dialogMode === 'view' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
+              onClick={() => { setDialogMode('view'); setSearchQuery(""); }}
+            >
+              Current Access
+            </button>
+            <button 
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${dialogMode === 'add' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
+              onClick={() => { setDialogMode('add'); setSearchQuery(""); }}
+            >
+              Add New Access
+            </button>
+          </div>
+
+          <div className="p-6 flex-1 overflow-y-auto">
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground" />
               <Input
-                placeholder="Search users & groups..."
-                className="pl-9 h-10 bg-surface/50 border-border/50 focus-visible:ring-primary/30"
+                placeholder="Search users or groups..."
+                className="pl-10 h-10 bg-surface/50"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button 
-              onClick={savePermissions} 
-              disabled={saving}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[140px]"
-            >
-              {saving ? (
-                <span className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  Saving...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Save className="w-4 h-4" />
-                  Save Changes
-                </span>
-              )}
-            </Button>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Users Column */}
+              <div>
+                <h4 className="flex items-center gap-2 font-semibold mb-4 text-foreground/80 pb-2 border-b">
+                  <Users className="w-4 h-4 text-blue-500" />
+                  Users
+                </h4>
+                <div className="space-y-2">
+                  {dialogMode === 'view' ? (
+                    filteredAuthUsers.length > 0 ? (
+                      filteredAuthUsers.map(u => (
+                        <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
+                          <span className="font-medium">{u.username}</span>
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveUser(u.id)} className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No users found</div>
+                    )
+                  ) : (
+                    filteredUnauthUsers.length > 0 ? (
+                      filteredUnauthUsers.map(u => (
+                        <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
+                          <span className="font-medium">{u.username}</span>
+                          <Button variant="outline" size="sm" onClick={() => handleAddUser(u.id)} className="h-8 px-3 text-blue-500 border-blue-500/30 hover:bg-blue-500/10">
+                            <Plus className="w-4 h-4 mr-1" /> Add
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No users available to add</div>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* Groups Column */}
+              <div>
+                <h4 className="flex items-center gap-2 font-semibold mb-4 text-foreground/80 pb-2 border-b">
+                  <UsersRound className="w-4 h-4 text-indigo-400" />
+                  Groups
+                </h4>
+                <div className="space-y-2">
+                  {dialogMode === 'view' ? (
+                    filteredAuthGroups.length > 0 ? (
+                      filteredAuthGroups.map(g => (
+                        <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
+                          <span className="font-medium text-indigo-100">{g.name}</span>
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveGroup(g.id)} className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No groups found</div>
+                    )
+                  ) : (
+                    filteredUnauthGroups.length > 0 ? (
+                      filteredUnauthGroups.map(g => (
+                        <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
+                          <span className="font-medium text-indigo-100">{g.name}</span>
+                          <Button variant="outline" size="sm" onClick={() => handleAddGroup(g.id)} className="h-8 px-3 text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10">
+                            <Plus className="w-4 h-4 mr-1" /> Add
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No groups available to add</div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left border-collapse">
-            <thead className="text-xs uppercase bg-surface/80 border-b border-border/50 text-muted-foreground sticky top-0 z-10">
-              <tr>
-                <th className="px-6 py-4 font-semibold w-[15%] min-w-[120px]">Tab Module</th>
-                <th className="px-6 py-4 font-semibold w-[42.5%] min-w-[300px] border-l border-border/30">Allowed Users</th>
-                <th className="px-6 py-4 font-semibold w-[42.5%] min-w-[300px] border-l border-border/30">Allowed Groups</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/30">
-              {TABS.map((tab) => (
-                <tr key={tab} className="bg-transparent hover:bg-surface/30 transition-colors">
-                  <td className="px-6 py-5 font-medium text-foreground align-top">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-primary/60" />
-                      {tab}
-                    </div>
-                  </td>
-                  
-                  <td className="px-6 py-5 align-top border-l border-border/30">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {filteredUsers.length > 0 ? (
-                        filteredUsers.map(user => {
-                          const isChecked = permissions[tab]?.users?.includes(user.id) || false;
-                          return (
-                            <div 
-                              key={`user-${user.id}`} 
-                              onClick={() => handleUserToggle(tab, user.id)}
-                              className={`flex items-center gap-2.5 p-2 rounded-md cursor-pointer transition-all duration-200 border ${
-                                isChecked 
-                                  ? 'bg-primary/10 border-primary/20 text-foreground shadow-sm' 
-                                  : 'bg-surface/30 border-transparent text-muted-foreground hover:bg-surface/60 hover:text-foreground'
-                              }`}
-                            >
-                              <div className="flex-shrink-0">
-                                {isChecked ? (
-                                  <CheckSquare className="w-4 h-4 text-primary" />
-                                ) : (
-                                  <Square className="w-4 h-4 opacity-50" />
-                                )}
-                              </div>
-                              <span className="truncate text-sm select-none" title={user.username}>
-                                {user.username}
-                              </span>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="col-span-full text-muted-foreground text-xs italic">
-                          No users found matching search.
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  
-                  <td className="px-6 py-5 align-top border-l border-border/30 bg-surface/10">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                      {filteredGroups.length > 0 ? (
-                        filteredGroups.map(group => {
-                          const isChecked = permissions[tab]?.groups?.includes(group.id) || false;
-                          return (
-                            <div 
-                              key={`group-${group.id}`} 
-                              onClick={() => handleGroupToggle(tab, group.id)}
-                              className={`flex items-center gap-2.5 p-2 rounded-md cursor-pointer transition-all duration-200 border ${
-                                isChecked 
-                                  ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 shadow-sm' 
-                                  : 'bg-surface/30 border-transparent text-muted-foreground hover:bg-surface/60 hover:text-foreground'
-                              }`}
-                            >
-                              <div className="flex-shrink-0">
-                                {isChecked ? (
-                                  <CheckSquare className="w-4 h-4 text-indigo-400" />
-                                ) : (
-                                  <Square className="w-4 h-4 opacity-50" />
-                                )}
-                              </div>
-                              <span className="truncate text-sm select-none font-medium" title={group.name}>
-                                {group.name}
-                              </span>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="col-span-full text-muted-foreground text-xs italic">
-                          No groups found matching search.
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+
+          <DialogFooter className="p-4 border-t border-border/50 bg-surface/30">
+            <Button variant="outline" onClick={closeDialog}>Close</Button>
+            <Button onClick={() => { closeDialog(); savePermissions(); }}>Save All Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
