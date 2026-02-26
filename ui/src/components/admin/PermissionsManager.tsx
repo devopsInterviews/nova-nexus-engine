@@ -368,7 +368,7 @@ export function PermissionsManager() {
                     filteredAuthGroups.length > 0 ? (
                       filteredAuthGroups.map(g => (
                         <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
-                          <span className="font-medium text-indigo-100">{g.name}</span>
+                          <span className="font-medium">{g.name}</span>
                           <Button variant="ghost" size="sm" onClick={() => handleRemoveGroup(g.id)} className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -381,7 +381,7 @@ export function PermissionsManager() {
                     filteredUnauthGroups.length > 0 ? (
                       filteredUnauthGroups.map(g => (
                         <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
-                          <span className="font-medium text-indigo-100">{g.name}</span>
+                          <span className="font-medium">{g.name}</span>
                           <Button variant="outline" size="sm" onClick={() => handleAddGroup(g.id)} className="h-8 px-3 text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10">
                             <Plus className="w-4 h-4 mr-1" /> Add
                           </Button>
