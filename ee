@@ -1,0 +1,11 @@
+❯ curl -X POST http://<infra-api-server>/add-mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "<username-email-from-token>",
+    "mcp_id": "<mcp-id-you-can-make>",
+    "mcp_name": "<mcp-server-name>",
+    "mcp_url": "<the-nginx-server-dns>/mcp",
+    "description": "<description of this mcp server>",
+    "auth_type": "none",
+    "key": ""
+  }'
