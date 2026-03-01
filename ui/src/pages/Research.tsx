@@ -395,15 +395,21 @@ export default function Research() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 mb-3">
                       <Plug className="w-5 h-5 text-primary" />
                       {hasConfig && isDeployed ? "Update IDA Connection" : "Connect Workstation to OpenWebUI"}
                     </CardTitle>
-                    <CardDescription>
-                      {hasConfig && isDeployed
-                        ? "Modify your workstation connection settings and reconnect."
-                        : "Register your workstation to create a secure tunnel. Your local MCP server will be connected directly to your OpenWebUI profile via Nginx. Only you will be able to communicate with it."
-                      }
+                    <CardDescription className="space-y-2">
+                      <p>
+                        {hasConfig && isDeployed
+                          ? "Modify your workstation connection settings and reconnect."
+                          : "Register your workstation to create a secure tunnel. Your local MCP server will be connected directly to your OpenWebUI profile via Nginx. Only you will be able to communicate with it."
+                        }
+                      </p>
+                      <p className="text-xs text-muted-foreground/80">
+                        If you are working from the office, use your <code className="bg-muted px-1 py-0.5 rounded text-[10px]">&lt;hostname&gt;.companyname.com</code>. 
+                        If you are working from home, use your IP address (find it using <code className="bg-muted px-1 py-0.5 rounded text-[10px]">ifconfig</code> / <code className="bg-muted px-1 py-0.5 rounded text-[10px]">ipconfig</code> - probably an IP in the <code className="bg-muted px-1 py-0.5 rounded text-[10px]">10.0.0.0</code> subnet).
+                      </p>
                     </CardDescription>
                   </div>
                   <Button
@@ -681,7 +687,7 @@ export default function Research() {
                   {config.last_deploy_at && (
                     <div className="mt-3 pt-3 border-t text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      Last deployed: {new Date(config.last_deploy_at).toLocaleString()}
+                      Last connected: {new Date(config.last_deploy_at).toLocaleString()}
                     </div>
                   )}
                 </div>
@@ -694,19 +700,24 @@ export default function Research() {
                         <Terminal className="w-4 h-4 text-primary" />
                         Use in OpenWebUI
                       </h4>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        To use this connection, it must be added to your OpenWebUI profile. 
-                        You can do this automatically or manually.
-                      </p>
+                      <div className="text-xs text-muted-foreground leading-relaxed space-y-2">
+                        <p>
+                          Your MCP is connected to the central server. Press the button below to see your MCP server and start a chat with it.
+                        </p>
+                        <p>
+                          In OpenWebUI, press on the <strong>+</strong> icon in the chat box, go to <strong>Tools</strong>, and toggle on your MCP (it will be named <em>IDA MCP - {config.hostname_fqdn}</em>).
+                        </p>
+                        <p className="pt-2 border-t border-border/50">
+                          <strong>Switching locations?</strong> If you move from office to home (or vice-versa), just update your Hostname / IP above and press <strong>Update & Reconnect</strong>. You'll be reconnected in a few minutes. <em>Note: Always ensure your local IDA and the MCP server plugin are running!</em>
+                        </p>
+                      </div>
                       
                       <div className="flex flex-col sm:flex-row gap-3 pt-2">
                         <Button 
-                          variant="outline" 
-                          className="w-full"
+                          className="w-full bg-gradient-primary text-white"
                           onClick={() => window.open(versions?.openwebui_url || "https://chat.company.internal", "_blank")}
                         >
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Open WebUI Manually
+                          Go to OpenWebUI <ExternalLink className="w-4 h-4 ml-2" />
                         </Button>
                       </div>
                     </div>

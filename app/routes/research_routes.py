@@ -534,7 +534,7 @@ async def deploy_ida_bridge(
                 
                 # NGINX proxy runs as a kubernetes service. The user connects directly to 
                 # a specific port that maps to their workstation.
-                mcp_url = f"{nginx_url}:{connection.proxy_port}/"
+                mcp_url = f"{nginx_url}:{connection.proxy_port}/mcp"
                 
                 infra_payload = {
                     "username": current_user.email or current_user.username,
@@ -847,7 +847,7 @@ async def get_ida_bridge_status(
         status_messages = {
             IdaMcpConnectionStatus.NEW.value: "Configuration saved. Ready to deploy.",
             IdaMcpConnectionStatus.DEPLOYING.value: "MCP server is being deployed...",
-            IdaMcpConnectionStatus.DEPLOYED.value: "MCP server is running. Add the MCP URL to Open WebUI.",
+            IdaMcpConnectionStatus.DEPLOYED.value: "These are your current MCP server connection details.",
             IdaMcpConnectionStatus.ERROR.value: f"Deployment error: {connection.last_error or 'Unknown error'}",
             IdaMcpConnectionStatus.UNDEPLOYED.value: "MCP server is not deployed."
         }
