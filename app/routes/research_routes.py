@@ -344,13 +344,26 @@ async def get_mcp_versions(current_user: User = Depends(get_current_user)):
         logger.warning(f"[RESEARCH] PyPI fetch had error: {error}, using fallback versions")
         
     changelog_content = ""
-    changelog_path = os.getenv("CHANGELOG_PATH", "CHANGELOG.md")
-    if os.path.exists(changelog_path):
-        try:
-            with open(changelog_path, "r", encoding="utf-8") as f:
-                changelog_content = f.read()
-        except Exception as e:
-            logger.error(f"[RESEARCH] Error reading changelog: {e}")
+    bb_url = os.getenv("BITBUCKET_IDA_MCP_REPO", "https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp")
+    # Attempt to fetch CHANGELOG.md from Bitbucket using the raw API
+    # Convert https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp -> https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp/raw/CHANGELOG.md?at=refs%2Fheads%2Fmain
+    raw_url = f"{bb_url.rstrip('/')}/raw/CHANGELOG.md?at=refs%2Fheads%2Fmain"
+    
+    try:
+        import requests
+        bb_user = os.getenv("BITBUCKET_USERNAME", "")
+        bb_pass = os.getenv("BITBUCKET_PASSWORD", "")
+        
+        auth = (bb_user, bb_pass) if bb_user and bb_pass else None
+        verify_ssl = os.getenv("BITBUCKET_VERIFY_SSL", "true").lower() == "true"
+        
+        res = requests.get(raw_url, auth=auth, verify=verify_ssl, timeout=5)
+        if res.status_code == 200:
+            changelog_content = res.text
+        else:
+            logger.warning(f"[RESEARCH] Failed to fetch changelog from {raw_url}: {res.status_code}")
+    except Exception as e:
+        logger.error(f"[RESEARCH] Error fetching changelog from Bitbucket: {e}")
     
     response = McpVersionsResponse(
         versions=versions if versions else FALLBACK_MCP_VERSIONS,
@@ -461,43 +474,12 @@ async def deploy_ida_bridge(
         db.commit()
         
         # ============================================================
-        # Deploy MCP Server via Kubernetes Controller
+        # Update Proxy Config (Nginx)
         # ============================================================
-        mcp_config = McpServerConfig(
-            user_id=current_user.id,
-            username=current_user.username,
-            hostname_fqdn=config.hostname_fqdn,
-            ida_port=config.ida_port,
-            proxy_port=connection.proxy_port,
-            mcp_version=config.mcp_version
-        )
+        # We no longer deploy a Kubernetes pod for the MCP server.
+        # The MCP server runs locally on the user's workstation.
+        # We just need to route traffic to it via Nginx.
         
-        logger.info(f"[RESEARCH] Calling K8s controller to deploy MCP server")
-        k8s_success, k8s_message, mcp_url = deploy_mcp_server(mcp_config)
-        
-        if not k8s_success:
-            logger.error(f"[RESEARCH] K8s deployment failed: {k8s_message}")
-            connection.status = IdaMcpConnectionStatus.ERROR.value
-            connection.last_error = k8s_message
-            db.commit()
-            
-            log_audit_action(
-                db, current_user.id, "deploy",
-                payload={
-                    "hostname_fqdn": connection.hostname_fqdn,
-                    "ida_port": connection.ida_port,
-                    "mcp_version": connection.mcp_version,
-                    "proxy_port": connection.proxy_port
-                },
-                action_status="failure",
-                error_message=k8s_message
-            )
-            
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Kubernetes deployment failed: {k8s_message}"
-            )
-            
         # Write to proxy config
         logger.info(f"[RESEARCH] Writing proxy port config")
         from app.services.k8s_controller import update_proxy_config_add, reload_nginx_proxy
@@ -511,6 +493,26 @@ async def deploy_ida_bridge(
         
         if not proxy_success:
             logger.error(f"[RESEARCH] Proxy config update failed: {proxy_msg}")
+            connection.status = IdaMcpConnectionStatus.ERROR.value
+            connection.last_error = proxy_msg
+            db.commit()
+            
+            log_audit_action(
+                db, current_user.id, "deploy",
+                payload={
+                    "hostname_fqdn": connection.hostname_fqdn,
+                    "ida_port": connection.ida_port,
+                    "mcp_version": connection.mcp_version,
+                    "proxy_port": connection.proxy_port
+                },
+                action_status="failure",
+                error_message=proxy_msg
+            )
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Proxy configuration failed: {proxy_msg}"
+            )
             
         # Trigger reload of Nginx (only if not using GitOps which will sync automatically)
         from app.services.bitbucket_client import BITBUCKET_ENABLED
@@ -567,8 +569,7 @@ async def deploy_ida_bridge(
         else:
             logger.warning("[RESEARCH] INFRA_API_SERVER or MCP_NGINX_DNS not set, skipping OpenWebUI registration")
         
-        # Update with MCP endpoint URL from K8s controller
-        # Also allow override via environment variable for external access
+        # Update with MCP endpoint URL
         mcp_base_url = os.getenv("MCP_NGINX_DNS", "")
         if mcp_base_url:
             # Format mcp_base_url properly without trailing slash
@@ -582,7 +583,7 @@ async def deploy_ida_bridge(
                 clean_gateway_url = f"http://{clean_gateway_url}"
             connection.mcp_endpoint_url = f"{clean_gateway_url}:{connection.proxy_port}/"
         else:
-            connection.mcp_endpoint_url = mcp_url
+            connection.mcp_endpoint_url = f"http://localhost:{connection.proxy_port}/"
         
         logger.info(f"[RESEARCH] Generated MCP URL: {connection.mcp_endpoint_url}")
         
@@ -715,15 +716,8 @@ async def delete_ida_bridge(
         logger.info(f"[RESEARCH] Deleting config: id={connection.id}, proxy_port={old_proxy_port}")
         
         # ============================================================
-        # Delete MCP Server via Kubernetes Controller
+        # Remove Proxy Config (Nginx)
         # ============================================================
-        logger.info(f"[RESEARCH] Calling K8s controller to delete MCP server")
-        k8s_success, k8s_message = delete_mcp_server(current_user.id, old_proxy_port)
-        
-        if not k8s_success:
-            logger.warning(f"[RESEARCH] K8s deletion had issues: {k8s_message}")
-            # Continue anyway - we still want to delete from database
-            
         # Remove proxy port from Nginx ConfigMap / Bitbucket
         if old_proxy_port:
             logger.info(f"[RESEARCH] Removing proxy port {old_proxy_port} from Nginx")
@@ -863,30 +857,9 @@ async def upgrade_ida_bridge(
         db.commit()
         
         # ============================================================
-        # Upgrade MCP Server via Kubernetes Controller
+        # Upgrade MCP Server (Just update DB since it's local)
         # ============================================================
-        logger.info(f"[RESEARCH] Calling K8s controller to upgrade MCP server")
-        k8s_success, k8s_message = upgrade_mcp_server(current_user.id, upgrade_request.new_mcp_version)
-        
-        if not k8s_success:
-            logger.error(f"[RESEARCH] K8s upgrade failed: {k8s_message}")
-            connection.status = IdaMcpConnectionStatus.ERROR.value
-            connection.last_error = k8s_message
-            connection.mcp_version = old_version  # Revert version
-            db.commit()
-            
-            log_audit_action(
-                db, current_user.id, "upgrade",
-                payload={"old_version": old_version, "new_version": upgrade_request.new_mcp_version},
-                action_status="failure",
-                error_message=k8s_message
-            )
-            
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Kubernetes upgrade failed: {k8s_message}"
-            )
-        
+        logger.info(f"[RESEARCH] Upgrading MCP server version in DB")
         connection.status = IdaMcpConnectionStatus.DEPLOYED.value
         connection.last_deploy_at = datetime.utcnow()
         
@@ -1160,33 +1133,9 @@ async def admin_delete_ida_bridge(
             action_status="in_progress"
         )
         
-        # Delete the MCP server if deployed
+        # Remove the proxy mapping if deployed
         proxy_port = connection.proxy_port
         if connection.status == IdaMcpConnectionStatus.DEPLOYED.value and proxy_port:
-            logger.info(f"[RESEARCH] Admin {current_user.username}: Deleting MCP server for user {target_user.username}")
-            success, message = delete_mcp_server(target_user_id, proxy_port)
-            
-            if not success:
-                logger.error(f"[RESEARCH] Admin delete failed for user {target_user_id}: {message}")
-                connection.status = IdaMcpConnectionStatus.ERROR.value
-                connection.last_error = f"Admin delete failed: {message}"
-                db.commit()
-                
-                log_audit_action(
-                    db=db,
-                    user_id=current_user.id,
-                    action="admin_delete",
-                    payload={"target_user_id": target_user_id},
-                    result={"error": message},
-                    action_status="error",
-                    error_message=message
-                )
-                
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to delete MCP server: {message}"
-                )
-                
             # Remove proxy port from Nginx ConfigMap / Bitbucket
             logger.info(f"[RESEARCH] Admin {current_user.username}: Removing proxy port {proxy_port} from Nginx")
             from app.services.k8s_controller import update_proxy_config_remove, reload_nginx_proxy
@@ -1195,7 +1144,35 @@ async def admin_delete_ida_bridge(
                 logger.warning(f"[RESEARCH] Failed to remove proxy mapping: {proxy_msg}")
             
             # Trigger Nginx reload
-            reload_nginx_proxy()
+            from app.services.bitbucket_client import BITBUCKET_ENABLED
+            if not BITBUCKET_ENABLED:
+                reload_nginx_proxy()
+                
+            # Remove MCP server from OpenWebUI via infra API
+            infra_api_server = os.getenv("INFRA_API_SERVER")
+            if infra_api_server:
+                logger.info(f"[RESEARCH] Admin {current_user.username}: Removing MCP server from OpenWebUI via infra API")
+                try:
+                    import requests
+                    
+                    api_url = infra_api_server
+                    if not api_url.startswith('http'):
+                        api_url = f"http://{api_url}"
+                        
+                    mcp_id = f"ida-mcp-{target_user_id}-{connection.id}"
+                    
+                    res = requests.delete(
+                        f"{api_url}/remove-mcp/{mcp_id}",
+                        timeout=10
+                    )
+                    
+                    if res.status_code >= 200 and res.status_code < 300:
+                        logger.info(f"[RESEARCH] Successfully removed MCP from OpenWebUI: {res.status_code}")
+                    else:
+                        logger.warning(f"[RESEARCH] Failed to remove MCP from OpenWebUI. Status: {res.status_code}")
+                        
+                except Exception as req_err:
+                    logger.error(f"[RESEARCH] Exception while removing MCP from OpenWebUI: {req_err}")
         
         # Delete the database record
         db.delete(connection)
@@ -1289,69 +1266,44 @@ async def admin_upgrade_ida_bridge(
             action_status="in_progress"
         )
         
-        # Perform the upgrade
-        success, message = upgrade_mcp_server(
-            target_user_id,
-            upgrade_request.new_mcp_version
+        # Perform the upgrade (Just update DB since it's local)
+        connection.mcp_version = upgrade_request.new_mcp_version
+        connection.updated_at = datetime.utcnow()
+        db.commit()
+        
+        log_audit_action(
+            db=db,
+            user_id=current_user.id,
+            action="admin_upgrade",
+            payload={"target_user_id": target_user_id, "new_version": upgrade_request.new_mcp_version},
+            result={"success": True},
+            action_status="success"
         )
         
-        if success:
-            connection.mcp_version = upgrade_request.new_mcp_version
-            connection.updated_at = datetime.utcnow()
-            db.commit()
-            
-            log_audit_action(
-                db=db,
-                user_id=current_user.id,
-                action="admin_upgrade",
-                payload={"target_user_id": target_user_id, "new_version": upgrade_request.new_mcp_version},
-                result={"success": True},
-                action_status="success"
-            )
-            
-            logger.info(f"[RESEARCH] Admin {current_user.username} upgraded user {target_user.username} to {upgrade_request.new_mcp_version}")
-            
-            return DeployResponse(
-                success=True,
-                message=f"MCP server for user {target_user.username} upgraded to {upgrade_request.new_mcp_version} by admin",
-                status=connection.status,
+        logger.info(f"[RESEARCH] Admin {current_user.username} upgraded user {target_user.username} to {upgrade_request.new_mcp_version}")
+        
+        return DeployResponse(
+            success=True,
+            message=f"MCP server for user {target_user.username} upgraded to {upgrade_request.new_mcp_version} by admin",
+            status=connection.status,
+            proxy_port=connection.proxy_port,
+            mcp_endpoint_url=connection.mcp_endpoint_url,
+            config=IdaBridgeConfigResponse(
+                id=connection.id,
+                user_id=connection.user_id,
+                hostname_fqdn=connection.hostname_fqdn,
+                ida_port=connection.ida_port,
                 proxy_port=connection.proxy_port,
+                mcp_version=connection.mcp_version,
                 mcp_endpoint_url=connection.mcp_endpoint_url,
-                config=IdaBridgeConfigResponse(
-                    id=connection.id,
-                    user_id=connection.user_id,
-                    hostname_fqdn=connection.hostname_fqdn,
-                    ida_port=connection.ida_port,
-                    proxy_port=connection.proxy_port,
-                    mcp_version=connection.mcp_version,
-                    mcp_endpoint_url=connection.mcp_endpoint_url,
-                    status=connection.status,
-                    last_error=connection.last_error,
-                    created_at=connection.created_at.isoformat() if connection.created_at else None,
-                    updated_at=connection.updated_at.isoformat() if connection.updated_at else None,
-                    last_deploy_at=connection.last_deploy_at.isoformat() if connection.last_deploy_at else None,
-                    last_healthcheck_at=connection.last_healthcheck_at.isoformat() if connection.last_healthcheck_at else None
-                )
+                status=connection.status,
+                last_error=connection.last_error,
+                created_at=connection.created_at.isoformat() if connection.created_at else None,
+                updated_at=connection.updated_at.isoformat() if connection.updated_at else None,
+                last_deploy_at=connection.last_deploy_at.isoformat() if connection.last_deploy_at else None,
+                last_healthcheck_at=connection.last_healthcheck_at.isoformat() if connection.last_healthcheck_at else None
             )
-        else:
-            connection.status = IdaMcpConnectionStatus.ERROR.value
-            connection.last_error = f"Admin upgrade failed: {message}"
-            db.commit()
-            
-            log_audit_action(
-                db=db,
-                user_id=current_user.id,
-                action="admin_upgrade",
-                payload={"target_user_id": target_user_id},
-                result={"error": message},
-                action_status="error",
-                error_message=message
-            )
-            
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upgrade MCP server: {message}"
-            )
+        )
             
     except HTTPException:
         raise

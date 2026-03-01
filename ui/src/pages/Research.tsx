@@ -27,6 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -95,7 +101,6 @@ export default function Research() {
   const [newVersionForUpgrade, setNewVersionForUpgrade] = useState("");
   const [versionSearch, setVersionSearch] = useState("");
   const [upgradeVersionSearch, setUpgradeVersionSearch] = useState("");
-  const [isProvisioningMcp, setIsProvisioningMcp] = useState(false);
 
   const { toast } = useToast();
   const { user } = useAuth();
@@ -300,55 +305,6 @@ export default function Research() {
   };
 
   /**
-   * Provision MCP server in OpenWebUI using infrastructure API
-   */
-  const handleProvisionMcp = async () => {
-    if (!status?.mcp_endpoint_url && !config?.mcp_endpoint_url) return;
-    if (!versions?.infra_api_server || !versions?.mcp_nginx_dns || !user?.email) {
-      toast({
-        title: "Configuration Error",
-        description: "Missing required configuration for MCP provisioning.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProvisioningMcp(true);
-    try {
-      const response = await fetch(`http://${versions.infra_api_server}/add-mcp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: user.email,
-          mcp_id: `ida-mcp-${user.id}-${config?.id || Date.now()}`,
-          mcp_name: `IDA MCP - ${config?.hostname_fqdn || hostname}`,
-          mcp_url: `${versions.mcp_nginx_dns}/mcp`,
-          description: `Personal IDA MCP connection for ${user.username}`,
-          auth_type: "none",
-          key: ""
-        })
-      });
-
-      if (!response.ok) throw new Error("Failed to provision MCP in OpenWebUI");
-
-      toast({
-        title: "Success",
-        description: "MCP server provisioned in OpenWebUI.",
-      });
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to provision MCP",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProvisioningMcp(false);
-    }
-  };
-
-  /**
    * Copy MCP URL to clipboard
    */
   const handleCopyUrl = async () => {
@@ -443,56 +399,70 @@ export default function Research() {
         </Card>
       </motion.div>
 
-      {/* Error Alert */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Tabs defaultValue="ida" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 mb-6 bg-surface/50 border border-border/50 p-1">
+          <TabsTrigger value="ida" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
+            IDA Pro
+          </TabsTrigger>
+          <TabsTrigger value="jadx" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
+            JADX
+          </TabsTrigger>
+          <TabsTrigger value="ghidra" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
+            Ghidra
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Main Content: Configuration + Instructions Side by Side */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
-      >
-        {/* Configuration Card - Takes 2/3 */}
-        <Card className="glass border-border/50 lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Plug className="w-5 h-5 text-primary" />
-                  {hasConfig && isDeployed ? "Update IDA Connection" : "Connect Workstation"}
-                </CardTitle>
-                <CardDescription>
-                  {hasConfig && isDeployed
-                    ? "Modify your workstation connection settings and reconnect"
-                    : "Register your workstation hostname and port to establish the bridge."
-                  }
-                </CardDescription>
-              </div>
-              <Button
-                onClick={handleRefresh}
-                disabled={isLoading}
-                variant="ghost"
-                size="icon"
+        <TabsContent value="ida" className="space-y-6">
+          {/* Error Alert */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
-          </CardHeader>
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Main Content: Configuration + Instructions Side by Side */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+          >
+            {/* Configuration Card - Takes 2/3 */}
+            <Card className="glass border-border/50 lg:col-span-2">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Plug className="w-5 h-5 text-primary" />
+                      {hasConfig && isDeployed ? "Update IDA Connection" : "Connect Workstation to OpenWebUI"}
+                    </CardTitle>
+                    <CardDescription>
+                      {hasConfig && isDeployed
+                        ? "Modify your workstation connection settings and reconnect."
+                        : "Register your workstation to create a secure tunnel. Your local MCP server will be connected directly to your OpenWebUI profile via Nginx. Only you will be able to communicate with it."
+                      }
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={handleRefresh}
+                    disabled={isLoading}
+                    variant="ghost"
+                    size="icon"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+              </CardHeader>
           <CardContent className="space-y-6">
             {/* Configuration Form */}
             <div className="grid gap-4">
@@ -576,22 +546,6 @@ export default function Research() {
               )}
               {hasConfig && isDeployed ? "Update & Reconnect" : "Connect"}
             </Button>
-            
-            <div className="flex justify-between items-center pt-4 border-t mt-4">
-              <span className="text-sm font-medium">Auto-Provision in Chat</span>
-              <Button 
-                onClick={handleProvisionMcp} 
-                disabled={isProvisioningMcp || !isDeployed}
-                className="bg-gradient-primary shadow-sm h-9"
-              >
-                {isProvisioningMcp ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4 mr-2" />
-                )}
-                Add to OpenWebUI
-              </Button>
-            </div>
           </CardContent>
         </Card>
 
@@ -993,6 +947,41 @@ export default function Research() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </TabsContent>
+
+      <TabsContent value="jadx">
+        <Card className="glass border-border/50 max-w-2xl mx-auto mt-12">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl gradient-text">JADX Integration</CardTitle>
+            <CardDescription>Android Decompiler MCP Server</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center p-12 space-y-4">
+            <Rocket className="w-16 h-16 text-primary/50 animate-bounce" />
+            <h3 className="text-xl font-medium">Coming Soon</h3>
+            <p className="text-muted-foreground text-center max-w-md">
+              We are working on bringing full OpenWebUI integration to JADX, allowing you to seamlessly analyze Android applications with LLM assistance.
+            </p>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="ghidra">
+        <Card className="glass border-border/50 max-w-2xl mx-auto mt-12">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl gradient-text">Ghidra Integration</CardTitle>
+            <CardDescription>Software Reverse Engineering MCP Server</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center p-12 space-y-4">
+            <Rocket className="w-16 h-16 text-primary/50 animate-bounce" />
+            <h3 className="text-xl font-medium">Coming Soon</h3>
+            <p className="text-muted-foreground text-center max-w-md">
+              We are working on bringing full OpenWebUI integration to Ghidra, providing powerful AI-assisted reverse engineering capabilities.
+            </p>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      </Tabs>
     </motion.div>
   );
 }

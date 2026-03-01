@@ -259,7 +259,7 @@ class ArtifactoryClient:
 
     def get_pypi_tags(self, use_cache: bool = True) -> Tuple[List[str], Optional[str]]:
         """
-        Fetch PyPI package versions from Artifactory using the PyPI JSON API.
+        Fetch PyPI package versions from Artifactory using the PyPI Simple API HTML.
         
         Args:
             use_cache: Whether to use cached results if available
@@ -273,51 +273,70 @@ class ArtifactoryClient:
             logger.debug("[ARTIFACTORY] Returning cached PyPI versions")
             return _version_cache.get(), None
             
-        pypi_api_url = f"{self.base_url}/api/pypi/{self.pypi_repo}/pypi/{self.pypi_package}/json"
-        logger.info(f"[ARTIFACTORY] Trying PyPI API: {pypi_api_url}")
+        # Try standard PyPI simple API first, then fallback to the path the user sees in UI
+        api_paths = [
+            f"/artifactory/api/pypi/{self.pypi_repo}/simple/{self.pypi_package}",
+            f"/artifactory/api/pypi/{self.pypi_repo}/pypi/{self.pypi_package}"
+        ]
         
-        try:
-            response = requests.get(
-                pypi_api_url,
-                auth=self._get_auth(),
-                verify=self.verify_ssl,
-                timeout=30
-            )
+        last_error = None
+        
+        for api_path in api_paths:
+            pypi_api_url = f"{self.base_url}{api_path}"
+            logger.info(f"[ARTIFACTORY] Trying PyPI API: {pypi_api_url}")
             
-            if response.status_code == 404:
-                return [], f"Not found with path: {pypi_api_url}"
-                
-            response.raise_for_status()
-            
-            data = response.json()
-            releases = data.get("releases", {})
-            tags = list(releases.keys())
-            
-            if not tags:
-                logger.warning(f"[ARTIFACTORY] No tags found for PyPI package {self.pypi_package}")
-                return [], "No tags found"
-                
-            # Sort tags semantically, newest first
-            def sort_key(v):
-                parts = re.split(r'[.-]', v.lstrip('v'))
-                return [-int(p) if p.isdigit() else 0 for p in parts]
-                
             try:
-                tags.sort(key=sort_key)
-            except Exception:
-                tags.sort(reverse=True)
+                response = requests.get(
+                    pypi_api_url,
+                    auth=self._get_auth(),
+                    verify=self.verify_ssl,
+                    timeout=30
+                )
                 
-            logger.info(f"[ARTIFACTORY] Found {len(tags)} PyPI versions: {tags[:5]}{'...' if len(tags) > 5 else ''}")
-            
-            _version_cache.set(tags)
-            return tags, None
-            
-        except requests.exceptions.RequestException as e:
-            return [], f"Request error: {str(e)}"
-        except ValueError as e:
-            return [], f"Parse error: {str(e)}"
-        except Exception as e:
-            return [], f"Unexpected error: {str(e)}"
+                if response.status_code == 404:
+                    last_error = f"Not found with path: {pypi_api_url}"
+                    continue
+                    
+                response.raise_for_status()
+                
+                # The response is HTML containing links to the packages
+                # <a href="ida-pro-mcp-1.0.0.tar.gz">ida-pro-mcp-1.0.0.tar.gz</a>
+                html_content = response.text
+                
+                # Extract versions using regex based on the package name
+                # Pattern matches package-name-1.2.3.tar.gz or package_name-1.2.3-py3-none-any.whl
+                pkg_name_normalized = self.pypi_package.replace('-', '[-_]')
+                pattern = rf'{pkg_name_normalized}-([0-9a-zA-Z.]+)(?:\.tar\.gz|-py[0-9].*\.whl|\.zip)'
+                
+                matches = set(re.findall(pattern, html_content, re.IGNORECASE))
+                tags = list(matches)
+                
+                if not tags:
+                    logger.warning(f"[ARTIFACTORY] No tags found for PyPI package {self.pypi_package} at {pypi_api_url}")
+                    last_error = "No tags found in HTML"
+                    continue
+                    
+                # Sort tags semantically, newest first
+                def sort_key(v):
+                    parts = re.split(r'[.-]', v.lstrip('v'))
+                    return [-int(p) if p.isdigit() else 0 for p in parts]
+                    
+                try:
+                    tags.sort(key=sort_key)
+                except Exception:
+                    tags.sort(reverse=True)
+                    
+                logger.info(f"[ARTIFACTORY] Found {len(tags)} PyPI versions: {tags[:5]}{'...' if len(tags) > 5 else ''}")
+                
+                _version_cache.set(tags)
+                return tags, None
+                
+            except requests.exceptions.RequestException as e:
+                last_error = f"Request error: {str(e)}"
+            except Exception as e:
+                last_error = f"Unexpected error: {str(e)}"
+                
+        return [], last_error
 
 
 # ============================================================
