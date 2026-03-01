@@ -90,17 +90,13 @@ export default function Research() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeploying, setIsDeploying] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpgrading, setIsUpgrading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [showChangelogDialog, setShowChangelogDialog] = useState(false);
-  const [newVersionForUpgrade, setNewVersionForUpgrade] = useState("");
   const [versionSearch, setVersionSearch] = useState("");
-  const [upgradeVersionSearch, setUpgradeVersionSearch] = useState("");
 
   const { toast } = useToast();
   const { user } = useAuth();
@@ -264,49 +260,6 @@ export default function Research() {
   /**
    * Upgrade MCP server to new version
    */
-  const handleUpgrade = async () => {
-    if (!newVersionForUpgrade || newVersionForUpgrade === config?.mcp_version) {
-      toast({
-        title: "Invalid Selection",
-        description: "Please select a different version to upgrade to",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsUpgrading(true);
-    setError(null);
-    setShowUpgradeDialog(false);
-
-    try {
-      const result = await researchService.upgradeIdaBridge(newVersionForUpgrade);
-
-      if (result.status === "success" && result.data) {
-        toast({
-          title: "Upgrade Successful",
-          description: result.data.message,
-        });
-        // Reload all data
-        await loadData();
-      } else {
-        throw new Error(result.error || "Upgrade failed");
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Upgrade failed";
-      setError(errorMessage);
-      toast({
-        title: "Upgrade Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsUpgrading(false);
-    }
-  };
-
-  /**
-   * Copy MCP URL to clipboard
-   */
   const handleCopyUrl = async () => {
     const url = status?.mcp_endpoint_url || config?.mcp_endpoint_url;
     if (url) {
@@ -363,46 +316,18 @@ export default function Research() {
         <div>
           <h1 className="text-3xl font-bold gradient-text mb-2 flex items-center gap-3">
             <Search className="w-8 h-8" />
-            Research (Phase 1: IDA)
+            Research
           </h1>
           <p className="text-muted-foreground max-w-2xl">
-            Research is where we connect real researcher tooling to LLM workflows. The portal does not try to host IDA centrally. Instead, the portal makes the connection repeatable, supportable, and governable. <span className="text-xs opacity-75">(JADX & Ghidra coming soon)</span>
+            The research capability will help you investigate all kinds of files with known reverse engineering tools and LLMs together. The portal does not try to host IDA centrally. Instead, the portal makes the connection repeatable, supportable, and governable. <span className="text-xs opacity-75">(JADX & Ghidra coming soon)</span>
           </p>
         </div>
-        
-        {/* Bitbucket Repository Link Box */}
-        <Card className="glass border-border/50 max-w-sm w-full md:w-auto shrink-0">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-              <GitBranch className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h4 className="font-medium text-sm">Contribute to the Plugin</h4>
-              <a 
-                href={versions?.bitbucket_url || "https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp"}
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
-              >
-                View on Bitbucket <ExternalLink className="w-3 h-3" />
-              </a>
-              {versions?.changelog_content && (
-                <button
-                  onClick={() => setShowChangelogDialog(true)}
-                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1 bg-transparent border-none p-0 cursor-pointer"
-                >
-                  View Changelog <BookOpen className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
       </motion.div>
 
       <Tabs defaultValue="ida" className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-6 bg-surface/50 border border-border/50 p-1">
           <TabsTrigger value="ida" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
-            IDA Pro
+            IDA
           </TabsTrigger>
           <TabsTrigger value="jadx" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">
             JADX
@@ -413,6 +338,34 @@ export default function Research() {
         </TabsList>
 
         <TabsContent value="ida" className="space-y-6">
+          {/* Bitbucket Repository Link Box */}
+          <Card className="glass border-border/50 w-full mb-6">
+            <CardContent className="p-4 flex items-center justify-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                <GitBranch className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex items-center gap-4">
+                <h4 className="font-medium text-sm">Contribute to the Plugin</h4>
+                <a 
+                  href={versions?.bitbucket_url || "https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp"}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  View on Bitbucket <ExternalLink className="w-3 h-3" />
+                </a>
+                {versions?.changelog_content && (
+                  <button
+                    onClick={() => setShowChangelogDialog(true)}
+                    className="text-xs text-primary hover:underline flex items-center gap-1 bg-transparent border-none p-0 cursor-pointer"
+                  >
+                    View Changelog <BookOpen className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Error Alert */}
           <AnimatePresence>
             {error && (
@@ -475,7 +428,7 @@ export default function Research() {
                     placeholder="mypc.corp.example.com or localhost"
                     value={hostname}
                     onChange={(e) => setHostname(e.target.value)}
-                    disabled={isLoading || isDeploying || isDeleting || isUpgrading}
+                    disabled={isLoading || isDeploying || isDeleting}
                   />
                 </div>
 
@@ -490,7 +443,7 @@ export default function Research() {
                     max={65535}
                     value={idaPort}
                     onChange={(e) => setIdaPort(e.target.value ? parseInt(e.target.value) : "")}
-                    disabled={isLoading || isDeploying || isDeleting || isUpgrading}
+                    disabled={isLoading || isDeploying || isDeleting}
                   />
                 </div>
               </div>
@@ -501,7 +454,7 @@ export default function Research() {
                 <Select
                   value={mcpVersion}
                   onValueChange={setMcpVersion}
-                  disabled={isLoading || isDeploying || isDeleting || isUpgrading}
+                  disabled={isLoading || isDeploying || isDeleting}
                 >
                   <SelectTrigger id="mcp-version">
                     <SelectValue placeholder="Select version" />
@@ -535,7 +488,7 @@ export default function Research() {
             {/* Connect Button */}
             <Button
               onClick={handleDeploy}
-              disabled={isLoading || isDeploying || isDeleting || isUpgrading || !hostname || !idaPort || !mcpVersion}
+              disabled={isLoading || isDeploying || isDeleting || !hostname || !idaPort || !mcpVersion}
               className="w-full bg-gradient-primary mt-4"
               size="lg"
             >
@@ -563,7 +516,6 @@ export default function Research() {
                 <h4 className="font-semibold mb-2 text-primary">Prerequisites</h4>
                 <ul className="list-disc pl-4 space-y-1 text-muted-foreground text-xs">
                   <li>Python (3.11 or higher)</li>
-                  <li>Use <code className="bg-muted px-1 py-0.5 rounded">idapyswitch</code> to switch to the newest Python version</li>
                   <li>IDA Pro (8.3 or higher, 9 recommended). <em>IDA Free is not supported.</em></li>
                 </ul>
               </div>
@@ -734,31 +686,9 @@ export default function Research() {
                   )}
                 </div>
 
-                {/* MCP URL & Provisioning (when deployed) */}
-                {isDeployed && mcpUrl && (
+                {/* MCP Provisioning (when deployed) */}
+                {isDeployed && (
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>MCP Server URL</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={mcpUrl}
-                          readOnly
-                          className="font-mono text-sm bg-muted"
-                        />
-                        <Button
-                          onClick={handleCopyUrl}
-                          variant="outline"
-                          size="icon"
-                        >
-                          {copied ? (
-                            <Check className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-
                     <div className="bg-surface/50 p-4 rounded-lg border space-y-3">
                       <h4 className="font-semibold text-sm flex items-center gap-2">
                         <Terminal className="w-4 h-4 text-primary" />
@@ -795,21 +725,8 @@ export default function Research() {
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-3 pt-2">
                   <Button
-                    onClick={openUpgradeDialog}
-                    disabled={isLoading || isDeploying || isDeleting || isUpgrading || !isDeployed}
-                    variant="outline"
-                  >
-                    {isUpgrading ? (
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <ArrowUp className="w-4 h-4 mr-2" />
-                    )}
-                    Upgrade Version
-                  </Button>
-
-                  <Button
                     onClick={() => setShowDeleteDialog(true)}
-                    disabled={isLoading || isDeploying || isDeleting || isUpgrading}
+                    disabled={isLoading || isDeploying || isDeleting}
                     variant="destructive"
                   >
                     {isDeleting ? (
@@ -844,83 +761,6 @@ export default function Research() {
             <Button variant="destructive" onClick={handleDelete}>
               <Trash2 className="w-4 h-4 mr-2" />
               Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Upgrade Dialog */}
-      <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upgrade MCP Server Version</DialogTitle>
-            <DialogDescription>
-              Select a new version to upgrade your MCP server.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            {/* Current Version */}
-            <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-              <span className="text-sm text-muted-foreground">Current Version</span>
-              <Badge variant="secondary">{config?.mcp_version}</Badge>
-            </div>
-
-            {/* Arrow */}
-            <div className="flex justify-center">
-              <ArrowUp className="w-6 h-6 text-primary rotate-180" />
-            </div>
-
-            {/* New Version Selection - with search */}
-            <div className="space-y-2">
-              <Label>New Version</Label>
-              <Select
-                value={newVersionForUpgrade}
-                onValueChange={setNewVersionForUpgrade}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select new version" />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* Search input for filtering versions */}
-                  <div className="px-2 pb-2">
-                    <Input
-                      placeholder="Search versions..."
-                      value={upgradeVersionSearch}
-                      onChange={(e) => setUpgradeVersionSearch(e.target.value)}
-                      className="h-8"
-                    />
-                  </div>
-                  {versions?.versions
-                    .filter(v => v !== config?.mcp_version)
-                    .filter(v => v.toLowerCase().includes(upgradeVersionSearch.toLowerCase()))
-                    .map((version) => (
-                      <SelectItem key={version} value={version}>
-                        {version}
-                        {version === versions.default_version && " (recommended)"}
-                      </SelectItem>
-                    ))}
-                  {versions?.versions
-                    .filter(v => v !== config?.mcp_version)
-                    .filter(v => v.toLowerCase().includes(upgradeVersionSearch.toLowerCase())).length === 0 && (
-                      <div className="px-2 py-2 text-sm text-muted-foreground">No matching versions</div>
-                    )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUpgradeDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleUpgrade}
-              disabled={!newVersionForUpgrade || newVersionForUpgrade === config?.mcp_version}
-              className="bg-gradient-primary"
-            >
-              <ArrowUp className="w-4 h-4 mr-2" />
-              Upgrade
             </Button>
           </DialogFooter>
         </DialogContent>

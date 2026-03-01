@@ -347,7 +347,7 @@ async def get_mcp_versions(current_user: User = Depends(get_current_user)):
     bb_url = os.getenv("BITBUCKET_IDA_MCP_REPO", "https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp")
     # Attempt to fetch CHANGELOG.md from Bitbucket using the raw API
     # Convert https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp -> https://bitbucket.example.com/projects/RES/repos/ida-pro-mcp/raw/CHANGELOG.md?at=refs%2Fheads%2Fmain
-    raw_url = f"{bb_url.rstrip('/')}/raw/CHANGELOG.md?at=refs%2Fheads%2Fmain"
+    raw_url = f"{bb_url.rstrip('/')}/raw/CHANGELOG.md?at=refs%2Fheads%2Fmaster"
     
     try:
         import requests
@@ -623,7 +623,7 @@ async def deploy_ida_bridge(
         
         return DeployResponse(
             success=True,
-            message="MCP server deployed successfully",
+            message="MCP server connected successfully",
             status=connection.status,
             proxy_port=connection.proxy_port,
             mcp_endpoint_url=connection.mcp_endpoint_url,
@@ -734,29 +734,29 @@ async def delete_ida_bridge(
             # Remove MCP server from OpenWebUI via infra API
             infra_api_server = os.getenv("INFRA_API_SERVER")
             if infra_api_server:
-                logger.info(f"[RESEARCH] Removing MCP server from OpenWebUI via infra API: {infra_api_server}")
-                try:
-                    import requests
-                    
-                    api_url = infra_api_server
-                    if not api_url.startswith('http'):
-                        api_url = f"http://{api_url}"
-                        
-                    mcp_id = f"ida-mcp-{current_user.id}-{connection.id}"
-                    
-                    # Usually delete APIs use DELETE
-                    res = requests.delete(
-                        f"{api_url}/remove-mcp/{mcp_id}",
-                        timeout=10
-                    )
-                    
-                    if res.status_code >= 200 and res.status_code < 300:
-                        logger.info(f"[RESEARCH] Successfully removed MCP from OpenWebUI: {res.status_code}")
-                    else:
-                        logger.warning(f"[RESEARCH] Failed to remove MCP from OpenWebUI. Status: {res.status_code}")
-                        
-                except Exception as req_err:
-                    logger.error(f"[RESEARCH] Exception while removing MCP from OpenWebUI: {req_err}")
+                logger.info(f"[RESEARCH] NOTE: Deletion from OpenWebUI via infra API ({infra_api_server}) is currently disabled as the endpoint is not ready.")
+                # The code below is kept for when the API is implemented
+                # try:
+                #     import requests
+                #     
+                #     api_url = infra_api_server
+                #     if not api_url.startswith('http'):
+                #         api_url = f"http://{api_url}"
+                #         
+                #     mcp_id = f"ida-mcp-{current_user.id}-{connection.id}"
+                #     
+                #     res = requests.delete(
+                #         f"{api_url}/remove-mcp/{mcp_id}",
+                #         timeout=10
+                #     )
+                #     
+                #     if res.status_code >= 200 and res.status_code < 300:
+                #         logger.info(f"[RESEARCH] Successfully removed MCP from OpenWebUI: {res.status_code}")
+                #     else:
+                #         logger.warning(f"[RESEARCH] Failed to remove MCP from OpenWebUI. Status: {res.status_code}")
+                #         
+                # except Exception as req_err:
+                #     logger.error(f"[RESEARCH] Exception while removing MCP from OpenWebUI: {req_err}")
             
         # Delete the configuration
         db.delete(connection)
@@ -773,7 +773,7 @@ async def delete_ida_bridge(
                 "ida_port": old_ida_port,
                 "mcp_version": old_mcp_version
             },
-            result={"message": "Deleted successfully", "k8s_message": k8s_message},
+            result={"message": "Deleted successfully"},
             action_status="success"
         )
         
@@ -811,94 +811,6 @@ async def delete_ida_bridge(
         )
 
 
-@router.post("/ida-bridge/upgrade", response_model=DeployResponse)
-async def upgrade_ida_bridge(
-    upgrade_request: IdaBridgeUpgradeRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_session)
-):
-    """
-    Upgrade the MCP server to a new version.
-    """
-    logger.info(f"[RESEARCH] ========== UPGRADE START ==========")
-    logger.info(f"[RESEARCH] User {current_user.id} upgrading to version: {upgrade_request.new_mcp_version}")
-    
-    try:
-        connection = db.query(IdaMcpConnection).filter(
-            IdaMcpConnection.user_id == current_user.id
-        ).first()
-        
-        if not connection:
-            logger.warning(f"[RESEARCH] No config found for user {current_user.id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No IDA bridge configuration found. Deploy first."
-            )
-        
-        old_version = connection.mcp_version
-        logger.info(f"[RESEARCH] Upgrading from {old_version} to {upgrade_request.new_mcp_version}")
-        
-        if old_version == upgrade_request.new_mcp_version:
-            logger.info(f"[RESEARCH] Already on requested version")
-            return DeployResponse(
-                success=True,
-                message=f"Already running version {old_version}",
-                status=connection.status,
-                proxy_port=connection.proxy_port,
-                mcp_endpoint_url=connection.mcp_endpoint_url,
-                config=IdaBridgeConfigResponse(**connection.to_dict())
-            )
-        
-        # Update version
-        connection.mcp_version = upgrade_request.new_mcp_version
-        connection.status = IdaMcpConnectionStatus.DEPLOYING.value
-        connection.updated_at = datetime.utcnow()
-        
-        db.commit()
-        
-        # ============================================================
-        # Upgrade MCP Server (Just update DB since it's local)
-        # ============================================================
-        logger.info(f"[RESEARCH] Upgrading MCP server version in DB")
-        connection.status = IdaMcpConnectionStatus.DEPLOYED.value
-        connection.last_deploy_at = datetime.utcnow()
-        
-        db.commit()
-        db.refresh(connection)
-        
-        logger.info(f"[RESEARCH] Successfully upgraded to {upgrade_request.new_mcp_version}")
-        
-        log_audit_action(
-            db, current_user.id, "upgrade",
-            payload={"old_version": old_version, "new_version": upgrade_request.new_mcp_version},
-            result={"message": "Upgraded successfully"},
-            action_status="success"
-        )
-        
-        logger.info(f"[RESEARCH] ========== UPGRADE SUCCESS ==========")
-        
-        return DeployResponse(
-            success=True,
-            message=f"MCP server upgraded from {old_version} to {upgrade_request.new_mcp_version}",
-            status=connection.status,
-            proxy_port=connection.proxy_port,
-            mcp_endpoint_url=connection.mcp_endpoint_url,
-            config=IdaBridgeConfigResponse(**connection.to_dict())
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[RESEARCH] Unexpected error during upgrade: {e}")
-        logger.error(traceback.format_exc())
-        db.rollback()
-        
-        logger.info(f"[RESEARCH] ========== UPGRADE FAILED ==========")
-        
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upgrade MCP server: {str(e)}"
-        )
 
 
 @router.get("/ida-bridge/status", response_model=IdaBridgeStatusResponse)
@@ -1151,28 +1063,29 @@ async def admin_delete_ida_bridge(
             # Remove MCP server from OpenWebUI via infra API
             infra_api_server = os.getenv("INFRA_API_SERVER")
             if infra_api_server:
-                logger.info(f"[RESEARCH] Admin {current_user.username}: Removing MCP server from OpenWebUI via infra API")
-                try:
-                    import requests
-                    
-                    api_url = infra_api_server
-                    if not api_url.startswith('http'):
-                        api_url = f"http://{api_url}"
-                        
-                    mcp_id = f"ida-mcp-{target_user_id}-{connection.id}"
-                    
-                    res = requests.delete(
-                        f"{api_url}/remove-mcp/{mcp_id}",
-                        timeout=10
-                    )
-                    
-                    if res.status_code >= 200 and res.status_code < 300:
-                        logger.info(f"[RESEARCH] Successfully removed MCP from OpenWebUI: {res.status_code}")
-                    else:
-                        logger.warning(f"[RESEARCH] Failed to remove MCP from OpenWebUI. Status: {res.status_code}")
-                        
-                except Exception as req_err:
-                    logger.error(f"[RESEARCH] Exception while removing MCP from OpenWebUI: {req_err}")
+                logger.info(f"[RESEARCH] Admin {current_user.username}: NOTE: Deletion from OpenWebUI via infra API is currently disabled as the endpoint is not ready.")
+                # The code below is kept for when the API is implemented
+                # try:
+                #     import requests
+                #     
+                #     api_url = infra_api_server
+                #     if not api_url.startswith('http'):
+                #         api_url = f"http://{api_url}"
+                #         
+                #     mcp_id = f"ida-mcp-{target_user_id}-{connection.id}"
+                #     
+                #     res = requests.delete(
+                #         f"{api_url}/remove-mcp/{mcp_id}",
+                #         timeout=10
+                #     )
+                #     
+                #     if res.status_code >= 200 and res.status_code < 300:
+                #         logger.info(f"[RESEARCH] Successfully removed MCP from OpenWebUI: {res.status_code}")
+                #     else:
+                #         logger.warning(f"[RESEARCH] Failed to remove MCP from OpenWebUI. Status: {res.status_code}")
+                #         
+                # except Exception as req_err:
+                #     logger.error(f"[RESEARCH] Exception while removing MCP from OpenWebUI: {req_err}")
         
         # Delete the database record
         db.delete(connection)
@@ -1210,108 +1123,4 @@ async def admin_delete_ida_bridge(
         )
 
 
-@router.post("/admin/ida-bridge/{target_user_id}/upgrade", response_model=DeployResponse)
-async def admin_upgrade_ida_bridge(
-    target_user_id: int,
-    upgrade_request: IdaBridgeUpgradeRequest,
-    current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db_session)
-):
-    """
-    Upgrade MCP server version for a specific user (Admin only).
-    
-    Allows administrators to upgrade MCP server versions for any user.
-    """
-    logger.info(f"[RESEARCH] Admin {current_user.username} upgrading IDA bridge for user {target_user_id} to {upgrade_request.new_mcp_version}")
-    
-    try:
-        # Get the target user
-        target_user = db.query(User).filter(User.id == target_user_id).first()
-        if not target_user:
-            logger.warning(f"[RESEARCH] Admin {current_user.username}: User {target_user_id} not found")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User {target_user_id} not found"
-            )
-        
-        # Get the connection
-        connection = db.query(IdaMcpConnection).filter(
-            IdaMcpConnection.user_id == target_user_id
-        ).first()
-        
-        if not connection:
-            logger.warning(f"[RESEARCH] Admin {current_user.username}: No IDA bridge for user {target_user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No IDA bridge configuration found for user {target_user.username}"
-            )
-        
-        if connection.status != IdaMcpConnectionStatus.DEPLOYED.value:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot upgrade: MCP server is not deployed (status: {connection.status})"
-            )
-        
-        # Log admin action
-        log_audit_action(
-            db=db,
-            user_id=current_user.id,
-            action="admin_upgrade",
-            payload={
-                "target_user_id": target_user_id,
-                "target_username": target_user.username,
-                "old_version": connection.mcp_version,
-                "new_version": upgrade_request.new_mcp_version
-            },
-            action_status="in_progress"
-        )
-        
-        # Perform the upgrade (Just update DB since it's local)
-        connection.mcp_version = upgrade_request.new_mcp_version
-        connection.updated_at = datetime.utcnow()
-        db.commit()
-        
-        log_audit_action(
-            db=db,
-            user_id=current_user.id,
-            action="admin_upgrade",
-            payload={"target_user_id": target_user_id, "new_version": upgrade_request.new_mcp_version},
-            result={"success": True},
-            action_status="success"
-        )
-        
-        logger.info(f"[RESEARCH] Admin {current_user.username} upgraded user {target_user.username} to {upgrade_request.new_mcp_version}")
-        
-        return DeployResponse(
-            success=True,
-            message=f"MCP server for user {target_user.username} upgraded to {upgrade_request.new_mcp_version} by admin",
-            status=connection.status,
-            proxy_port=connection.proxy_port,
-            mcp_endpoint_url=connection.mcp_endpoint_url,
-            config=IdaBridgeConfigResponse(
-                id=connection.id,
-                user_id=connection.user_id,
-                hostname_fqdn=connection.hostname_fqdn,
-                ida_port=connection.ida_port,
-                proxy_port=connection.proxy_port,
-                mcp_version=connection.mcp_version,
-                mcp_endpoint_url=connection.mcp_endpoint_url,
-                status=connection.status,
-                last_error=connection.last_error,
-                created_at=connection.created_at.isoformat() if connection.created_at else None,
-                updated_at=connection.updated_at.isoformat() if connection.updated_at else None,
-                last_deploy_at=connection.last_deploy_at.isoformat() if connection.last_deploy_at else None,
-                last_healthcheck_at=connection.last_healthcheck_at.isoformat() if connection.last_healthcheck_at else None
-            )
-        )
-            
-    except HTTPException:
-        raise
-    except SQLAlchemyError as e:
-        db.rollback()
-        logger.error(f"[RESEARCH] Database error in admin upgrade: {e}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
-        )
+
