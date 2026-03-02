@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.database import get_db_session
 from app.models import MarketplaceItem, MarketplaceUsage, User
-from app.auth import get_current_user
+from app.routes.auth_routes import get_current_user
 
 logger = logging.getLogger(__name__)
 
