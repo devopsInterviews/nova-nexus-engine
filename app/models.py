@@ -964,54 +964,49 @@ class IdaMcpDeployAudit(Base):
 # Marketplace Models
 # ============================================================
 
-class MarketplaceAgent(Base):
-    """Marketplace Agent model."""
-    __tablename__ = "marketplace_agents"
+class MarketplaceItem(Base):
+    """Unified model for Agents and MCP Servers in the Marketplace."""
+    __tablename__ = "marketplace_items"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    version = Column(String(50), nullable=False)
-    author = Column(String(255), nullable=True)
-    image_url = Column(String(500), nullable=True)
+    description = Column(Text, nullable=False)
+    item_type = Column(String(50), nullable=False)  # 'agent' or 'mcp_server'
+    
+    # Owner
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    icon = Column(String(500), nullable=True)
+    bitbucket_repo = Column(String(500), nullable=True)
+    how_to_use = Column(Text, nullable=True)
+    url_to_connect = Column(String(500), nullable=True)
+    
+    # For MCP servers
+    tools_exposed = Column(JSON, default=list, nullable=True)
+    
+    # Status
+    deployment_status = Column(String(50), default="CREATED", nullable=False)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    
+    owner = relationship("User")
+    usages = relationship("MarketplaceUsage", back_populates="item", cascade="all, delete-orphan")
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
             "description": self.description,
-            "version": self.version,
-            "author": self.author,
-            "image_url": self.image_url,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
-        }
-
-class MarketplaceMcpServer(Base):
-    """Marketplace MCP Server model."""
-    __tablename__ = "marketplace_mcp_servers"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    version = Column(String(50), nullable=False)
-    author = Column(String(255), nullable=True)
-    image_url = Column(String(500), nullable=True)
-    
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "version": self.version,
-            "author": self.author,
-            "image_url": self.image_url,
+            "item_type": self.item_type,
+            "owner_id": self.owner_id,
+            "owner_name": self.owner.username if self.owner else None,
+            "icon": self.icon,
+            "bitbucket_repo": self.bitbucket_repo,
+            "how_to_use": self.how_to_use,
+            "url_to_connect": self.url_to_connect,
+            "tools_exposed": self.tools_exposed,
+            "deployment_status": self.deployment_status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
@@ -1022,19 +1017,18 @@ class MarketplaceUsage(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    item_type = Column(String(50), nullable=False) # 'agent' or 'mcp_server'
-    item_id = Column(Integer, nullable=False)
-    action = Column(String(50), nullable=False) # 'install', 'run', 'uninstall'
+    item_id = Column(Integer, ForeignKey("marketplace_items.id", ondelete="CASCADE"), nullable=False)
+    action = Column(String(50), nullable=False) # 'call', 'deploy', 'install'
     
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     user = relationship("User")
+    item = relationship("MarketplaceItem", back_populates="usages")
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "user_id": self.user_id,
-            "item_type": self.item_type,
             "item_id": self.item_id,
             "action": self.action,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None
