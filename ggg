@@ -1,0 +1,5 @@
+ curl -X POST http://x.x.x.x/delete-mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mcp_id": "<id>"
+  }'
