@@ -734,29 +734,29 @@ async def delete_ida_bridge(
             # Remove MCP server from OpenWebUI via infra API
             infra_api_server = os.getenv("INFRA_API_SERVER")
             if infra_api_server:
-                logger.info(f"[RESEARCH] NOTE: Deletion from OpenWebUI via infra API ({infra_api_server}) is currently disabled as the endpoint is not ready.")
-                # The code below is kept for when the API is implemented
-                # try:
-                #     import requests
-                #     
-                #     api_url = infra_api_server
-                #     if not api_url.startswith('http'):
-                #         api_url = f"http://{api_url}"
-                #         
-                #     mcp_id = f"ida-mcp-{current_user.id}-{connection.id}"
-                #     
-                #     res = requests.delete(
-                #         f"{api_url}/remove-mcp/{mcp_id}",
-                #         timeout=10
-                #     )
-                #     
-                #     if res.status_code >= 200 and res.status_code < 300:
-                #         logger.info(f"[RESEARCH] Successfully removed MCP from OpenWebUI: {res.status_code}")
-                #     else:
-                #         logger.warning(f"[RESEARCH] Failed to remove MCP from OpenWebUI. Status: {res.status_code}")
-                #         
-                # except Exception as req_err:
-                #     logger.error(f"[RESEARCH] Exception while removing MCP from OpenWebUI: {req_err}")
+                logger.info(f"[RESEARCH] Requesting MCP deletion via infra API ({infra_api_server}).")
+                try:
+                    import requests
+                    
+                    api_url = infra_api_server
+                    if not api_url.startswith('http'):
+                        api_url = f"http://{api_url}"
+                        
+                    mcp_id = f"ida-mcp-{current_user.id}-{connection.id}"
+                    
+                    res = requests.post(
+                        f"{api_url}/delete-mcp",
+                        json={"mcp_id": mcp_id},
+                        timeout=10
+                    )
+                    
+                    if res.status_code >= 200 and res.status_code < 300:
+                        logger.info(f"[RESEARCH] Successfully removed MCP via infra API: {res.status_code}")
+                    else:
+                        logger.warning(f"[RESEARCH] Failed to remove MCP via infra API. Status: {res.status_code}, Body: {res.text}")
+                        
+                except Exception as req_err:
+                    logger.error(f"[RESEARCH] Exception while removing MCP via infra API: {req_err}")
             
         # Delete the configuration
         db.delete(connection)

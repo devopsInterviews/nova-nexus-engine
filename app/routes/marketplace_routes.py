@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 
-from app.database import get_db
+from app.database import get_db_session
 from app.models import MarketplaceItem, MarketplaceUsage, User
 from app.auth import get_current_user
 
@@ -28,7 +28,7 @@ class UsageRequest(BaseModel):
     action: str
 
 @router.get("/items")
-def get_marketplace_items(db: Session = Depends(get_db)):
+def get_marketplace_items(db: Session = Depends(get_db_session)):
     """Get all marketplace items (agents and mcp servers)."""
     items = db.query(MarketplaceItem).all()
     
@@ -45,7 +45,7 @@ def get_marketplace_items(db: Session = Depends(get_db)):
     return results
 
 @router.post("/items")
-def create_marketplace_item(req: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_marketplace_item(req: ItemCreate, db: Session = Depends(get_db_session), current_user: User = Depends(get_current_user)):
     """Create a new marketplace item (Agent or MCP Server)."""
     item = MarketplaceItem(
         name=req.name,
@@ -67,7 +67,7 @@ def create_marketplace_item(req: ItemCreate, db: Session = Depends(get_db), curr
     return item.to_dict()
 
 @router.delete("/items/{item_id}")
-def delete_marketplace_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def delete_marketplace_item(item_id: int, db: Session = Depends(get_db_session), current_user: User = Depends(get_current_user)):
     """Delete a marketplace item. Only owner or admin can delete."""
     item = db.query(MarketplaceItem).filter_by(id=item_id).first()
     if not item:
@@ -82,7 +82,7 @@ def delete_marketplace_item(item_id: int, db: Session = Depends(get_db), current
     return {"status": "ok"}
 
 @router.post("/usage")
-def log_usage(req: UsageRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def log_usage(req: UsageRequest, db: Session = Depends(get_db_session), current_user: User = Depends(get_current_user)):
     """Log usage of a marketplace item."""
     item = db.query(MarketplaceItem).filter_by(id=req.item_id).first()
     if not item:

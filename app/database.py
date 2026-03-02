@@ -15,6 +15,7 @@ from app.models import (
     TestExecution, DatabaseSession, SystemMetrics, RequestLog,
     McpServerStatus, PageView, IdaMcpConnection, IdaMcpDeployAudit,
     SSOGroup, UserSession, user_group_association, TabPermission,
+    MarketplaceItem, MarketplaceUsage,
 )
 
 logging.basicConfig(level=logging.INFO)
