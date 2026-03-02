@@ -74,6 +74,7 @@ services:
       OPENWEBUI_URL: ${OPENWEBUI_URL:-"https://chat.company.internal"}
       MCP_NGINX_DNS: ${MCP_NGINX_DNS:-"https://mcp-gateway.company.internal"}
       INFRA_API_SERVER: ${INFRA_API_SERVER:-"infra-api.company.internal"}
+      INFRA_MARKETPLACE_API_SERVER: ${INFRA_MARKETPLACE_API_SERVER:-"marketplace-infra-api.company.internal"}
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:

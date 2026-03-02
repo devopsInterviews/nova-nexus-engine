@@ -986,6 +986,8 @@ class MarketplaceItem(Base):
     
     # Status
     deployment_status = Column(String(50), default="CREATED", nullable=False)
+    version = Column(String(50), default="1.0.0", nullable=False)
+    environment = Column(String(50), default="dev", nullable=False) # 'dev' or 'release'
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
@@ -1007,6 +1009,8 @@ class MarketplaceItem(Base):
             "url_to_connect": self.url_to_connect,
             "tools_exposed": self.tools_exposed,
             "deployment_status": self.deployment_status,
+            "version": self.version,
+            "environment": self.environment,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

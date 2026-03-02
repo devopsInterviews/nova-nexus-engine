@@ -231,6 +231,9 @@ idaMcp:
   # The infrastructure API server for provisioning MCPs
   infraApiServer: "infra-api.company.internal"
   
+  # The infrastructure API server for provisioning marketplace Agents and MCPs
+  infraMarketplaceApiServer: "marketplace-infra-api.company.internal"
+  
   
   # ============================================================
   # Artifactory Configuration (for dynamic Docker image versions)

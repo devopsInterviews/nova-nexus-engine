@@ -92,6 +92,8 @@ spec:
             value: "{{ .Values.idaMcp.mcpNginxDns }}"
           - name: INFRA_API_SERVER
             value: "{{ .Values.idaMcp.infraApiServer }}"
+          - name: INFRA_MARKETPLACE_API_SERVER
+            value: "{{ .Values.idaMcp.infraMarketplaceApiServer }}"
           - name: ALLOWED_HOSTNAME_PATTERNS
             value: "{{ .Values.idaMcp.allowedHostnamePatterns }}"
             - name: PROXY_PORT_MIN

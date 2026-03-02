@@ -1,3 +1,5 @@
+import os
+import requests
 import logging
 from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -26,6 +28,13 @@ class ItemCreate(BaseModel):
 class UsageRequest(BaseModel):
     item_id: int
     action: str
+
+class BuildRequest(BaseModel):
+    item_id: int
+
+class DeployRequest(BaseModel):
+    item_id: int
+    environment: str # 'dev' or 'release'
 
 @router.get("/items")
 def get_marketplace_items(db: Session = Depends(get_db_session)):
@@ -57,7 +66,9 @@ def create_marketplace_item(req: ItemCreate, db: Session = Depends(get_db_sessio
         how_to_use=req.how_to_use,
         url_to_connect=req.url_to_connect,
         tools_exposed=req.tools_exposed or [],
-        deployment_status="CREATED"
+        deployment_status="CREATED",
+        version="1.0.0",
+        environment="dev"
     )
     db.add(item)
     db.commit()
@@ -65,6 +76,69 @@ def create_marketplace_item(req: ItemCreate, db: Session = Depends(get_db_sessio
     
     logger.info(f"User {current_user.username} created a new marketplace item: {item.name}")
     return item.to_dict()
+
+@router.post("/build")
+def build_marketplace_item(req: BuildRequest, db: Session = Depends(get_db_session), current_user: User = Depends(get_current_user)):
+    item = db.query(MarketplaceItem).filter_by(id=req.item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if item.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to build this item")
+
+    # Update state to BUILT
+    item.deployment_status = "BUILT"
+    db.commit()
+    db.refresh(item)
+
+    # Optional real infra call (mocked for now but fully implemented request)
+    infra_api_server = os.getenv("INFRA_MARKETPLACE_API_SERVER")
+    if infra_api_server:
+        api_url = infra_api_server if infra_api_server.startswith("http") else f"http://{infra_api_server}"
+        try:
+            requests.post(f"{api_url}/build", json={
+                "entity_name": item.name,
+                "entity_type": item.item_type,
+                "description": item.description,
+                "owner_username": current_user.username
+            }, timeout=5)
+        except Exception as e:
+            logger.warning(f"Could not reach infra build endpoint: {e}")
+
+    return {"status": "ok", "message": "Build completed", "item": item.to_dict()}
+
+@router.post("/deploy")
+def deploy_marketplace_item(req: DeployRequest, db: Session = Depends(get_db_session), current_user: User = Depends(get_current_user)):
+    item = db.query(MarketplaceItem).filter_by(id=req.item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if item.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to deploy this item")
+
+    # Update state
+    item.deployment_status = "DEPLOYED"
+    item.environment = req.environment
+    db.commit()
+    db.refresh(item)
+
+    # Optional real infra call
+    infra_api_server = os.getenv("INFRA_MARKETPLACE_API_SERVER")
+    if infra_api_server:
+        api_url = infra_api_server if infra_api_server.startswith("http") else f"http://{infra_api_server}"
+        try:
+            requests.post(f"{api_url}/deploy", json={
+                "entity_name": item.name,
+                "entity_type": item.item_type,
+                "owner_username": current_user.username,
+                "target_environment": req.environment,
+                "chart_version": item.version,
+                "ttl_days": 10 if req.environment == "dev" else None
+            }, timeout=5)
+        except Exception as e:
+            logger.warning(f"Could not reach infra deploy endpoint: {e}")
+
+    return {"status": "ok", "message": "Deployed successfully", "item": item.to_dict()}
 
 @router.delete("/items/{item_id}")
 def delete_marketplace_item(item_id: int, db: Session = Depends(get_db_session), current_user: User = Depends(get_current_user)):
@@ -76,6 +150,18 @@ def delete_marketplace_item(item_id: int, db: Session = Depends(get_db_session),
     if item.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this item")
         
+    # Attempt to hit infrastructure to delete
+    infra_api_server = os.getenv("INFRA_MARKETPLACE_API_SERVER")
+    if infra_api_server:
+        api_url = infra_api_server if infra_api_server.startswith("http") else f"http://{infra_api_server}"
+        try:
+            requests.delete(f"{api_url}/deploy/{item_id}", json={
+                "owner_username": current_user.username,
+                "reason": "manual_user_deletion"
+            }, timeout=5)
+        except Exception as e:
+            logger.warning(f"Could not reach infra delete endpoint: {e}")
+
     db.delete(item)
     db.commit()
     logger.info(f"User {current_user.username} deleted marketplace item: {item.name}")
