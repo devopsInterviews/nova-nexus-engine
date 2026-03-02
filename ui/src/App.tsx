@@ -54,6 +54,7 @@ import DevOps from "./pages/DevOps";
 import BI from "./pages/BI";
 import Analytics from "./pages/Analytics";
 import Tests from "./pages/Tests";
+import Marketplace from "./pages/Marketplace";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Forbidden from "./pages/Forbidden";
@@ -286,6 +287,7 @@ const App = () => (
                 <Route path="bi/*" element={<PrivateRoute requiredTab="BI"><BI /></PrivateRoute>} />
                 <Route path="analytics" element={<PrivateRoute requiredTab="Analytics"><Analytics /></PrivateRoute>} />
                 <Route path="tests" element={<PrivateRoute requiredTab="Tests"><Tests /></PrivateRoute>} />
+                <Route path="marketplace" element={<PrivateRoute requiredTab="Marketplace"><Marketplace /></PrivateRoute>} />
                 <Route path="research" element={<PrivateRoute requiredTab="Research"><Research /></PrivateRoute>} />
                 <Route path="settings" element={<PrivateRoute requiredTab="Settings"><Settings /></PrivateRoute>} />
                 <Route path="users" element={<PrivateRoute requiredTab="Users"><Users /></PrivateRoute>} />

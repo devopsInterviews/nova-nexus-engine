@@ -702,7 +702,7 @@ export default function Research() {
                       </h4>
                       <div className="text-xs text-muted-foreground leading-relaxed space-y-2">
                         <p>
-                          Your MCP is connected to the central server. Press the button below to see your MCP server and start a chat with it.
+                          Your MCP is connected to the central server. Press the button below to see your MCP server and start a chat with it (It might take a couple of minutes to establish the first connection).
                         </p>
                         <p>
                           In OpenWebUI, press on the <strong>+</strong> icon in the chat box, go to <strong>Tools</strong>, and toggle on your MCP (it will be named <em>IDA MCP - {config.hostname_fqdn}</em>).
@@ -760,9 +760,8 @@ export default function Research() {
           <DialogHeader>
             <DialogTitle>Delete MCP Server?</DialogTitle>
             <DialogDescription>
-              This will stop your MCP server pod, remove all routing configuration,
-              and delete your configuration. You'll need to redeploy to use the
-              IDA integration again.
+              This will remove the connection to your IDA mcp, and delete your configuration.
+              You'll need to reconnect to use the IDA integration again.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

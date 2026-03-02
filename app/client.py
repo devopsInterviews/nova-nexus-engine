@@ -151,7 +151,8 @@ from app.routes.internal_data_routes import router as internal_data_router  # In
 from app.routes.permissions_routes import router as permissions_router  # Role-based permissions
 from app.routes.analytics_routes import router as analytics_router  # System metrics
 from app.routes.research_routes import router as research_router  # Research/IDA MCP connections
-from app.routes.sso_routes import router as sso_router  # SSO / OIDC authentication
+from app.routes.sso_routes import router as sso_router
+from app.routes.marketplace_routes import router as marketplace_router  # SSO / OIDC authentication
 
 # Register all route modules with the FastAPI app under /api prefix
 # This makes all endpoints accessible at /api/... URLs
@@ -174,6 +175,7 @@ app.include_router(analytics_router, prefix="/api", dependencies=[Depends(requir
 app.include_router(research_router, prefix="/api", dependencies=[Depends(require_tab_permission("Research"))])
 # Expose SSO / OIDC routes under /api (Authentik company login)
 app.include_router(sso_router, prefix="/api")
+app.include_router(marketplace_router)
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")  # Decorator registers this function as HTTP middleware that runs on every request

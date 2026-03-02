@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Users,
   Search,
+  Store,
   Shield
 } from "lucide-react";
 import {
@@ -63,6 +64,7 @@ export const navigationItems: NavigationItem[] = [
     title: "Research",
     url: "/research",
     icon: Search,
+  Store,
   },
   {
     title: "Users",
@@ -70,6 +72,11 @@ export const navigationItems: NavigationItem[] = [
     icon: Users,
   },
   {
+  {
+    title: "Marketplace",
+    url: "/marketplace",
+    icon: Store,
+  },
     title: "Settings",
     url: "/settings",
     icon: Settings,

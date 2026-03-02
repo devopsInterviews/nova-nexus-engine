@@ -959,3 +959,83 @@ class IdaMcpDeployAudit(Base):
             "error_message": self.error_message,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None
         }
+
+# ============================================================
+# Marketplace Models
+# ============================================================
+
+class MarketplaceAgent(Base):
+    """Marketplace Agent model."""
+    __tablename__ = "marketplace_agents"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    version = Column(String(50), nullable=False)
+    author = Column(String(255), nullable=True)
+    image_url = Column(String(500), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "version": self.version,
+            "author": self.author,
+            "image_url": self.image_url,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class MarketplaceMcpServer(Base):
+    """Marketplace MCP Server model."""
+    __tablename__ = "marketplace_mcp_servers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    version = Column(String(50), nullable=False)
+    author = Column(String(255), nullable=True)
+    image_url = Column(String(500), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "version": self.version,
+            "author": self.author,
+            "image_url": self.image_url,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class MarketplaceUsage(Base):
+    """Usage tracking for Marketplace items."""
+    __tablename__ = "marketplace_usage"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    item_type = Column(String(50), nullable=False) # 'agent' or 'mcp_server'
+    item_id = Column(Integer, nullable=False)
+    action = Column(String(50), nullable=False) # 'install', 'run', 'uninstall'
+    
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    user = relationship("User")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "item_type": self.item_type,
+            "item_id": self.item_id,
+            "action": self.action,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None
+        }
