@@ -10,13 +10,10 @@ Additional endpoints:
   POST /ping              — PUBLIC, no auth; agents/MCP servers self-report usage
   POST /items/{id}/clone  — fork a deployed item for a parallel deployment
   POST /redeploy          — undeploy then re-deploy with a new chart/version
-  background task         — daily TTL expiry check
 """
 
 import os
 import logging
-import threading
-import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 
@@ -26,7 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.database import get_db_session, SessionLocal
+from app.database import get_db_session
 from app.models import MarketplaceItem, MarketplaceUsage, User
 from app.routes.auth_routes import get_current_user
 from app.services.artifactory_client import (
@@ -713,81 +710,6 @@ def _call_infra_undeploy(item: MarketplaceItem, owner_username: str = "system", 
         #     json={"owner_username": owner_username, "reason": reason},
         #     timeout=10,
         # )
-
-
-def _run_ttl_expiry_sync() -> int:
-    """
-    Synchronous TTL check — finds expired dev deployments and removes them.
-    Intended to run from the async background loop every 24 hours.
-    """
-    db: Session = SessionLocal()
-    deleted = 0
-    try:
-        now = datetime.now(timezone.utc)
-        deployed_dev_items = (
-            db.query(MarketplaceItem)
-            .filter(
-                MarketplaceItem.deployment_status == "DEPLOYED",
-                MarketplaceItem.environment == "dev",
-                MarketplaceItem.deployed_at.isnot(None),
-                MarketplaceItem.ttl_days.isnot(None),
-            )
-            .all()
-        )
-
-        for item in deployed_dev_items:
-            deployed_at = (
-                item.deployed_at.replace(tzinfo=timezone.utc)
-                if item.deployed_at.tzinfo is None
-                else item.deployed_at
-            )
-            elapsed_days = (now - deployed_at).days
-            if elapsed_days >= item.ttl_days:
-                logger.info(
-                    "[MARKETPLACE] TTL expired — deleting '%s' (id=%d, deployed=%s, ttl=%dd)",
-                    item.name, item.id, item.deployed_at.isoformat(), item.ttl_days,
-                )
-                _call_infra_undeploy(item, reason="ttl_expired")
-                db.delete(item)
-                deleted += 1
-
-        if deleted:
-            db.commit()
-            logger.info("[MARKETPLACE] TTL cleanup — removed %d expired item(s).", deleted)
-        else:
-            logger.debug("[MARKETPLACE] TTL cleanup — no expired items.")
-    except Exception as exc:
-        db.rollback()
-        logger.error("[MARKETPLACE] TTL cleanup error: %s", exc, exc_info=True)
-    finally:
-        db.close()
-
-    return deleted
-
-
-def start_ttl_cleanup_thread() -> threading.Thread:
-    """
-    Starts a daemon background thread that runs TTL expiry cleanup once every 24 hours.
-
-    Using a daemon thread (instead of asyncio.create_task) ensures the long sleep
-    is completely transparent to uvicorn's event loop. When Kubernetes sends SIGTERM,
-    uvicorn can close cleanly without waiting for a pending asyncio coroutine, which
-    previously caused the pod to hang until the termination grace period expired and
-    be force-killed — resulting in a continuous restart cycle.
-    """
-    def _target() -> None:
-        logger.info("[MARKETPLACE] TTL cleanup thread started (interval=24h).")
-        while True:
-            time.sleep(86_400)  # 24 hours — daemon thread exits automatically with the process
-            try:
-                _run_ttl_expiry_sync()
-            except Exception as exc:
-                logger.error("[MARKETPLACE] TTL cleanup thread error: %s", exc, exc_info=True)
-
-    thread = threading.Thread(target=_target, daemon=True, name="marketplace-ttl-cleanup")
-    thread.start()
-    logger.info("[MARKETPLACE] TTL cleanup daemon thread launched (tid=%s).", thread.ident)
-    return thread
 
 
 # ─── Mock Data Seeding ───────────────────────────────────────────────────────

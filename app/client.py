@@ -152,7 +152,7 @@ from app.routes.permissions_routes import router as permissions_router  # Role-b
 from app.routes.analytics_routes import router as analytics_router  # System metrics
 from app.routes.research_routes import router as research_router  # Research/IDA MCP connections
 from app.routes.sso_routes import router as sso_router
-from app.routes.marketplace_routes import router as marketplace_router, start_ttl_cleanup_thread
+from app.routes.marketplace_routes import router as marketplace_router
 
 # Register all route modules with the FastAPI app under /api prefix
 # This makes all endpoints accessible at /api/... URLs
@@ -226,12 +226,6 @@ async def startup_event():
 
     # Initialize the database by creating all tables defined in models.py
     init_db()
-
-    # Start the marketplace TTL expiry background thread (runs every 24 h).
-    # A daemon thread is used intentionally so that uvicorn's event loop is not
-    # burdened with a long-lived asyncio.sleep task, which previously caused the
-    # pod to block graceful shutdown and restart every ~2 minutes.
-    start_ttl_cleanup_thread()
 
     # Initialize analytics system for real-time data collection
     from app.database import SessionLocal  # Import database session factory
