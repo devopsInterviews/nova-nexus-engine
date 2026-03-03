@@ -14,6 +14,8 @@ Additional endpoints:
 
 import os
 import logging
+import threading
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 
@@ -23,7 +25,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.database import get_db_session
+from app.database import get_db_session, SessionLocal
 from app.models import MarketplaceItem, MarketplaceUsage, User
 from app.routes.auth_routes import get_current_user
 from app.services.artifactory_client import (
@@ -710,6 +712,78 @@ def _call_infra_undeploy(item: MarketplaceItem, owner_username: str = "system", 
         #     json={"owner_username": owner_username, "reason": reason},
         #     timeout=10,
         # )
+
+
+# ─── Background TTL Expiry Task ───────────────────────────────────────────────
+
+def _run_ttl_expiry_sync() -> int:
+    """
+    Deletes DB rows for dev deployments whose TTL has elapsed.
+    The infra API server independently tears down the k8s resources on its side;
+    this only cleans up our database records.
+    """
+    db: Session = SessionLocal()
+    deleted = 0
+    try:
+        now = datetime.now(timezone.utc)
+        expired_items = (
+            db.query(MarketplaceItem)
+            .filter(
+                MarketplaceItem.deployment_status == "DEPLOYED",
+                MarketplaceItem.environment == "dev",
+                MarketplaceItem.deployed_at.isnot(None),
+                MarketplaceItem.ttl_days.isnot(None),
+            )
+            .all()
+        )
+
+        for item in expired_items:
+            deployed_at = (
+                item.deployed_at.replace(tzinfo=timezone.utc)
+                if item.deployed_at.tzinfo is None
+                else item.deployed_at
+            )
+            if (now - deployed_at).days >= item.ttl_days:
+                logger.info(
+                    "[MARKETPLACE] TTL expired — removing '%s' (id=%d, deployed=%s, ttl=%dd)",
+                    item.name, item.id, item.deployed_at.isoformat(), item.ttl_days,
+                )
+                db.delete(item)
+                deleted += 1
+
+        if deleted:
+            db.commit()
+            logger.info("[MARKETPLACE] TTL cleanup — removed %d expired item(s) from DB.", deleted)
+        else:
+            logger.debug("[MARKETPLACE] TTL cleanup — no expired items.")
+    except Exception as exc:
+        db.rollback()
+        logger.error("[MARKETPLACE] TTL cleanup error: %s", exc, exc_info=True)
+    finally:
+        db.close()
+
+    return deleted
+
+
+def start_ttl_cleanup_thread() -> threading.Thread:
+    """
+    Daemon thread that runs a DB-only TTL expiry check every 24 hours.
+    Infra handles k8s teardown; this only removes the stale DB rows.
+    A daemon thread keeps uvicorn's event loop free so the pod shuts down cleanly.
+    """
+    def _target() -> None:
+        logger.info("[MARKETPLACE] TTL cleanup thread started (interval=24h).")
+        while True:
+            time.sleep(86_400)
+            try:
+                _run_ttl_expiry_sync()
+            except Exception as exc:
+                logger.error("[MARKETPLACE] TTL cleanup thread error: %s", exc, exc_info=True)
+
+    thread = threading.Thread(target=_target, daemon=True, name="marketplace-ttl-cleanup")
+    thread.start()
+    logger.info("[MARKETPLACE] TTL cleanup daemon thread launched (tid=%s).", thread.ident)
+    return thread
 
 
 # ─── Mock Data Seeding ───────────────────────────────────────────────────────
