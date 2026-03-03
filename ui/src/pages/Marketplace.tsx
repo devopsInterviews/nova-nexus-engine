@@ -374,54 +374,61 @@ export default function Marketplace() {
               <Plus className="w-5 h-5 mr-2" /> Create Entity
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Create New Entity</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-2xl font-bold">Create New Entity</DialogTitle>
+              <DialogDescription className="text-base">
                 Register a new Agent or MCP Server. After creation, you can Build and Deploy it via our Infrastructure APIs.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <select 
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  value={formData.item_type}
-                  onChange={(e) => setFormData({...formData, item_type: e.target.value})}
-                >
-                  <option value="agent">Agent</option>
-                  <option value="mcp_server">MCP Server</option>
-                </select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Name *</Label>
-                <Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="E.g. Data Analysis Agent" />
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Description *</Label>
-                <Textarea required value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="What does it do?" />
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Bitbucket Repo URL</Label>
-                <Input value={formData.bitbucket_repo} onChange={e => setFormData({...formData, bitbucket_repo: e.target.value})} placeholder="https://bitbucket.org/..." />
-              </div>
+            <form onSubmit={handleCreate} className="space-y-6 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-base font-medium">Type *</Label>
+                  <select 
+                    className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm shadow-sm focus:ring-primary focus:border-primary"
+                    value={formData.item_type}
+                    onChange={(e) => setFormData({...formData, item_type: e.target.value})}
+                  >
+                    <option value="agent">Agent</option>
+                    <option value="mcp_server">MCP Server</option>
+                  </select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-base font-medium">Name *</Label>
+                  <Input className="py-2.5" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="E.g. Data Analysis Agent" />
+                </div>
 
-              <div className="space-y-2">
-                <Label>Connection URL (Optional)</Label>
-                <Input value={formData.url_to_connect} onChange={e => setFormData({...formData, url_to_connect: e.target.value})} placeholder="http://..." />
-              </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-base font-medium">Description *</Label>
+                  <Textarea className="min-h-[100px] py-2.5" required value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="What does it do? When should someone use it?" />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-base font-medium">Icon URL (Optional)</Label>
+                  <Input className="py-2.5" value={formData.icon} onChange={e => setFormData({...formData, icon: e.target.value})} placeholder="https://example.com/icon.png" />
+                </div>
 
-              <div className="space-y-2">
-                <Label>How to Use</Label>
-                <Textarea value={formData.how_to_use} onChange={e => setFormData({...formData, how_to_use: e.target.value})} placeholder="Instructions..." />
+                <div className="space-y-2">
+                  <Label className="text-base font-medium">Bitbucket Repo URL</Label>
+                  <Input className="py-2.5" value={formData.bitbucket_repo} onChange={e => setFormData({...formData, bitbucket_repo: e.target.value})} placeholder="https://bitbucket.org/..." />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-base font-medium">Connection URL (Optional)</Label>
+                  <Input className="py-2.5" value={formData.url_to_connect} onChange={e => setFormData({...formData, url_to_connect: e.target.value})} placeholder="http://..." />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-base font-medium">How to Use (Optional)</Label>
+                  <Textarea className="min-h-[100px] py-2.5" value={formData.how_to_use} onChange={e => setFormData({...formData, how_to_use: e.target.value})} placeholder="Instructions, examples, prerequisites..." />
+                </div>
               </div>
               
-              <DialogFooter className="mt-6">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                <Button type="submit">Register</Button>
+              <DialogFooter className="mt-8 border-t pt-6">
+                <Button type="button" variant="outline" size="lg" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                <Button type="submit" size="lg" className="bg-primary text-primary-foreground">Register Entity</Button>
               </DialogFooter>
             </form>
           </DialogContent>

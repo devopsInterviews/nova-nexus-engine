@@ -41,6 +41,61 @@ def get_marketplace_items(db: Session = Depends(get_db_session)):
     """Get all marketplace items (agents and mcp servers)."""
     items = db.query(MarketplaceItem).all()
     
+    # --- Auto-seed Mock Data if empty ---
+    if not items:
+        # Get the first available user to be the owner (fallback to 1 if none exists, though DB constraints might fail if 1 doesn't exist)
+        first_user = db.query(User).first()
+        owner_id = first_user.id if first_user else 1
+        
+        # Create a mock agent (BUILT)
+        agent = MarketplaceItem(
+            name="Data Analysis Agent",
+            description="Analyzes complex datasets using pandas and returns natural language summaries with insights.",
+            item_type="agent",
+            owner_id=owner_id,
+            icon="https://cdn-icons-png.flaticon.com/512/2042/2042885.png",
+            bitbucket_repo="https://bitbucket.company.internal/projects/AI/repos/data-agent",
+            how_to_use="Call this agent with a reference to a dataset or ask it to pull data from the DB.",
+            url_to_connect="",
+            tools_exposed=[],
+            deployment_status="BUILT",
+            version="1.2.0",
+            environment="dev"
+        )
+        
+        # Create a mock MCP Server (DEPLOYED)
+        mcp_server = MarketplaceItem(
+            name="Jira Integration MCP",
+            description="Provides tools to create, update, and search Jira tickets directly from the portal.",
+            item_type="mcp_server",
+            owner_id=owner_id,
+            icon="https://cdn-icons-png.flaticon.com/512/5968/5968875.png",
+            bitbucket_repo="https://bitbucket.company.internal/projects/MCP/repos/jira-mcp",
+            how_to_use="Enable this MCP in your research tab to allow the LLM to manage your Jira board.",
+            url_to_connect="http://jira-mcp.mcp-gateway.company.internal",
+            tools_exposed=[{"name": "create_ticket"}, {"name": "search_tickets"}],
+            deployment_status="DEPLOYED",
+            version="2.0.1",
+            environment="release"
+        )
+        
+        try:
+            db.add(agent)
+            db.add(mcp_server)
+            db.commit()
+            
+            # Also add some mock usage data
+            db.add(MarketplaceUsage(user_id=owner_id, item_id=mcp_server.id, action="call"))
+            db.add(MarketplaceUsage(user_id=owner_id, item_id=mcp_server.id, action="call"))
+            db.add(MarketplaceUsage(user_id=owner_id, item_id=agent.id, action="install"))
+            db.commit()
+            
+            items = db.query(MarketplaceItem).all()
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Could not seed mock marketplace items: {e}")
+    # -------------------------------------
+    
     results = []
     for item in items:
         item_dict = item.to_dict()
@@ -96,12 +151,15 @@ def build_marketplace_item(req: BuildRequest, db: Session = Depends(get_db_sessi
     if infra_api_server:
         api_url = infra_api_server if infra_api_server.startswith("http") else f"http://{infra_api_server}"
         try:
-            requests.post(f"{api_url}/build", json={
-                "entity_name": item.name,
-                "entity_type": item.item_type,
-                "description": item.description,
-                "owner_username": current_user.username
-            }, timeout=5)
+            # TODO: Future implementation when infrastructure is ready.
+            # The API server is not ready yet, so we just comment this out.
+            # requests.post(f"{api_url}/build", json={
+            #     "entity_name": item.name,
+            #     "entity_type": item.item_type,
+            #     "description": item.description,
+            #     "owner_username": current_user.username
+            # }, timeout=5)
+            pass
         except Exception as e:
             logger.warning(f"Could not reach infra build endpoint: {e}")
 
@@ -127,14 +185,17 @@ def deploy_marketplace_item(req: DeployRequest, db: Session = Depends(get_db_ses
     if infra_api_server:
         api_url = infra_api_server if infra_api_server.startswith("http") else f"http://{infra_api_server}"
         try:
-            requests.post(f"{api_url}/deploy", json={
-                "entity_name": item.name,
-                "entity_type": item.item_type,
-                "owner_username": current_user.username,
-                "target_environment": req.environment,
-                "chart_version": item.version,
-                "ttl_days": 10 if req.environment == "dev" else None
-            }, timeout=5)
+            # TODO: Future implementation when infrastructure is ready.
+            # The API server is not ready yet, so we just comment this out.
+            # requests.post(f"{api_url}/deploy", json={
+            #     "entity_name": item.name,
+            #     "entity_type": item.item_type,
+            #     "owner_username": current_user.username,
+            #     "target_environment": req.environment,
+            #     "chart_version": item.version,
+            #     "ttl_days": 10 if req.environment == "dev" else None
+            # }, timeout=5)
+            pass
         except Exception as e:
             logger.warning(f"Could not reach infra deploy endpoint: {e}")
 
@@ -155,10 +216,13 @@ def delete_marketplace_item(item_id: int, db: Session = Depends(get_db_session),
     if infra_api_server:
         api_url = infra_api_server if infra_api_server.startswith("http") else f"http://{infra_api_server}"
         try:
-            requests.delete(f"{api_url}/deploy/{item_id}", json={
-                "owner_username": current_user.username,
-                "reason": "manual_user_deletion"
-            }, timeout=5)
+            # TODO: Future implementation when infrastructure is ready.
+            # The API server is not ready yet, so we just comment this out.
+            # requests.delete(f"{api_url}/deploy/{item_id}", json={
+            #     "owner_username": current_user.username,
+            #     "reason": "manual_user_deletion"
+            # }, timeout=5)
+            pass
         except Exception as e:
             logger.warning(f"Could not reach infra delete endpoint: {e}")
 
