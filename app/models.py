@@ -989,6 +989,8 @@ class MarketplaceItem(Base):
     deployment_status = Column(String(50), default="CREATED", nullable=False)
     version = Column(String(50), default="1.0.0", nullable=False)
     environment = Column(String(50), default="dev", nullable=False)  # 'dev' or 'release'
+    # Artifactory chart name selected during last deploy (e.g. "jira-integration-mcp")
+    chart_name = Column(String(255), nullable=True)
     # Specific Helm chart version selected during last deploy
     chart_version = Column(String(100), nullable=True)
     # TTL for dev deployments (days).  Defaults to the env-level setting at deploy time.
@@ -1033,6 +1035,7 @@ class MarketplaceItem(Base):
             "deployment_status": self.deployment_status,
             "version": self.version,
             "environment": self.environment,
+            "chart_name": self.chart_name,
             "chart_version": self.chart_version,
             "ttl_days": self.ttl_days,
             "ttl_remaining_days": ttl_remaining,

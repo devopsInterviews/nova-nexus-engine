@@ -1,15 +1,16 @@
 """
 Marketplace API routes.
 
-Handles the full lifecycle of AI Agents and MCP Servers:
-  CREATE → BUILD → DEPLOY (dev / release) → DELETE
+Entity lifecycle: CREATE (= BUILT) → DEPLOY → REDEPLOY / DELETE
 
-Also provides:
-  - Public /ping endpoint for agents/MCP servers to self-report calls (no auth).
-  - GET /chart-versions for fetching available Helm chart versions from Artifactory.
-  - POST /items/{id}/clone  for forking a build into a new independent deployment.
-  - Background TTL expiry task (started from client.py).
-  - GET /config  so the frontend can read server-side limits without hard-coding them.
+Additional endpoints:
+  GET  /config            — server-side limits for the frontend
+  GET  /charts            — list available Helm chart names from Artifactory
+  GET  /chart-versions    — list versions for a specific chart
+  POST /ping              — PUBLIC, no auth; agents/MCP servers self-report usage
+  POST /items/{id}/clone  — fork a deployed item for a parallel deployment
+  POST /redeploy          — undeploy then re-deploy with a new chart/version
+  background task         — daily TTL expiry check
 """
 
 import os
@@ -27,7 +28,10 @@ from sqlalchemy import func
 from app.database import get_db_session, SessionLocal
 from app.models import MarketplaceItem, MarketplaceUsage, User
 from app.routes.auth_routes import get_current_user
-from app.services.artifactory_client import get_marketplace_chart_versions
+from app.services.artifactory_client import (
+    get_marketplace_chart_versions,
+    get_marketplace_charts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +61,20 @@ class ItemCreate(BaseModel):
     icon: Optional[str] = None                       # base64 data URI or plain URL
     bitbucket_repo: Optional[str] = None
     how_to_use: Optional[str] = None
-    url_to_connect: Optional[str] = None
     tools_exposed: Optional[List[Dict[str, Any]]] = None
-
-
-class BuildRequest(BaseModel):
-    item_id: int
 
 
 class DeployRequest(BaseModel):
     item_id: int
     environment: str        # 'dev' or 'release'
+    chart_name: str = ""    # Artifactory chart name
+    chart_version: str = "latest"
+
+
+class RedeployRequest(BaseModel):
+    item_id: int
+    environment: str        # 'dev' or 'release'
+    chart_name: str = ""    # New Artifactory chart name
     chart_version: str = "latest"
 
 
@@ -96,8 +103,7 @@ def _infra_url() -> Optional[str]:
     return srv if srv.startswith("http") else f"http://{srv}"
 
 
-# ─── Helper: compute ttl_remaining_days from an item dict ────────────────────
-# (also available via MarketplaceItem.to_dict(), kept here for explicit seeding)
+# ─── Helper: enrich item dict with usage counts ───────────────────────────────
 
 def _enrich_item(item: MarketplaceItem, db: Session) -> Dict[str, Any]:
     item_dict = item.to_dict()
@@ -129,15 +135,12 @@ def get_marketplace_config():
 def get_marketplace_items(db: Session = Depends(get_db_session)):
     """
     Fetch all marketplace items with usage stats.
-
     Auto-seeds rich mock data on first run so the UI is immediately testable.
     """
     items = db.query(MarketplaceItem).all()
-
     if not items:
         _seed_mock_data(db)
         items = db.query(MarketplaceItem).all()
-
     return [_enrich_item(item, db) for item in items]
 
 
@@ -147,8 +150,13 @@ def create_marketplace_item(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a new Agent or MCP Server. Enforces per-user creation limits."""
-    # Enforce limits
+    """
+    Create (= register + build) a new Agent or MCP Server.
+
+    Creating immediately sets status to BUILT — since the CI/CD scaffolding step
+    is handled asynchronously by the infra team, this simplifies the UX to a
+    single action: Create → then Deploy.
+    """
     if req.item_type == "agent":
         user_count = (
             db.query(MarketplaceItem)
@@ -162,7 +170,7 @@ def create_marketplace_item(
             )
             raise HTTPException(
                 status_code=429,
-                detail=f"You have reached the maximum number of agents ({MARKETPLACE_MAX_AGENTS_PER_USER}).",
+                detail=f"Agent limit reached ({MARKETPLACE_MAX_AGENTS_PER_USER} max).",
             )
     elif req.item_type == "mcp_server":
         user_count = (
@@ -177,7 +185,7 @@ def create_marketplace_item(
             )
             raise HTTPException(
                 status_code=429,
-                detail=f"You have reached the maximum number of MCP servers ({MARKETPLACE_MAX_MCP_PER_USER}).",
+                detail=f"MCP server limit reached ({MARKETPLACE_MAX_MCP_PER_USER} max).",
             )
 
     item = MarketplaceItem(
@@ -188,9 +196,10 @@ def create_marketplace_item(
         icon=req.icon,
         bitbucket_repo=req.bitbucket_repo,
         how_to_use=req.how_to_use,
-        url_to_connect=req.url_to_connect,
+        url_to_connect=None,  # set by infra after first deploy
         tools_exposed=req.tools_exposed or [],
-        deployment_status="CREATED",
+        # Start as BUILT — Create = Build in the current workflow
+        deployment_status="BUILT",
         version="1.0.0",
         environment="dev",
         ttl_days=MARKETPLACE_DEV_TTL_DAYS,
@@ -200,58 +209,64 @@ def create_marketplace_item(
     db.refresh(item)
 
     logger.info(
-        "[MARKETPLACE] User '%s' created %s '%s' (id=%d)",
+        "[MARKETPLACE] User '%s' created %s '%s' (id=%d) → status=BUILT",
         current_user.username, item.item_type, item.name, item.id,
     )
+
+    # ── Infra hook ──────────────────────────────────────────────────────────
+    infra = _infra_url()
+    if infra:
+        logger.info(
+            "[MARKETPLACE] TODO: POST %s/api/infra/build — entity=%s owner=%s",
+            infra, item.name, current_user.username,
+        )
+        # TODO: uncomment when infra is ready
+        # http_requests.post(f"{infra}/api/infra/build", json={
+        #     "entity_name": item.name,
+        #     "entity_type": item.item_type,
+        #     "description": item.description,
+        #     "owner_username": current_user.username,
+        #     "template_type": "python_fastapi",
+        # }, timeout=10)
+    # ────────────────────────────────────────────────────────────────────────
+
     return _enrich_item(item, db)
 
 
-@router.post("/build")
-def build_marketplace_item(
-    req: BuildRequest,
-    db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+@router.get("/charts")
+def get_available_charts(environment: str = "dev"):
+    """
+    Return all chart names available in Artifactory for the given environment.
+    The frontend presents these in the Deploy dialog so the user can select
+    which chart to deploy.
+    """
+    charts, error = get_marketplace_charts(environment)
+    if error:
+        logger.warning(
+            "[MARKETPLACE] chart list warning (env=%s): %s", environment, error
+        )
+    return {"environment": environment, "charts": charts}
+
+
+@router.get("/chart-versions")
+def get_chart_versions(
+    environment: str = "dev",
+    chart_name: str = "",
 ):
     """
-    Transition item status from CREATED → BUILT.
-
-    Triggers an infra API call (commented out until the infra team builds it).
+    Return available Helm chart versions for a specific chart name and environment.
+    Called after the user selects a chart name in the Deploy dialog.
     """
-    item = db.query(MarketplaceItem).filter_by(id=req.item_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    if item.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Not authorized to build this item")
+    if not chart_name:
+        raise HTTPException(status_code=400, detail="chart_name is required")
 
-    prev_status = item.deployment_status
-    item.deployment_status = "BUILT"
-    db.commit()
-    db.refresh(item)
-
-    logger.info(
-        "[MARKETPLACE] User '%s' triggered build for '%s' (id=%d): %s → BUILT",
-        current_user.username, item.name, item.id, prev_status,
-    )
-
-    # ── Infra hook (uncomment when infrastructure is ready) ──────────────────
-    infra = _infra_url()
-    if infra:
-        try:
-            # TODO: uncomment when infra is ready
-            # http_requests.post(f"{infra}/api/infra/build", json={
-            #     "entity_name": item.name,
-            #     "entity_type": item.item_type,
-            #     "description": item.description,
-            #     "owner_username": current_user.username,
-            #     "template_type": "python_fastapi",
-            #     "bitbucket_project": "AI_AGENTS",
-            # }, timeout=10)
-            pass
-        except Exception as exc:
-            logger.warning("[MARKETPLACE] Could not reach infra build endpoint: %s", exc)
-    # ─────────────────────────────────────────────────────────────────────────
-
-    return {"status": "ok", "message": "Build completed", "item": _enrich_item(item, db)}
+    versions, error = get_marketplace_chart_versions(chart_name, environment)
+    if error:
+        logger.warning(
+            "[MARKETPLACE] chart-versions warning (env=%s, chart=%s): %s",
+            environment, chart_name, error,
+        )
+    return {"environment": environment, "chart_name": chart_name, "versions": versions}
 
 
 @router.post("/deploy")
@@ -261,11 +276,9 @@ def deploy_marketplace_item(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Deploy an item to dev or release.
-
-    Creates a deployment record in the DB (status → DEPLOYED, stores chart_version,
-    deployed_at, and ttl_days for dev).  The actual Helm deploy call to infra is
-    stubbed out until the infra team is ready.
+    Deploy a BUILT item to dev or release.
+    Stores chart_name, chart_version, deployed_at, and ttl_days in the DB.
+    The actual Helm deploy call is stubbed — logged and commented out.
     """
     item = db.query(MarketplaceItem).filter_by(id=req.item_id).first()
     if not item:
@@ -275,11 +288,12 @@ def deploy_marketplace_item(
     if item.deployment_status not in ("BUILT", "DEPLOYED"):
         raise HTTPException(
             status_code=400,
-            detail="Item must be in BUILT or DEPLOYED status before deploying.",
+            detail="Item must be BUILT or DEPLOYED before deploying.",
         )
 
     item.deployment_status = "DEPLOYED"
     item.environment = req.environment
+    item.chart_name = req.chart_name or item.name
     item.chart_version = req.chart_version
     item.deployed_at = datetime.now(timezone.utc)
     item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
@@ -288,32 +302,102 @@ def deploy_marketplace_item(
     db.refresh(item)
 
     logger.info(
-        "[MARKETPLACE] User '%s' deployed '%s' (id=%d) to %s with chart version %s",
-        current_user.username, item.name, item.id, req.environment, req.chart_version,
+        "[MARKETPLACE] User '%s' deployed '%s' (id=%d) → env=%s chart=%s@%s",
+        current_user.username, item.name, item.id,
+        req.environment, req.chart_name, req.chart_version,
     )
 
-    # ── Infra hook (uncomment when infrastructure is ready) ──────────────────
     infra = _infra_url()
     if infra:
-        try:
-            # TODO: uncomment when infra is ready
-            # http_requests.post(f"{infra}/api/infra/deploy", json={
-            #     "entity_name": item.name,
-            #     "entity_type": item.item_type,
-            #     "chart_name": f"{item.name}-chart",
-            #     "chart_version": req.chart_version,
-            #     "owner_username": current_user.username,
-            #     "target_environment": req.environment,
-            #     "ttl_days": MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None,
-            #     "quota_profile": "standard",
-            #     "tools_exposed": [t.get("name") for t in (item.tools_exposed or [])],
-            # }, timeout=10)
-            pass
-        except Exception as exc:
-            logger.warning("[MARKETPLACE] Could not reach infra deploy endpoint: %s", exc)
-    # ─────────────────────────────────────────────────────────────────────────
+        logger.info(
+            "[MARKETPLACE] TODO: POST %s/api/infra/deploy — entity=%s chart=%s@%s env=%s ttl=%s",
+            infra, item.name, req.chart_name, req.chart_version,
+            req.environment, MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else "none",
+        )
+        # TODO: uncomment when infra is ready
+        # http_requests.post(f"{infra}/api/infra/deploy", json={
+        #     "entity_name": item.name,
+        #     "entity_type": item.item_type,
+        #     "chart_name": req.chart_name,
+        #     "chart_version": req.chart_version,
+        #     "owner_username": current_user.username,
+        #     "target_environment": req.environment,
+        #     "ttl_days": MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None,
+        #     "quota_profile": "standard",
+        # }, timeout=10)
 
     return {"status": "ok", "message": f"Deployed to {req.environment}", "item": _enrich_item(item, db)}
+
+
+@router.post("/redeploy")
+def redeploy_marketplace_item(
+    req: RedeployRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Redeploy a DEPLOYED item with a new chart name/version or environment.
+
+    Workflow:
+      1. Call infra undeploy (logged, TODO)
+      2. Call infra deploy with new spec (logged, TODO)
+      3. Update DB record with new chart_name, chart_version, deployed_at, ttl_days
+    """
+    item = db.query(MarketplaceItem).filter_by(id=req.item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to redeploy this item")
+    if item.deployment_status != "DEPLOYED":
+        raise HTTPException(
+            status_code=400,
+            detail="Only DEPLOYED items can be redeployed. Deploy it first.",
+        )
+
+    old_chart = item.chart_name
+    old_version = item.chart_version
+    old_env = item.environment
+
+    item.environment = req.environment
+    item.chart_name = req.chart_name or item.chart_name
+    item.chart_version = req.chart_version
+    item.deployed_at = datetime.now(timezone.utc)
+    item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
+
+    db.commit()
+    db.refresh(item)
+
+    logger.info(
+        "[MARKETPLACE] User '%s' redeployed '%s' (id=%d): %s@%s/%s → %s@%s/%s",
+        current_user.username, item.name, item.id,
+        old_chart, old_version, old_env,
+        req.chart_name, req.chart_version, req.environment,
+    )
+
+    infra = _infra_url()
+    if infra:
+        logger.info(
+            "[MARKETPLACE] TODO: DELETE %s/api/infra/deploy/%d (old deployment) then re-deploy",
+            infra, item.id,
+        )
+        # TODO: uncomment when infra is ready
+        # Step 1 — undeploy old
+        # http_requests.delete(f"{infra}/api/infra/deploy/{item.id}", json={
+        #     "owner_username": current_user.username,
+        #     "reason": "redeploy",
+        # }, timeout=10)
+        # Step 2 — deploy new
+        # http_requests.post(f"{infra}/api/infra/deploy", json={
+        #     "entity_name": item.name,
+        #     "entity_type": item.item_type,
+        #     "chart_name": req.chart_name,
+        #     "chart_version": req.chart_version,
+        #     "owner_username": current_user.username,
+        #     "target_environment": req.environment,
+        #     "ttl_days": MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None,
+        # }, timeout=10)
+
+    return {"status": "ok", "message": f"Redeployed to {req.environment}", "item": _enrich_item(item, db)}
 
 
 @router.post("/items/{item_id}/clone")
@@ -323,10 +407,8 @@ def clone_marketplace_item(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Fork an existing BUILT or DEPLOYED item into a fresh copy owned by the
-    current user. The clone starts with BUILT status so it can be deployed
-    independently to any environment (e.g. two dev instances + one release from
-    the same build template).
+    Fork a BUILT or DEPLOYED item into a fresh BUILT copy owned by the current user.
+    The clone starts as BUILT so it can be independently deployed to any environment.
     """
     source = db.query(MarketplaceItem).filter_by(id=item_id).first()
     if not source:
@@ -336,7 +418,6 @@ def clone_marketplace_item(
             status_code=400, detail="Only BUILT or DEPLOYED items can be cloned."
         )
 
-    # Check limits for the cloning user
     if source.item_type == "agent":
         user_count = (
             db.query(MarketplaceItem)
@@ -344,10 +425,7 @@ def clone_marketplace_item(
             .count()
         )
         if user_count >= MARKETPLACE_MAX_AGENTS_PER_USER:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Agent limit reached ({MARKETPLACE_MAX_AGENTS_PER_USER}).",
-            )
+            raise HTTPException(status_code=429, detail="Agent limit reached.")
 
     clone = MarketplaceItem(
         name=f"{source.name} (Fork)",
@@ -362,6 +440,7 @@ def clone_marketplace_item(
         deployment_status="BUILT",
         version=source.version,
         environment="dev",
+        chart_name=source.chart_name,
         chart_version=source.chart_version,
         ttl_days=MARKETPLACE_DEV_TTL_DAYS,
         deployed_at=None,
@@ -371,7 +450,7 @@ def clone_marketplace_item(
     db.refresh(clone)
 
     logger.info(
-        "[MARKETPLACE] User '%s' cloned '%s' (id=%d) → new item '%s' (id=%d)",
+        "[MARKETPLACE] User '%s' forked '%s' (id=%d) → new item '%s' (id=%d)",
         current_user.username, source.name, source.id, clone.name, clone.id,
     )
     return _enrich_item(clone, db)
@@ -390,7 +469,7 @@ def delete_marketplace_item(
     if item.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this item")
 
-    _call_infra_undeploy(item, reason="manual_user_deletion")
+    _call_infra_undeploy(item, current_user.username if current_user else "system", reason="manual_user_deletion")
 
     db.delete(item)
     db.commit()
@@ -422,7 +501,7 @@ def log_usage(
     db.refresh(usage)
 
     logger.info(
-        "[MARKETPLACE] Usage logged — item '%s' (id=%d) by '%s': %s",
+        "[MARKETPLACE] Usage — item '%s' (id=%d) by '%s': %s",
         item.name, req.item_id, current_user.username, req.action,
     )
     return usage.to_dict()
@@ -433,9 +512,8 @@ def public_ping(req: PingRequest, db: Session = Depends(get_db_session)):
     """
     PUBLIC endpoint — no authentication required.
 
-    Agents and MCP servers call this to self-report usage.  The system matches
-    the entity by name and type, then writes a row to marketplace_usage so
-    the portal can show accurate call counts and unique user metrics.
+    Agents and MCP servers call this to self-report usage so the portal
+    can show accurate call counts and unique user metrics.
     """
     item = (
         db.query(MarketplaceItem)
@@ -448,7 +526,7 @@ def public_ping(req: PingRequest, db: Session = Depends(get_db_session)):
 
     if not item:
         logger.warning(
-            "[MARKETPLACE] /ping received for unknown entity '%s' (%s)",
+            "[MARKETPLACE] /ping — unknown entity '%s' (%s)",
             req.entity_name, req.entity_type,
         )
         raise HTTPException(
@@ -472,57 +550,28 @@ def public_ping(req: PingRequest, db: Session = Depends(get_db_session)):
     return {"status": "ok", "item_id": item.id, "item_name": item.name}
 
 
-@router.get("/chart-versions")
-def get_chart_versions(
-    environment: str = "dev",
-    chart_name: str = "marketplace-entity",
-):
-    """
-    Return available Helm chart versions from Artifactory for the given environment.
-
-    The frontend calls this when the user opens the Deploy dialog so they can
-    select the exact chart version to deploy.
-
-    Query params:
-        environment  — 'dev' or 'release'
-        chart_name   — Helm chart name (defaults to generic 'marketplace-entity')
-    """
-    versions, error = get_marketplace_chart_versions(chart_name, environment)
-    if error:
-        logger.warning(
-            "[MARKETPLACE] chart-versions fetch warning (env=%s, chart=%s): %s",
-            environment, chart_name, error,
-        )
-    return {"environment": environment, "chart_name": chart_name, "versions": versions}
-
-
 # ─── Background TTL Expiry Task ───────────────────────────────────────────────
 
-def _call_infra_undeploy(item: MarketplaceItem, reason: str = "ttl_expired") -> None:
-    """Fire-and-forget infra undeploy call (stubbed until infra is ready)."""
+def _call_infra_undeploy(item: MarketplaceItem, owner_username: str = "system", reason: str = "ttl_expired") -> None:
+    """Log and stub the infra undeploy call."""
     infra = _infra_url()
     if infra:
-        try:
-            # TODO: uncomment when infra is ready
-            # http_requests.delete(
-            #     f"{infra}/api/infra/deploy/{item.id}",
-            #     json={"owner_username": item.owner.username if item.owner else "system", "reason": reason},
-            #     timeout=10,
-            # )
-            pass
-        except Exception as exc:
-            logger.warning("[MARKETPLACE] Could not reach infra undeploy endpoint: %s", exc)
+        logger.info(
+            "[MARKETPLACE] TODO: DELETE %s/api/infra/deploy/%d owner=%s reason=%s",
+            infra, item.id, owner_username, reason,
+        )
+        # TODO: uncomment when infra is ready
+        # http_requests.delete(
+        #     f"{infra}/api/infra/deploy/{item.id}",
+        #     json={"owner_username": owner_username, "reason": reason},
+        #     timeout=10,
+        # )
 
 
 def _run_ttl_expiry_sync() -> int:
     """
-    Synchronous TTL check.  Runs in a background thread / async task.
-
-    Finds all DEPLOYED dev items whose ``deployed_at + ttl_days`` has passed,
-    calls the infra undeploy hook, then removes them from the DB.
-
-    Returns:
-        Number of items expired and deleted.
+    Synchronous TTL check — finds expired dev deployments and removes them.
+    Intended to run from the async background loop every 24 hours.
     """
     db: Session = SessionLocal()
     deleted = 0
@@ -548,7 +597,7 @@ def _run_ttl_expiry_sync() -> int:
             elapsed_days = (now - deployed_at).days
             if elapsed_days >= item.ttl_days:
                 logger.info(
-                    "[MARKETPLACE] TTL expired — deleting item '%s' (id=%d, deployed=%s, ttl=%d days)",
+                    "[MARKETPLACE] TTL expired — deleting '%s' (id=%d, deployed=%s, ttl=%dd)",
                     item.name, item.id, item.deployed_at.isoformat(), item.ttl_days,
                 )
                 _call_infra_undeploy(item, reason="ttl_expired")
@@ -557,9 +606,9 @@ def _run_ttl_expiry_sync() -> int:
 
         if deleted:
             db.commit()
-            logger.info("[MARKETPLACE] TTL cleanup complete — removed %d expired item(s).", deleted)
+            logger.info("[MARKETPLACE] TTL cleanup — removed %d expired item(s).", deleted)
         else:
-            logger.debug("[MARKETPLACE] TTL cleanup complete — no expired items found.")
+            logger.debug("[MARKETPLACE] TTL cleanup — no expired items.")
     except Exception as exc:
         db.rollback()
         logger.error("[MARKETPLACE] TTL cleanup error: %s", exc, exc_info=True)
@@ -571,9 +620,8 @@ def _run_ttl_expiry_sync() -> int:
 
 async def run_ttl_expiry_cleanup():
     """
-    Async background loop that runs the TTL expiry check every 24 hours.
-    Start this with ``asyncio.create_task(run_ttl_expiry_cleanup())`` in the
-    FastAPI startup event.
+    Async loop that runs the TTL expiry check every 24 hours.
+    Started from client.py via asyncio.create_task().
     """
     logger.info("[MARKETPLACE] TTL expiry background task started (interval=24h).")
     while True:
@@ -586,161 +634,120 @@ async def run_ttl_expiry_cleanup():
 
 # ─── Mock Data Seeding ───────────────────────────────────────────────────────
 
-_MOCK_AGENT_ICON = (
-    "https://api.dicebear.com/7.x/bottts/svg?seed=DataAgent&backgroundColor=b6e3f4"
-)
-_MOCK_JIRA_ICON = (
-    "https://api.dicebear.com/7.x/bottts/svg?seed=JiraMCP&backgroundColor=c0aede"
-)
-_MOCK_K8S_ICON = (
-    "https://api.dicebear.com/7.x/bottts/svg?seed=K8sAgent&backgroundColor=d1f4cc"
-)
-_MOCK_GITHUB_ICON = (
-    "https://api.dicebear.com/7.x/bottts/svg?seed=GithubMCP&backgroundColor=ffd5dc"
-)
-
+_AVATAR_BASE = "https://api.dicebear.com/7.x/bottts/svg"
 
 def _seed_mock_data(db: Session) -> None:
     """Seed rich mock data so the UI is immediately testable on a fresh DB."""
     first_user = db.query(User).first()
     if not first_user:
-        logger.warning("[MARKETPLACE] Cannot seed mock data — no users in DB yet.")
+        logger.warning("[MARKETPLACE] Cannot seed — no users in DB yet.")
         return
 
     owner_id = first_user.id
     now = datetime.now(timezone.utc)
 
     items_to_add = [
-        # 1 — Agent (BUILT, dev)
         MarketplaceItem(
             name="Data Analysis Agent",
-            description=(
-                "Analyzes complex datasets using pandas and returns natural language summaries "
-                "with statistical insights, trend detection, and anomaly flagging."
-            ),
-            item_type="agent",
-            owner_id=owner_id,
-            icon=_MOCK_AGENT_ICON,
+            description="Analyzes complex datasets and returns natural language summaries with statistical insights, trend detection, and anomaly flagging.",
+            item_type="agent", owner_id=owner_id,
+            icon=f"{_AVATAR_BASE}?seed=DataAgent&backgroundColor=b6e3f4",
             bitbucket_repo="https://bitbucket.company.internal/projects/AI/repos/data-agent",
-            how_to_use=(
-                "Call this agent with a reference to a dataset or SQL query. "
-                "Ask it to 'summarize the latest sales data' or 'find anomalies in the weekly report'."
-            ),
-            url_to_connect="",
-            tools_exposed=[],
-            deployment_status="BUILT",
-            version="1.2.0",
-            environment="dev",
-            chart_version=None,
-            ttl_days=MARKETPLACE_DEV_TTL_DAYS,
-            deployed_at=None,
+            how_to_use="Ask: 'summarize the latest sales data' or 'find anomalies in the weekly report'.",
+            url_to_connect="http://data-agent.release.svc.cluster.local",
+            tools_exposed=[], deployment_status="DEPLOYED", version="2.1.0",
+            environment="release", chart_name="data-analysis-agent", chart_version="2.1.0",
+            ttl_days=None, deployed_at=now - timedelta(days=5),
         ),
-        # 2 — MCP Server (DEPLOYED, release)
         MarketplaceItem(
             name="Jira Integration MCP",
-            description=(
-                "Exposes tools to create, update, search, and comment on Jira issues "
-                "directly from the portal or any LLM chat session."
-            ),
-            item_type="mcp_server",
-            owner_id=owner_id,
-            icon=_MOCK_JIRA_ICON,
+            description="Exposes tools to create, update, search, and comment on Jira issues directly from any LLM chat session or portal workflow.",
+            item_type="mcp_server", owner_id=owner_id,
+            icon=f"{_AVATAR_BASE}?seed=JiraMCP&backgroundColor=c0aede",
             bitbucket_repo="https://bitbucket.company.internal/projects/MCP/repos/jira-mcp",
-            how_to_use=(
-                "Enable this MCP in the Research tab to let the LLM manage your Jira board. "
-                "Available tools: create_ticket, update_ticket, search_tickets, add_comment."
-            ),
+            how_to_use="Enable in Research tab. Say 'create a P1 bug for the login failure' or 'list open tickets for sprint 42'.",
             url_to_connect="http://jira-mcp.mcp-gateway.company.internal",
-            tools_exposed=[
-                {"name": "create_ticket"},
-                {"name": "update_ticket"},
-                {"name": "search_tickets"},
-                {"name": "add_comment"},
-            ],
-            deployment_status="DEPLOYED",
-            version="2.0.1",
-            environment="release",
-            chart_version="2.0.1",
-            ttl_days=None,
-            deployed_at=now,
+            tools_exposed=[{"name": "create_ticket"}, {"name": "update_ticket"}, {"name": "search_tickets"}],
+            deployment_status="DEPLOYED", version="2.0.1", environment="release",
+            chart_name="jira-integration-mcp", chart_version="2.0.1",
+            ttl_days=None, deployed_at=now - timedelta(days=30),
         ),
-        # 3 — Agent (DEPLOYED, dev) — close to expiry for visual demo
         MarketplaceItem(
             name="K8s Ops Agent",
-            description=(
-                "Monitors Kubernetes cluster health, surfaces failing pods, "
-                "suggests remediation steps, and can apply Helm rollbacks on command."
-            ),
-            item_type="agent",
-            owner_id=owner_id,
-            icon=_MOCK_K8S_ICON,
+            description="Monitors Kubernetes cluster health, surfaces failing pods, and can apply Helm rollbacks on command — your AI SRE companion.",
+            item_type="agent", owner_id=owner_id,
+            icon=f"{_AVATAR_BASE}?seed=K8sAgent&backgroundColor=d1f4cc",
             bitbucket_repo="https://bitbucket.company.internal/projects/OPS/repos/k8s-agent",
-            how_to_use=(
-                "Ask this agent to 'check the prod cluster', 'list failing pods in namespace X', "
-                "or 'roll back the payments deployment to version 1.3'."
-            ),
+            how_to_use="Ask 'check the prod cluster', 'list failing pods in namespace X', or 'roll back payments to v1.3'.",
             url_to_connect="http://k8s-agent.dev.svc.cluster.local",
-            tools_exposed=[],
-            deployment_status="DEPLOYED",
-            version="0.9.4",
-            environment="dev",
-            chart_version="0.9.4",
-            ttl_days=MARKETPLACE_DEV_TTL_DAYS,
-            # Deployed 8 days ago — only 2 days remaining when TTL is 10, shows warning
-            deployed_at=now - timedelta(days=8),
+            tools_exposed=[], deployment_status="DEPLOYED", version="0.9.4",
+            environment="dev", chart_name="k8s-ops-agent", chart_version="0.9.4",
+            # 8 days ago → only 2 days left on a 10-day TTL (shows red warning)
+            ttl_days=10, deployed_at=now - timedelta(days=8),
         ),
-        # 4 — MCP Server (CREATED, dev)
         MarketplaceItem(
             name="GitHub Actions MCP",
-            description=(
-                "Provides tools to trigger GitHub Actions workflows, list run statuses, "
-                "download artifacts, and inspect workflow logs."
-            ),
-            item_type="mcp_server",
-            owner_id=owner_id,
-            icon=_MOCK_GITHUB_ICON,
+            description="Trigger workflows, inspect run logs, download artifacts, and manage GitHub Actions pipelines from natural language.",
+            item_type="mcp_server", owner_id=owner_id,
+            icon=f"{_AVATAR_BASE}?seed=GithubMCP&backgroundColor=ffd5dc",
             bitbucket_repo="https://bitbucket.company.internal/projects/MCP/repos/gh-actions-mcp",
-            how_to_use=(
-                "Enable in Research tab. Say 'trigger the nightly build workflow' or "
-                "'show me the last 5 failed CI runs for the backend repo'."
-            ),
+            how_to_use="Say 'trigger the nightly build' or 'show last 5 failed CI runs for the backend repo'.",
             url_to_connect="",
-            tools_exposed=[
-                {"name": "trigger_workflow"},
-                {"name": "list_runs"},
-                {"name": "get_run_logs"},
-            ],
-            deployment_status="CREATED",
-            version="1.0.0",
-            environment="dev",
-            chart_version=None,
-            ttl_days=MARKETPLACE_DEV_TTL_DAYS,
-            deployed_at=None,
+            tools_exposed=[{"name": "trigger_workflow"}, {"name": "list_runs"}, {"name": "get_run_logs"}],
+            deployment_status="BUILT", version="1.0.0",
+            environment="dev", chart_name=None, chart_version=None,
+            ttl_days=10, deployed_at=None,
+        ),
+        MarketplaceItem(
+            name="Vault Secrets MCP",
+            description="Securely fetches secrets from HashiCorp Vault and injects them into your workflows — no more hardcoded credentials.",
+            item_type="mcp_server", owner_id=owner_id,
+            icon=f"{_AVATAR_BASE}?seed=VaultMCP&backgroundColor=fffdd0",
+            bitbucket_repo="https://bitbucket.company.internal/projects/MCP/repos/vault-mcp",
+            how_to_use="Ask 'get the DB password for prod' or 'rotate the API keys for service X'.",
+            url_to_connect="http://vault-mcp.dev.svc.cluster.local",
+            tools_exposed=[{"name": "get_secret"}, {"name": "rotate_secret"}],
+            deployment_status="DEPLOYED", version="1.3.0",
+            environment="dev", chart_name="vault-secrets-mcp", chart_version="1.3.0",
+            # 6 days ago → 4 days left (orange warning)
+            ttl_days=10, deployed_at=now - timedelta(days=6),
+        ),
+        MarketplaceItem(
+            name="Slack Notifier Agent",
+            description="Sends intelligent notifications, summaries, and alerts to Slack channels based on events across your systems.",
+            item_type="agent", owner_id=owner_id,
+            icon=f"{_AVATAR_BASE}?seed=SlackAgent&backgroundColor=e0c3fc",
+            bitbucket_repo="https://bitbucket.company.internal/projects/AI/repos/slack-agent",
+            how_to_use="Ask 'send a daily standup summary to #engineering' or 'alert #on-call about this incident'.",
+            url_to_connect="",
+            tools_exposed=[], deployment_status="BUILT", version="1.1.0",
+            environment="dev", chart_name=None, chart_version=None,
+            ttl_days=10, deployed_at=None,
         ),
     ]
 
     try:
         for item in items_to_add:
             db.add(item)
-        db.flush()  # get IDs without committing
+        db.flush()
 
-        # Add usage records for the Jira MCP and K8s Agent
-        jira_item = next(i for i in items_to_add if i.name == "Jira Integration MCP")
-        k8s_item = next(i for i in items_to_add if i.name == "K8s Ops Agent")
+        jira = next(i for i in items_to_add if i.name == "Jira Integration MCP")
+        data = next(i for i in items_to_add if i.name == "Data Analysis Agent")
+        k8s = next(i for i in items_to_add if i.name == "K8s Ops Agent")
 
-        usage_records = [
-            MarketplaceUsage(user_id=owner_id, item_id=jira_item.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=jira_item.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=jira_item.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=jira_item.id, action="deploy"),
-            MarketplaceUsage(user_id=owner_id, item_id=k8s_item.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=k8s_item.id, action="call"),
-        ]
-        for u in usage_records:
-            db.add(u)
+        for record in [
+            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="call"),
+            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="call"),
+            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="call"),
+            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="deploy"),
+            MarketplaceUsage(user_id=owner_id, item_id=data.id, action="call"),
+            MarketplaceUsage(user_id=owner_id, item_id=data.id, action="call"),
+            MarketplaceUsage(user_id=owner_id, item_id=k8s.id, action="call"),
+        ]:
+            db.add(record)
 
         db.commit()
-        logger.info("[MARKETPLACE] Mock data seeded successfully (%d items).", len(items_to_add))
+        logger.info("[MARKETPLACE] Seeded %d mock items.", len(items_to_add))
     except Exception as exc:
         db.rollback()
-        logger.warning("[MARKETPLACE] Could not seed mock data: %s", exc)
+        logger.warning("[MARKETPLACE] Seeding failed: %s", exc)

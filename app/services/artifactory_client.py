@@ -453,6 +453,76 @@ _chart_version_caches: Dict[str, "VersionCache"] = {
     "release": VersionCache(),
 }
 
+def get_marketplace_charts(
+    environment: str = "dev",
+    use_cache: bool = True,
+) -> Tuple[List[str], Optional[str]]:
+    """
+    Return all Helm chart names (i.e. folder names) available in the configured
+    Artifactory marketplace path for the given environment.
+
+    The frontend presents this list in the Deploy dialog so the user can pick
+    which chart (entity) they want to deploy.
+
+    Returns:
+        Tuple of (sorted chart-name list, error message or None)
+    """
+    if not ARTIFACTORY_ENABLED:
+        logger.debug("[ARTIFACTORY] Chart list skipped (Artifactory disabled).")
+        return [
+            "data-analysis-agent", "jira-integration-mcp", "k8s-ops-agent",
+            "github-actions-mcp", "vault-secrets-mcp", "slack-notifier-agent",
+        ], None
+
+    repo_path = (
+        ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
+        if environment == "dev"
+        else ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
+    )
+
+    client = get_artifactory_client()
+    if client is None:
+        return [], "Artifactory client unavailable"
+
+    # GET /artifactory/api/storage/<repo>/<path>?list&deep=0&listFolders=1
+    parts = repo_path.split("/", 1)
+    repo = parts[0]
+    sub_path = parts[1] if len(parts) > 1 else ""
+    url = f"{client.base_url}/artifactory/api/storage/{repo}/{sub_path}?list&deep=0&listFolders=1"
+    logger.info("[ARTIFACTORY] Fetching chart list from: %s", url)
+
+    try:
+        response = requests.get(
+            url,
+            auth=client._get_auth(),
+            verify=client.verify_ssl,
+            timeout=15,
+        )
+        if response.status_code == 404:
+            logger.warning("[ARTIFACTORY] Chart list path not found: %s", url)
+            return [], f"Path not found: {url}"
+
+        response.raise_for_status()
+        data = response.json()
+        folders = [
+            entry["uri"].strip("/")
+            for entry in data.get("files", [])
+            if entry.get("folder", False)
+        ]
+        folders.sort()
+        logger.info("[ARTIFACTORY] Found %d charts in %s: %s", len(folders), repo_path, folders[:8])
+        return folders, None
+
+    except requests.exceptions.RequestException as exc:
+        err = f"Request error: {exc}"
+        logger.error("[ARTIFACTORY] %s", err)
+        return [], err
+    except Exception as exc:
+        err = f"Unexpected error: {exc}"
+        logger.error("[ARTIFACTORY] %s", err)
+        return [], err
+
+
 def get_marketplace_chart_versions(
     chart_name: str,
     environment: str = "dev",
