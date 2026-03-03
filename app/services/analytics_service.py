@@ -8,8 +8,9 @@ This service handles:
 - Real-time data collection coordination
 """
 
-import asyncio
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
@@ -24,9 +25,11 @@ logger = logging.getLogger(__name__)
 
 class AnalyticsService:
     """Service for managing analytics data and background tasks."""
-    
+
     def __init__(self):
-        self.monitoring_tasks = []
+        self._stop_event = threading.Event()
+        self._threads: list[threading.Thread] = []
+
     
     def initialize_analytics(self, db: Session):
         """
@@ -186,160 +189,166 @@ class AnalyticsService:
             ]
 
     async def start_monitoring(self):
-        """Start background monitoring tasks."""
-        logger.info("Starting analytics monitoring tasks...")
-        
-        # Start MCP server monitoring
-        monitor_task = asyncio.create_task(self._monitor_mcp_servers())
-        self.monitoring_tasks.append(monitor_task)
-        
-        # Start metrics cleanup task
-        cleanup_task = asyncio.create_task(self._cleanup_old_data())
-        self.monitoring_tasks.append(cleanup_task)
-    
+        """
+        Start background monitoring as daemon threads.
+
+        Daemon threads are used instead of asyncio.create_task() for the same reason
+        the TTL cleanup was converted: asyncio.sleep() calls inside tasks keep the
+        event loop busy. When uvicorn receives SIGTERM, it waits for the ASGI lifespan
+        shutdown to complete. If outstanding asyncio tasks include long sleeps (e.g.
+        asyncio.sleep(300)), the shutdown blocks until those sleeps finish — causing
+        the pod to appear stuck or to restart at exactly the sleep interval.
+
+        Daemon threads use time.sleep() which is transparent to the event loop and
+        are killed automatically when the process exits.
+        """
+        logger.info("Starting analytics monitoring daemon threads...")
+        self._stop_event.clear()
+
+        t1 = threading.Thread(
+            target=self._monitor_mcp_servers_thread,
+            daemon=True,
+            name="analytics-mcp-monitor",
+        )
+        t2 = threading.Thread(
+            target=self._cleanup_old_data_thread,
+            daemon=True,
+            name="analytics-data-cleanup",
+        )
+        t1.start()
+        t2.start()
+        self._threads = [t1, t2]
+        logger.info(
+            "Analytics daemon threads started (monitor tid=%s, cleanup tid=%s).",
+            t1.ident, t2.ident,
+        )
+
     async def stop_monitoring(self):
-        """Stop all background monitoring tasks."""
-        logger.info("Stopping analytics monitoring tasks...")
-        
-        for task in self.monitoring_tasks:
-            task.cancel()
-        
-        # Wait for tasks to complete
-        await asyncio.gather(*self.monitoring_tasks, return_exceptions=True)
-        self.monitoring_tasks.clear()
-    
-    async def _monitor_mcp_servers(self):
-        """Background task to monitor MCP server health."""
-        while True:
+        """Signal monitoring threads to stop at their next sleep boundary."""
+        logger.info("Stopping analytics monitoring threads...")
+        self._stop_event.set()
+        self._threads.clear()
+
+    def _interruptible_sleep(self, seconds: float) -> bool:
+        """
+        Sleep for `seconds` but wake up early if _stop_event is set.
+        Returns True if the thread should continue, False if it should exit.
+        """
+        return not self._stop_event.wait(timeout=seconds)
+
+    def _monitor_mcp_servers_thread(self) -> None:
+        """Daemon thread: check MCP server health every 5 minutes."""
+        logger.info("[ANALYTICS] MCP monitor thread started.")
+        while not self._stop_event.is_set():
             try:
-                # Import SessionLocal dynamically to avoid initialization issues
                 from app.database import SessionLocal
-                
+
                 if SessionLocal is None:
-                    logger.warning("SessionLocal not initialized, skipping MCP monitoring")
-                    await asyncio.sleep(60)
-                    continue
-                
-                db = SessionLocal()
-                try:
-                    # Get all registered servers
-                    servers = db.query(McpServerStatus).all()
-                    
-                    for server in servers:
-                        await self._check_server_health(db, server)
-                    
-                    db.commit()
-                except Exception as e:
-                    logger.error(f"Error monitoring MCP servers: {e}")
-                    db.rollback()
-                finally:
-                    db.close()
-                
-                # Wait 5 minutes before next check
-                await asyncio.sleep(300)
-                
-            except asyncio.CancelledError:
+                    logger.warning("[ANALYTICS] SessionLocal not ready, skipping MCP check.")
+                else:
+                    db: Session = SessionLocal()
+                    try:
+                        servers = db.query(McpServerStatus).all()
+                        for server in servers:
+                            self._check_server_health_sync(db, server)
+                        db.commit()
+                    except Exception as exc:
+                        logger.error("[ANALYTICS] Error monitoring MCP servers: %s", exc)
+                        db.rollback()
+                    finally:
+                        db.close()
+            except Exception as exc:
+                logger.error("[ANALYTICS] Unexpected error in MCP monitor thread: %s", exc)
+
+            if not self._interruptible_sleep(300):
                 break
-            except Exception as e:
-                logger.error(f"Unexpected error in MCP monitoring: {e}")
-                await asyncio.sleep(60)  # Wait 1 minute before retry
-    
-    async def _check_server_health(self, db: Session, server: McpServerStatus):
-        """Check health of a single MCP server."""
+
+        logger.info("[ANALYTICS] MCP monitor thread exiting.")
+
+    def _check_server_health_sync(self, db: Session, server: McpServerStatus) -> None:
+        """Synchronous health check for a single MCP server (runs in thread, safe to block)."""
         try:
-            import aiohttp
-            import time
-            
-            start_time = time.time()
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{server.server_url}/health",
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    response_time = int((time.time() - start_time) * 1000)
-                    
-                    if response.status == 200:
-                        server.status = 'active'
-                        server.response_time_ms = response_time
-                        server.last_successful_check = datetime.utcnow()
-                        server.error_count = 0
-                        server.error_message = None
-                    else:
-                        server.status = 'error'
-                        server.error_count += 1
-                        server.error_message = f"HTTP {response.status}"
-                    
-                    server.last_check = datetime.utcnow()
-                    server.total_requests += 1
-                    
-                    if server.status == 'active':
-                        server.successful_requests += 1
-        
-        except Exception as e:
-            logger.warning(f"Failed to check server {server.server_name}: {e}")
-            server.status = 'error'
-            server.error_count += 1
-            server.error_message = str(e)
+            import requests as http_requests
+            start = time.time()
+            resp = http_requests.get(
+                f"{server.server_url}/health",
+                timeout=10,
+                verify=False,
+            )
+            response_time = int((time.time() - start) * 1000)
+
+            if resp.status_code == 200:
+                server.status = "active"
+                server.response_time_ms = response_time
+                server.last_successful_check = datetime.utcnow()
+                server.error_count = 0
+                server.error_message = None
+            else:
+                server.status = "error"
+                server.error_count += 1
+                server.error_message = f"HTTP {resp.status_code}"
+
             server.last_check = datetime.utcnow()
             server.total_requests += 1
-    
-    async def _cleanup_old_data(self):
-        """Background task to cleanup old analytics data."""
-        while True:
+            if server.status == "active":
+                server.successful_requests += 1
+
+        except Exception as exc:
+            logger.warning("[ANALYTICS] Health check failed for %s: %s", server.server_name, exc)
+            server.status = "error"
+            server.error_count += 1
+            server.error_message = str(exc)
+            server.last_check = datetime.utcnow()
+            server.total_requests += 1
+
+    def _cleanup_old_data_thread(self) -> None:
+        """Daemon thread: purge old analytics rows once per day."""
+        logger.info("[ANALYTICS] Data-cleanup thread started.")
+        while not self._stop_event.is_set():
             try:
-                # Import SessionLocal dynamically to avoid initialization issues
                 from app.database import SessionLocal
-                
+
                 if SessionLocal is None:
-                    logger.warning("SessionLocal not initialized, skipping data cleanup")
-                    await asyncio.sleep(3600)
-                    continue
-                
-                db = SessionLocal()
-                try:
-                    now = datetime.utcnow()
-                    
-                    # Keep only last 30 days of request logs
-                    thirty_days_ago = now - timedelta(days=30)
-                    deleted_logs = db.query(RequestLog).filter(
-                        RequestLog.timestamp < thirty_days_ago
-                    ).delete()
-                    
-                    # Keep only last 90 days of page views
-                    ninety_days_ago = now - timedelta(days=90)
-                    deleted_views = db.query(PageView).filter(
-                        PageView.timestamp < ninety_days_ago
-                    ).delete()
-                    
-                    # Keep only last 7 days of system metrics
-                    seven_days_ago = now - timedelta(days=7)
-                    deleted_metrics = db.query(SystemMetrics).filter(
-                        SystemMetrics.timestamp < seven_days_ago
-                    ).delete()
-                    
-                    db.commit()
-                    
-                    if deleted_logs or deleted_views or deleted_metrics:
-                        logger.info(
-                            f"Cleaned up old data: {deleted_logs} request logs, "
-                            f"{deleted_views} page views, {deleted_metrics} metrics"
+                    logger.warning("[ANALYTICS] SessionLocal not ready, skipping data cleanup.")
+                else:
+                    db: Session = SessionLocal()
+                    try:
+                        now = datetime.utcnow()
+                        deleted_logs = (
+                            db.query(RequestLog)
+                            .filter(RequestLog.timestamp < now - timedelta(days=30))
+                            .delete()
                         )
-                
-                except Exception as e:
-                    logger.error(f"Error cleaning up old data: {e}")
-                    db.rollback()
-                finally:
-                    db.close()
-                
-                # Run cleanup daily
-                await asyncio.sleep(86400)
-                
-            except asyncio.CancelledError:
+                        deleted_views = (
+                            db.query(PageView)
+                            .filter(PageView.timestamp < now - timedelta(days=90))
+                            .delete()
+                        )
+                        deleted_metrics = (
+                            db.query(SystemMetrics)
+                            .filter(SystemMetrics.timestamp < now - timedelta(days=7))
+                            .delete()
+                        )
+                        db.commit()
+                        if deleted_logs or deleted_views or deleted_metrics:
+                            logger.info(
+                                "[ANALYTICS] Cleanup: %d request logs, %d page views, %d metrics removed.",
+                                deleted_logs, deleted_views, deleted_metrics,
+                            )
+                        else:
+                            logger.debug("[ANALYTICS] Cleanup: nothing to remove.")
+                    except Exception as exc:
+                        logger.error("[ANALYTICS] Error during data cleanup: %s", exc)
+                        db.rollback()
+                    finally:
+                        db.close()
+            except Exception as exc:
+                logger.error("[ANALYTICS] Unexpected error in cleanup thread: %s", exc)
+
+            if not self._interruptible_sleep(86400):
                 break
-            except Exception as e:
-                logger.error(f"Unexpected error in cleanup task: {e}")
-                await asyncio.sleep(3600)  # Wait 1 hour before retry
+
+        logger.info("[ANALYTICS] Data-cleanup thread exiting.")
 
 
 # Global analytics service instance
