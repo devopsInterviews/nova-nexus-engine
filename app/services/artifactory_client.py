@@ -435,82 +435,91 @@ def is_artifactory_enabled() -> bool:
 
 
 # ============================================================
-# Marketplace Helm Chart Version Fetching
+# Marketplace Helm Chart Discovery
+#
+# Expected Artifactory path structure:
+#   {repo}/{APP_NAME}/{VERSION}/{APP_NAME}-{VERSION}.tgz
+#
+# Where repo is:
+#   DEV:     ARTIFACTORY_MARKETPLACE_HELM_REPO_DEV     (e.g. my-helm-dev-local)
+#   RELEASE: ARTIFACTORY_MARKETPLACE_HELM_REPO_RELEASE (e.g. my-helm-release-local)
+#
+# Listing charts = listing top-level folders in the repo.
+# Listing versions = listing sub-folders under {repo}/{APP_NAME}/.
+# Versions can be semver, branch names, or any string — ALL are returned.
 # ============================================================
 
-# Separate Artifactory paths for marketplace Helm charts.
-# Format: "<repo>/<subfolder-path>" — e.g. "helm-dev-local/marketplace"
-ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV = os.getenv(
-    "ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV", "helm-dev-local/marketplace"
+ARTIFACTORY_MARKETPLACE_HELM_REPO_DEV = os.getenv(
+    "ARTIFACTORY_MARKETPLACE_HELM_REPO_DEV", "my-helm-dev-local"
 )
-ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE = os.getenv(
-    "ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE", "helm-release-local/marketplace"
+ARTIFACTORY_MARKETPLACE_HELM_REPO_RELEASE = os.getenv(
+    "ARTIFACTORY_MARKETPLACE_HELM_REPO_RELEASE", "my-helm-release-local"
 )
 
-# Separate version caches keyed by environment
-_chart_version_caches: Dict[str, "VersionCache"] = {
+# Per-environment caches: {"dev": {"charts": [...], "versions": {chart: [...]}}}
+_helm_chart_cache: Dict[str, VersionCache] = {
     "dev": VersionCache(),
     "release": VersionCache(),
 }
+_helm_version_caches: Dict[str, Dict[str, VersionCache]] = {
+    "dev": {},
+    "release": {},
+}
 
-def get_marketplace_charts(
-    environment: str = "dev",
-    use_cache: bool = True,
-) -> Tuple[List[str], Optional[str]]:
-    """
-    Return all Helm chart names (i.e. folder names) available in the configured
-    Artifactory marketplace path for the given environment.
+# Fallback lists when Artifactory is disabled or unreachable
+_FALLBACK_CHARTS = [
+    "data-analysis-agent", "jira-integration-mcp", "k8s-ops-agent",
+    "github-actions-mcp", "vault-secrets-mcp", "slack-notifier-agent",
+    "confluence-mcp", "reporting-agent",
+]
+_FALLBACK_VERSIONS = ["2.1.0", "2.0.0", "1.5.0", "1.4.0", "main-latest", "1.0.0"]
 
-    The frontend presents this list in the Deploy dialog so the user can pick
-    which chart (entity) they want to deploy.
 
-    Returns:
-        Tuple of (sorted chart-name list, error message or None)
-    """
-    if not ARTIFACTORY_ENABLED:
-        logger.debug("[ARTIFACTORY] Chart list skipped (Artifactory disabled).")
-        return [
-            "data-analysis-agent", "jira-integration-mcp", "k8s-ops-agent",
-            "github-actions-mcp", "vault-secrets-mcp", "slack-notifier-agent",
-        ], None
-
-    repo_path = (
-        ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
+def _get_helm_repo(environment: str) -> str:
+    """Return the Artifactory repository name for the given environment."""
+    return (
+        ARTIFACTORY_MARKETPLACE_HELM_REPO_DEV
         if environment == "dev"
-        else ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
+        else ARTIFACTORY_MARKETPLACE_HELM_REPO_RELEASE
     )
 
+
+def _list_artifactory_folders(repo: str, path: str = "") -> Tuple[List[str], Optional[str]]:
+    """
+    List immediate sub-folder names at {repo}/{path} using the Artifactory
+    File List API.
+
+    GET /artifactory/api/storage/{repo}/{path}?list&deep=0&listFolders=1
+
+    Returns:
+        Tuple of (sorted folder-name list, error message or None)
+    """
     client = get_artifactory_client()
     if client is None:
         return [], "Artifactory client unavailable"
 
-    # GET /artifactory/api/storage/<repo>/<path>?list&deep=0&listFolders=1
-    parts = repo_path.split("/", 1)
-    repo = parts[0]
-    sub_path = parts[1] if len(parts) > 1 else ""
-    url = f"{client.base_url}/artifactory/api/storage/{repo}/{sub_path}?list&deep=0&listFolders=1"
-    logger.info("[ARTIFACTORY] Fetching chart list from: %s", url)
+    url = f"{client.base_url}/artifactory/api/storage/{repo}"
+    if path:
+        url = f"{url}/{path.strip('/')}"
+    url = f"{url}?list&deep=0&listFolders=1"
 
+    logger.info("[ARTIFACTORY] Listing folders at: %s", url)
     try:
-        response = requests.get(
-            url,
-            auth=client._get_auth(),
-            verify=client.verify_ssl,
-            timeout=15,
+        resp = requests.get(
+            url, auth=client._get_auth(), verify=client.verify_ssl, timeout=15
         )
-        if response.status_code == 404:
-            logger.warning("[ARTIFACTORY] Chart list path not found: %s", url)
-            return [], f"Path not found: {url}"
+        if resp.status_code == 404:
+            logger.warning("[ARTIFACTORY] Path not found (404): %s", url)
+            return [], f"Not found: {url}"
+        resp.raise_for_status()
 
-        response.raise_for_status()
-        data = response.json()
-        folders = [
+        data = resp.json()
+        folders = sorted(
             entry["uri"].strip("/")
             for entry in data.get("files", [])
             if entry.get("folder", False)
-        ]
-        folders.sort()
-        logger.info("[ARTIFACTORY] Found %d charts in %s: %s", len(folders), repo_path, folders[:8])
+        )
+        logger.info("[ARTIFACTORY] Found %d folders at %s/%s", len(folders), repo, path)
         return folders, None
 
     except requests.exceptions.RequestException as exc:
@@ -523,90 +532,76 @@ def get_marketplace_charts(
         return [], err
 
 
+def get_marketplace_charts(
+    environment: str = "dev",
+    use_cache: bool = True,
+) -> Tuple[List[str], Optional[str]]:
+    """
+    Return all chart names (APP_NAME folders) from the top level of the
+    configured Artifactory Helm repository for the given environment.
+
+    Path queried: {repo}/
+    """
+    if not ARTIFACTORY_ENABLED:
+        logger.debug("[ARTIFACTORY] Chart list — Artifactory disabled, returning fallback.")
+        return _FALLBACK_CHARTS, None
+
+    cache = _helm_chart_cache.get(environment, VersionCache())
+    if use_cache and cache.is_valid():
+        logger.debug("[ARTIFACTORY] Chart list — returning cache for env=%s", environment)
+        return cache.get(), None
+
+    repo = _get_helm_repo(environment)
+    charts, error = _list_artifactory_folders(repo)
+    if charts:
+        cache.set(charts)
+    return charts or _FALLBACK_CHARTS, error
+
+
 def get_marketplace_chart_versions(
     chart_name: str,
     environment: str = "dev",
     use_cache: bool = True,
 ) -> Tuple[List[str], Optional[str]]:
     """
-    Fetch available Helm chart versions for a specific marketplace entity from Artifactory.
+    Return all available versions for a chart from Artifactory.
 
-    The function lists all `*.tgz` files in the configured chart path and extracts
-    version numbers from filenames of the form ``<chart_name>-<version>.tgz``.
+    Path queried: {repo}/{chart_name}/
+    Versions are sub-folder names — can be semver (2.1.0), branch names
+    (main-abc123), or any string.  ALL are returned without filtering.
 
-    Two separate repository paths are supported:
-      - ``dev``     → ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
-      - ``release`` → ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
-
-    Returns:
-        Tuple of (sorted version list newest-first, error message or None)
+    Sorted: semver tags newest-first, then non-semver alphabetically.
     """
     if not ARTIFACTORY_ENABLED:
-        logger.debug("[ARTIFACTORY] Marketplace chart version fetch skipped (Artifactory disabled).")
-        return ["latest", "1.0.0"], None
+        logger.debug(
+            "[ARTIFACTORY] Chart versions — Artifactory disabled, returning fallback for '%s'.",
+            chart_name,
+        )
+        return _FALLBACK_VERSIONS, None
 
-    cache = _chart_version_caches.get(environment, VersionCache())
+    env_caches = _helm_version_caches.setdefault(environment, {})
+    cache = env_caches.setdefault(chart_name, VersionCache())
     if use_cache and cache.is_valid():
-        logger.debug("[ARTIFACTORY] Returning cached chart versions for environment '%s'", environment)
+        logger.debug(
+            "[ARTIFACTORY] Chart versions — returning cache for %s/%s", environment, chart_name
+        )
         return cache.get(), None
 
-    repo_path = (
-        ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
-        if environment == "dev"
-        else ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
+    repo = _get_helm_repo(environment)
+    versions, error = _list_artifactory_folders(repo, chart_name)
+
+    if not versions:
+        logger.warning(
+            "[ARTIFACTORY] No versions found for chart '%s' in repo '%s' (env=%s). Error: %s",
+            chart_name, repo, environment, error,
+        )
+        return _FALLBACK_VERSIONS, error or "No versions found"
+
+    # Sort: semver descending first, then everything else alphabetically
+    versions = ArtifactoryClient._sort_tags(versions)
+    cache.set(versions)
+    logger.info(
+        "[ARTIFACTORY] Found %d versions for chart '%s' (env=%s): %s",
+        len(versions), chart_name, environment, versions[:8],
     )
-
-    client = get_artifactory_client()
-    if client is None:
-        return ["latest", "1.0.0"], "Artifactory client unavailable"
-
-    # Use the Artifactory file list API to enumerate files in the path
-    # GET /artifactory/api/storage/<repo>/<path>?list&deep=0&listFolders=0
-    parts = repo_path.split("/", 1)
-    repo = parts[0]
-    sub_path = parts[1] if len(parts) > 1 else ""
-    url = f"{client.base_url}/artifactory/api/storage/{repo}/{sub_path}/{chart_name}?list&deep=0&listFolders=0"
-    logger.info("[ARTIFACTORY] Fetching marketplace chart versions from: %s", url)
-
-    try:
-        response = requests.get(
-            url,
-            auth=client._get_auth(),
-            verify=client.verify_ssl,
-            timeout=15,
-        )
-        if response.status_code == 404:
-            logger.warning("[ARTIFACTORY] Chart path not found: %s", url)
-            return ["latest", "1.0.0"], f"Chart path not found: {url}"
-
-        response.raise_for_status()
-        data = response.json()
-        files = data.get("files", [])
-
-        versions: List[str] = []
-        pattern = re.compile(
-            rf"^/?{re.escape(chart_name)}-([0-9a-zA-Z.\-]+)\.tgz$"
-        )
-        for entry in files:
-            uri = entry.get("uri", "")
-            m = pattern.match(uri.lstrip("/"))
-            if m:
-                versions.append(m.group(1))
-
-        if not versions:
-            logger.warning("[ARTIFACTORY] No chart versions found for '%s' in %s", chart_name, repo_path)
-            return ["latest", "1.0.0"], "No versions found"
-
-        versions = ArtifactoryClient._sort_tags(versions)
-        cache.set(versions)
-        logger.info("[ARTIFACTORY] Found %d chart versions for '%s': %s", len(versions), chart_name, versions[:5])
-        return versions, None
-
-    except requests.exceptions.RequestException as exc:
-        err = f"Request error: {exc}"
-        logger.error("[ARTIFACTORY] %s", err)
-        return ["latest", "1.0.0"], err
-    except Exception as exc:
-        err = f"Unexpected error: {exc}"
-        logger.error("[ARTIFACTORY] %s", err)
-        return ["latest", "1.0.0"], err
+    return versions, None

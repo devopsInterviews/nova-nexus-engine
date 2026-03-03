@@ -64,6 +64,21 @@ class ItemCreate(BaseModel):
     tools_exposed: Optional[List[Dict[str, Any]]] = None
 
 
+class ItemUpdate(BaseModel):
+    """Partial update — only provided fields will be changed."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    how_to_use: Optional[str] = None
+    bitbucket_repo: Optional[str] = None
+    icon: Optional[str] = None
+
+
+class CallRequest(BaseModel):
+    """Payload for the Run/Call proxy endpoint."""
+    prompt: str
+    user_identifier: Optional[str] = None  # overrides current_user.username if set
+
+
 class DeployRequest(BaseModel):
     item_id: int
     environment: str        # 'dev' or 'release'
@@ -398,6 +413,137 @@ def redeploy_marketplace_item(
         # }, timeout=10)
 
     return {"status": "ok", "message": f"Redeployed to {req.environment}", "item": _enrich_item(item, db)}
+
+
+@router.patch("/items/{item_id}")
+def update_marketplace_item(
+    item_id: int,
+    req: ItemUpdate,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Partially update an item's metadata (name, description, how_to_use,
+    bitbucket_repo, icon).  Only the owner or an admin may edit.
+    """
+    item = db.query(MarketplaceItem).filter_by(id=item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this item")
+
+    changed: List[str] = []
+    if req.name is not None and req.name != item.name:
+        item.name = req.name;  changed.append("name")
+    if req.description is not None and req.description != item.description:
+        item.description = req.description;  changed.append("description")
+    if req.how_to_use is not None and req.how_to_use != item.how_to_use:
+        item.how_to_use = req.how_to_use;  changed.append("how_to_use")
+    if req.bitbucket_repo is not None and req.bitbucket_repo != item.bitbucket_repo:
+        item.bitbucket_repo = req.bitbucket_repo;  changed.append("bitbucket_repo")
+    if req.icon is not None and req.icon != item.icon:
+        item.icon = req.icon;  changed.append("icon")
+
+    if not changed:
+        logger.info(
+            "[MARKETPLACE] PATCH /items/%d by '%s' — no changes detected.",
+            item_id, current_user.username,
+        )
+        return _enrich_item(item, db)
+
+    db.commit()
+    db.refresh(item)
+    logger.info(
+        "[MARKETPLACE] User '%s' updated item '%s' (id=%d) — changed fields: %s",
+        current_user.username, item.name, item.id, ", ".join(changed),
+    )
+    return _enrich_item(item, db)
+
+
+@router.post("/items/{item_id}/call")
+def call_marketplace_item(
+    item_id: int,
+    req: CallRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Proxy a prompt to a deployed item's connection URL and return the response.
+
+    This allows users to test/interact with a running Agent or MCP Server
+    directly from the portal without needing direct cluster access.
+
+    The request body `{"prompt": "...", "user": "username"}` is forwarded to the
+    item's `url_to_connect`.  A usage record is written regardless of outcome.
+    """
+    item = db.query(MarketplaceItem).filter_by(id=item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.deployment_status != "DEPLOYED":
+        raise HTTPException(status_code=400, detail="Item is not deployed — deploy it first.")
+    if not item.url_to_connect:
+        raise HTTPException(
+            status_code=400,
+            detail="No connection URL set for this item. The URL is assigned by infra after deployment.",
+        )
+
+    caller = req.user_identifier or current_user.username
+    payload = {"prompt": req.prompt, "user": caller, "item_name": item.name}
+
+    logger.info(
+        "[MARKETPLACE] User '%s' calling item '%s' (id=%d) at %s — prompt length=%d",
+        current_user.username, item.name, item.id, item.url_to_connect, len(req.prompt),
+    )
+
+    result: Any = None
+    error_msg: Optional[str] = None
+    try:
+        response = http_requests.post(
+            item.url_to_connect,
+            json=payload,
+            timeout=30,
+            # Internal cluster URLs may use self-signed certs; allow both
+            verify=False,
+        )
+        logger.info(
+            "[MARKETPLACE] Call to '%s' returned HTTP %d (%.2fs)",
+            item.url_to_connect, response.status_code,
+            response.elapsed.total_seconds() if hasattr(response, "elapsed") else 0,
+        )
+        content_type = response.headers.get("content-type", "")
+        if "application/json" in content_type:
+            result = response.json()
+        else:
+            result = response.text
+
+    except http_requests.exceptions.Timeout:
+        error_msg = "Request timed out after 30 seconds."
+        logger.warning(
+            "[MARKETPLACE] Call to '%s' (item id=%d) timed out.", item.url_to_connect, item.id
+        )
+    except http_requests.exceptions.ConnectionError as exc:
+        error_msg = f"Could not connect to {item.url_to_connect}: {exc}"
+        logger.error(
+            "[MARKETPLACE] Call connection error for item id=%d: %s", item.id, exc
+        )
+    except Exception as exc:
+        error_msg = f"Unexpected error: {exc}"
+        logger.error(
+            "[MARKETPLACE] Unexpected call error for item id=%d: %s", item.id, exc, exc_info=True
+        )
+
+    # Always log a usage record
+    usage = MarketplaceUsage(user_id=current_user.id, item_id=item.id, action="call")
+    db.add(usage)
+    db.commit()
+    logger.info(
+        "[MARKETPLACE] Usage record written — item '%s' (id=%d) called by '%s'",
+        item.name, item.id, current_user.username,
+    )
+
+    if error_msg:
+        return {"status": "error", "error": error_msg, "response": None}
+    return {"status": "ok", "response": result}
 
 
 @router.post("/items/{item_id}/clone")

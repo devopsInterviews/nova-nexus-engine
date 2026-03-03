@@ -180,10 +180,10 @@ marketPlace:
   maxMcpServersPerUser: 5
   # TTL (in days) for dev-environment deployments (0 = never auto-expire)
   devTtlDays: 10
-  # Artifactory paths for Helm chart version discovery
-  # Format: "<repo>/<subfolder>" — e.g. "helm-dev-local/marketplace"
-  artifactoryChartRepoDevPath: "helm-dev-local/marketplace"
-  artifactoryChartRepoReleasePath: "helm-release-local/marketplace"
+  # Artifactory Helm repository names for chart discovery.
+  # Charts live at: {repo}/{APP_NAME}/{VERSION}/{APP_NAME}-{VERSION}.tgz
+  artifactoryHelmRepoDev: "my-helm-dev-local"
+  artifactoryHelmRepoRelease: "my-helm-release-local"
 
 # IDA MCP Configuration
 idaMcp:

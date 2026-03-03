@@ -73,10 +73,10 @@ spec:
               value: "{{ .Values.marketPlace.maxMcpServersPerUser | default 5 }}"
             - name: MARKETPLACE_DEV_TTL_DAYS
               value: "{{ .Values.marketPlace.devTtlDays | default 10 }}"
-            - name: ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
-              value: "{{ .Values.marketPlace.artifactoryChartRepoDevPath | default "helm-dev-local/marketplace" }}"
-            - name: ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
-              value: "{{ .Values.marketPlace.artifactoryChartRepoReleasePath | default "helm-release-local/marketplace" }}"
+            - name: ARTIFACTORY_MARKETPLACE_HELM_REPO_DEV
+              value: "{{ .Values.marketPlace.artifactoryHelmRepoDev | default "my-helm-dev-local" }}"
+            - name: ARTIFACTORY_MARKETPLACE_HELM_REPO_RELEASE
+              value: "{{ .Values.marketPlace.artifactoryHelmRepoRelease | default "my-helm-release-local" }}"
           {{- end }}
           {{- if .Values.idaMcp.enabled }}
             # IDA MCP Controller Configuration
