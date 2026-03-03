@@ -15,7 +15,8 @@ Additional endpoints:
 
 import os
 import logging
-import asyncio
+import threading
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 
@@ -764,18 +765,29 @@ def _run_ttl_expiry_sync() -> int:
     return deleted
 
 
-async def run_ttl_expiry_cleanup():
+def start_ttl_cleanup_thread() -> threading.Thread:
     """
-    Async loop that runs the TTL expiry check every 24 hours.
-    Started from client.py via asyncio.create_task().
+    Starts a daemon background thread that runs TTL expiry cleanup once every 24 hours.
+
+    Using a daemon thread (instead of asyncio.create_task) ensures the long sleep
+    is completely transparent to uvicorn's event loop. When Kubernetes sends SIGTERM,
+    uvicorn can close cleanly without waiting for a pending asyncio coroutine, which
+    previously caused the pod to hang until the termination grace period expired and
+    be force-killed — resulting in a continuous restart cycle.
     """
-    logger.info("[MARKETPLACE] TTL expiry background task started (interval=24h).")
-    while True:
-        await asyncio.sleep(86_400)  # 24 hours
-        try:
-            _run_ttl_expiry_sync()
-        except Exception as exc:
-            logger.error("[MARKETPLACE] TTL background task error: %s", exc, exc_info=True)
+    def _target() -> None:
+        logger.info("[MARKETPLACE] TTL cleanup thread started (interval=24h).")
+        while True:
+            time.sleep(86_400)  # 24 hours — daemon thread exits automatically with the process
+            try:
+                _run_ttl_expiry_sync()
+            except Exception as exc:
+                logger.error("[MARKETPLACE] TTL cleanup thread error: %s", exc, exc_info=True)
+
+    thread = threading.Thread(target=_target, daemon=True, name="marketplace-ttl-cleanup")
+    thread.start()
+    logger.info("[MARKETPLACE] TTL cleanup daemon thread launched (tid=%s).", thread.ident)
+    return thread
 
 
 # ─── Mock Data Seeding ───────────────────────────────────────────────────────

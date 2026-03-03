@@ -108,41 +108,51 @@ function getItemStyle(item: MarketplaceItem) {
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
-        topBar: "bg-emerald-500", ring: "border-emerald-500/30 hover:border-emerald-400/60",
-        bg: "from-emerald-950/10", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+        topBar: "bg-emerald-500",
+        leftBar: "bg-emerald-500",
+        ring: "border-emerald-500/50 hover:border-emerald-400/80",
+        badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
         label: "Deployed · Release", dot: "bg-emerald-500", pulse: true,
-        envPill: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+        envPill: "bg-sky-500/15 text-sky-400 border-sky-500/25",
       };
     }
     const r = item.ttl_remaining_days;
     if (r !== null && r <= 3) {
       return {
-        topBar: "bg-red-500", ring: "border-red-500/50 hover:border-red-400",
-        bg: "from-red-950/20", badge: "bg-red-500/10 text-red-400 border-red-500/20",
+        topBar: "bg-red-500",
+        leftBar: "bg-red-500",
+        ring: "border-red-500/60 hover:border-red-400/90",
+        badge: "bg-red-500/15 text-red-400 border-red-500/30",
         label: "Expiring Soon!", dot: "bg-red-500 animate-pulse", pulse: true,
-        envPill: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+        envPill: "bg-orange-500/15 text-orange-400 border-orange-500/25",
       };
     }
     if (r !== null && r <= 7) {
       return {
-        topBar: "bg-orange-500", ring: "border-orange-500/40 hover:border-orange-400",
-        bg: "from-orange-950/10", badge: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+        topBar: "bg-orange-500",
+        leftBar: "bg-orange-500",
+        ring: "border-orange-500/50 hover:border-orange-400/80",
+        badge: "bg-orange-500/15 text-orange-400 border-orange-500/30",
         label: "Deployed · Dev", dot: "bg-orange-400", pulse: false,
-        envPill: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+        envPill: "bg-orange-500/15 text-orange-400 border-orange-500/25",
       };
     }
     return {
-      topBar: "bg-violet-500", ring: "border-violet-500/30 hover:border-violet-400/60",
-      bg: "from-violet-950/10", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+      topBar: "bg-violet-500",
+      leftBar: "bg-violet-500",
+      ring: "border-violet-500/50 hover:border-violet-400/80",
+      badge: "bg-violet-500/15 text-violet-400 border-violet-500/30",
       label: "Deployed · Dev", dot: "bg-violet-500", pulse: true,
-      envPill: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+      envPill: "bg-orange-500/15 text-orange-400 border-orange-500/25",
     };
   }
   return {
-    topBar: "bg-amber-500", ring: "border-amber-500/25 hover:border-amber-400/50",
-    bg: "from-amber-950/08", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    topBar: "bg-amber-500",
+    leftBar: "bg-amber-500",
+    ring: "border-amber-500/45 hover:border-amber-400/75",
+    badge: "bg-amber-500/15 text-amber-400 border-amber-500/30",
     label: "Built", dot: "bg-amber-500", pulse: false,
-    envPill: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    envPill: "bg-slate-500/15 text-slate-400 border-slate-500/25",
   };
 }
 
@@ -164,15 +174,15 @@ const EntityIcon = memo(function EntityIcon({
   if (icon) {
     return (
       <img src={icon} alt="icon"
-        className={`${dim} rounded-2xl object-cover border border-white/[0.08] shrink-0`} />
+        className={`${dim} rounded-2xl object-cover border border-border shrink-0`} />
     );
   }
   return (
-    <div className={`${dim} rounded-2xl shrink-0 flex items-center justify-center border border-white/[0.06]
-      bg-gradient-to-br ${item_type === "agent" ? "from-primary/25 to-sky-800/20" : "from-violet-600/25 to-purple-900/20"}`}>
+    <div className={`${dim} rounded-2xl shrink-0 flex items-center justify-center border border-border
+      ${item_type === "agent" ? "bg-sky-500/15" : "bg-violet-500/15"}`}>
       {item_type === "agent"
-        ? <Zap size={iconSz} className="text-sky-300/90" />
-        : <Blocks size={iconSz} className="text-violet-300/90" />}
+        ? <Zap size={iconSz} className="text-sky-400" />
+        : <Blocks size={iconSz} className="text-violet-400" />}
     </div>
   );
 });
@@ -189,32 +199,38 @@ const ItemCard = memo(function ItemCard({
       onKeyDown={e => e.key === "Enter" && onClick()}
       className={`
         group relative cursor-pointer rounded-2xl overflow-hidden flex flex-col
-        bg-gradient-to-b ${st.bg} to-[hsl(220_27%_6%)] backdrop-blur-sm
-        border ${st.ring}
-        transition-all duration-200 ease-out min-h-[280px]
+        bg-surface/60 backdrop-blur-sm
+        border-2 ${st.ring}
+        transition-all duration-200 ease-out min-h-[320px]
         hover:scale-[1.015] hover:shadow-2xl
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
       `}
     >
-      <div className={`absolute top-0 inset-x-0 h-[3px] ${st.topBar}`} />
+      {/* Colored top status bar */}
+      <div className={`absolute top-0 inset-x-0 h-[4px] ${st.topBar}`} />
+
+      {/* Near-expiry banner */}
       {nearExpiry && (
-        <div className="absolute top-[3px] inset-x-0 flex items-center justify-center gap-1.5 text-[10px] font-black text-red-300 bg-red-950/70 py-1 z-10 tracking-wide">
-          <AlertTriangle size={9} /> AUTO-DELETE IN {item.ttl_remaining_days}d
+        <div className="absolute top-[4px] inset-x-0 flex items-center justify-center gap-1.5 text-[10px] font-bold text-red-400 bg-red-500/10 border-b border-red-500/25 py-1 z-10 tracking-wide">
+          <AlertTriangle size={9} className="shrink-0" /> AUTO-DELETE IN {item.ttl_remaining_days}d
         </div>
       )}
 
-      <div className={`flex flex-col gap-3 p-5 flex-1 ${nearExpiry ? "pt-7" : "pt-6"}`}>
+      {/* Main content */}
+      <div className={`flex flex-col gap-4 p-5 flex-1 ${nearExpiry ? "pt-8" : "pt-6"}`}>
+
+        {/* Icon + name row */}
         <div className="flex items-start gap-3.5">
           <EntityIcon icon={item.icon} item_type={item.item_type} size="md" />
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-[15px] leading-snug group-hover:text-primary transition-colors truncate">
+            <p className="font-bold text-[15px] leading-snug text-foreground group-hover:text-primary transition-colors truncate">
               {item.name}
             </p>
-            <p className="text-xs text-muted-foreground/60 mt-0.5 truncate">
-              by <span className="text-foreground/50 font-medium">{item.owner_name}</span>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+              by <span className="font-medium">{item.owner_name}</span>
             </p>
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-white/[0.04] border border-white/[0.07] px-1.5 py-0.5 rounded text-muted-foreground/70">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-muted border border-border px-1.5 py-0.5 rounded text-muted-foreground">
                 <Tag size={7} /> v{item.version}
               </span>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${st.envPill}`}>
@@ -230,10 +246,12 @@ const ItemCard = memo(function ItemCard({
           </div>
         </div>
 
-        <p className="text-sm text-muted-foreground/65 line-clamp-3 leading-relaxed flex-1">
+        {/* Description — full-opacity muted text for legibility */}
+        <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed flex-1">
           {item.description}
         </p>
 
+        {/* TTL countdown */}
         {item.deployment_status === "DEPLOYED" && item.environment === "dev" && item.ttl_remaining_days !== null && (
           <div className={`self-start inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border ${ttlCls(item.ttl_remaining_days)}`}>
             <Clock size={11} />
@@ -241,26 +259,30 @@ const ItemCard = memo(function ItemCard({
           </div>
         )}
 
+        {/* Chart reference */}
         {item.chart_name && (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
-            <PackageSearch size={11} />
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <PackageSearch size={11} className="shrink-0" />
             <span className="truncate font-mono">{item.chart_name}{item.chart_version ? `@${item.chart_version}` : ""}</span>
           </div>
         )}
       </div>
 
-      <div className="border-t border-white/[0.04] bg-black/15 px-5 py-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-4 text-xs text-muted-foreground/60">
+      {/* Footer metrics */}
+      <div className="border-t border-border/50 bg-muted/20 px-5 py-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5" title="Total calls">
-            <Activity size={11} className="text-primary/40" />
-            <span className="font-bold text-foreground/55">{item.usage_count.toLocaleString()}</span>
+            <Activity size={11} className="text-primary/70" />
+            <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
+            <span>calls</span>
           </span>
           <span className="flex items-center gap-1.5" title="Unique users">
-            <Users size={11} className="text-emerald-500/40" />
-            <span className="font-bold text-foreground/55">{item.unique_users}</span>
+            <Users size={11} className="text-emerald-500/70" />
+            <span className="font-semibold text-foreground">{item.unique_users}</span>
+            <span>users</span>
           </span>
         </div>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${st.badge}`}>
+        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>
           {st.label}
         </span>
       </div>
