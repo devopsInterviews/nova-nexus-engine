@@ -62,6 +62,22 @@ spec:
             - name: OIDC_SCOPES
               value: "{{ .Values.sso.scopes | default "openid email profile groups" }}"
             {{- end }}
+          {{- if .Values.marketPlace.enabled }}
+            - name: MARKETPLACE_ENABLED
+              value: "true"
+            - name: INFRA_MARKETPLACE_API_SERVER
+              value: "{{ .Values.marketPlace.infraMarketplaceApiServer }}"
+            - name: MARKETPLACE_MAX_AGENTS_PER_USER
+              value: "{{ .Values.marketPlace.maxAgentsPerUser | default 5 }}"
+            - name: MARKETPLACE_MAX_MCP_PER_USER
+              value: "{{ .Values.marketPlace.maxMcpServersPerUser | default 5 }}"
+            - name: MARKETPLACE_DEV_TTL_DAYS
+              value: "{{ .Values.marketPlace.devTtlDays | default 10 }}"
+            - name: ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
+              value: "{{ .Values.marketPlace.artifactoryChartRepoDevPath | default "helm-dev-local/marketplace" }}"
+            - name: ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
+              value: "{{ .Values.marketPlace.artifactoryChartRepoReleasePath | default "helm-release-local/marketplace" }}"
+          {{- end }}
           {{- if .Values.idaMcp.enabled }}
             # IDA MCP Controller Configuration
             - name: K8S_NAMESPACE

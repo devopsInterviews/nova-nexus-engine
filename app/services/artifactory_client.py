@@ -14,7 +14,7 @@ import re
 import logging
 import time
 import requests
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger("uvicorn.error")
@@ -432,3 +432,111 @@ def invalidate_version_cache():
 def is_artifactory_enabled() -> bool:
     """Check if Artifactory integration is enabled."""
     return ARTIFACTORY_ENABLED
+
+
+# ============================================================
+# Marketplace Helm Chart Version Fetching
+# ============================================================
+
+# Separate Artifactory paths for marketplace Helm charts.
+# Format: "<repo>/<subfolder-path>" — e.g. "helm-dev-local/marketplace"
+ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV = os.getenv(
+    "ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV", "helm-dev-local/marketplace"
+)
+ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE = os.getenv(
+    "ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE", "helm-release-local/marketplace"
+)
+
+# Separate version caches keyed by environment
+_chart_version_caches: Dict[str, "VersionCache"] = {
+    "dev": VersionCache(),
+    "release": VersionCache(),
+}
+
+def get_marketplace_chart_versions(
+    chart_name: str,
+    environment: str = "dev",
+    use_cache: bool = True,
+) -> Tuple[List[str], Optional[str]]:
+    """
+    Fetch available Helm chart versions for a specific marketplace entity from Artifactory.
+
+    The function lists all `*.tgz` files in the configured chart path and extracts
+    version numbers from filenames of the form ``<chart_name>-<version>.tgz``.
+
+    Two separate repository paths are supported:
+      - ``dev``     → ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
+      - ``release`` → ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
+
+    Returns:
+        Tuple of (sorted version list newest-first, error message or None)
+    """
+    if not ARTIFACTORY_ENABLED:
+        logger.debug("[ARTIFACTORY] Marketplace chart version fetch skipped (Artifactory disabled).")
+        return ["latest", "1.0.0"], None
+
+    cache = _chart_version_caches.get(environment, VersionCache())
+    if use_cache and cache.is_valid():
+        logger.debug("[ARTIFACTORY] Returning cached chart versions for environment '%s'", environment)
+        return cache.get(), None
+
+    repo_path = (
+        ARTIFACTORY_MARKETPLACE_CHART_REPO_DEV
+        if environment == "dev"
+        else ARTIFACTORY_MARKETPLACE_CHART_REPO_RELEASE
+    )
+
+    client = get_artifactory_client()
+    if client is None:
+        return ["latest", "1.0.0"], "Artifactory client unavailable"
+
+    # Use the Artifactory file list API to enumerate files in the path
+    # GET /artifactory/api/storage/<repo>/<path>?list&deep=0&listFolders=0
+    parts = repo_path.split("/", 1)
+    repo = parts[0]
+    sub_path = parts[1] if len(parts) > 1 else ""
+    url = f"{client.base_url}/artifactory/api/storage/{repo}/{sub_path}/{chart_name}?list&deep=0&listFolders=0"
+    logger.info("[ARTIFACTORY] Fetching marketplace chart versions from: %s", url)
+
+    try:
+        response = requests.get(
+            url,
+            auth=client._get_auth(),
+            verify=client.verify_ssl,
+            timeout=15,
+        )
+        if response.status_code == 404:
+            logger.warning("[ARTIFACTORY] Chart path not found: %s", url)
+            return ["latest", "1.0.0"], f"Chart path not found: {url}"
+
+        response.raise_for_status()
+        data = response.json()
+        files = data.get("files", [])
+
+        versions: List[str] = []
+        pattern = re.compile(
+            rf"^/?{re.escape(chart_name)}-([0-9a-zA-Z.\-]+)\.tgz$"
+        )
+        for entry in files:
+            uri = entry.get("uri", "")
+            m = pattern.match(uri.lstrip("/"))
+            if m:
+                versions.append(m.group(1))
+
+        if not versions:
+            logger.warning("[ARTIFACTORY] No chart versions found for '%s' in %s", chart_name, repo_path)
+            return ["latest", "1.0.0"], "No versions found"
+
+        versions = ArtifactoryClient._sort_tags(versions)
+        cache.set(versions)
+        logger.info("[ARTIFACTORY] Found %d chart versions for '%s': %s", len(versions), chart_name, versions[:5])
+        return versions, None
+
+    except requests.exceptions.RequestException as exc:
+        err = f"Request error: {exc}"
+        logger.error("[ARTIFACTORY] %s", err)
+        return ["latest", "1.0.0"], err
+    except Exception as exc:
+        err = f"Unexpected error: {exc}"
+        logger.error("[ARTIFACTORY] %s", err)
+        return ["latest", "1.0.0"], err

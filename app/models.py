@@ -976,19 +976,26 @@ class MarketplaceItem(Base):
     # Owner
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
-    icon = Column(String(500), nullable=True)
+    # Stored as a base64 data URI (data:image/png;base64,...) or plain URL
+    icon = Column(Text, nullable=True)
     bitbucket_repo = Column(String(500), nullable=True)
     how_to_use = Column(Text, nullable=True)
     url_to_connect = Column(String(500), nullable=True)
-    
+
     # For MCP servers
     tools_exposed = Column(JSON, default=list, nullable=True)
-    
-    # Status
+
+    # Lifecycle status
     deployment_status = Column(String(50), default="CREATED", nullable=False)
     version = Column(String(50), default="1.0.0", nullable=False)
-    environment = Column(String(50), default="dev", nullable=False) # 'dev' or 'release'
-    
+    environment = Column(String(50), default="dev", nullable=False)  # 'dev' or 'release'
+    # Specific Helm chart version selected during last deploy
+    chart_version = Column(String(100), nullable=True)
+    # TTL for dev deployments (days).  Defaults to the env-level setting at deploy time.
+    ttl_days = Column(Integer, default=10, nullable=True)
+    # Timestamp of the last deploy — used to compute TTL remaining
+    deployed_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
@@ -996,6 +1003,21 @@ class MarketplaceItem(Base):
     usages = relationship("MarketplaceUsage", back_populates="item", cascade="all, delete-orphan")
     
     def to_dict(self) -> Dict[str, Any]:
+        from datetime import timezone as tz
+        ttl_remaining: Optional[int] = None
+        if (
+            self.deployed_at is not None
+            and self.environment == "dev"
+            and self.ttl_days is not None
+        ):
+            deployed_tz = (
+                self.deployed_at.replace(tzinfo=tz.utc)
+                if self.deployed_at.tzinfo is None
+                else self.deployed_at
+            )
+            elapsed_days = (datetime.now(tz.utc) - deployed_tz).days
+            ttl_remaining = max(0, self.ttl_days - elapsed_days)
+
         return {
             "id": self.id,
             "name": self.name,
@@ -1011,8 +1033,12 @@ class MarketplaceItem(Base):
             "deployment_status": self.deployment_status,
             "version": self.version,
             "environment": self.environment,
+            "chart_version": self.chart_version,
+            "ttl_days": self.ttl_days,
+            "ttl_remaining_days": ttl_remaining,
+            "deployed_at": self.deployed_at.isoformat() if self.deployed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 class MarketplaceUsage(Base):
@@ -1020,20 +1046,24 @@ class MarketplaceUsage(Base):
     __tablename__ = "marketplace_usage"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Nullable so the public /ping endpoint can log calls without a portal user account
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # Free-text identifier supplied by the caller when user_id is unknown
+    user_identifier = Column(String(255), nullable=True)
     item_id = Column(Integer, ForeignKey("marketplace_items.id", ondelete="CASCADE"), nullable=False)
-    action = Column(String(50), nullable=False) # 'call', 'deploy', 'install'
-    
+    action = Column(String(50), nullable=False)  # 'call', 'deploy', 'install'
+
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
+
     user = relationship("User")
     item = relationship("MarketplaceItem", back_populates="usages")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "user_id": self.user_id,
+            "user_identifier": self.user_identifier,
             "item_id": self.item_id,
             "action": self.action,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
         }

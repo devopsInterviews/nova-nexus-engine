@@ -171,6 +171,20 @@ features:
   enableMetrics: true
   enableTracing: false
 
+marketPlace:
+  enabled: true
+  # URL of the future Infrastructure API server for build/deploy/undeploy hooks
+  infraMarketplaceApiServer: "marketplace-infra-api.company.internal"
+  # Per-user creation limits
+  maxAgentsPerUser: 5
+  maxMcpServersPerUser: 5
+  # TTL (in days) for dev-environment deployments (0 = never auto-expire)
+  devTtlDays: 10
+  # Artifactory paths for Helm chart version discovery
+  # Format: "<repo>/<subfolder>" — e.g. "helm-dev-local/marketplace"
+  artifactoryChartRepoDevPath: "helm-dev-local/marketplace"
+  artifactoryChartRepoReleasePath: "helm-release-local/marketplace"
+
 # IDA MCP Configuration
 idaMcp:
   # Enable IDA MCP functionality
