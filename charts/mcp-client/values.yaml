@@ -26,6 +26,11 @@ env:
   DATABASE_NAME: "mcp_client"
   DATABASE_USER: "mcp_user"
   DATABASE_PASSWORD: ""  # Will use postgres.password
+  # Application metadata displayed in the UI header
+  APP_ENVIRONMENT: "Production"   # e.g. Production, Staging, Development
+  APP_VERSION: "1.0.0"            # Semantic version tag shown in the header badge
+  # External links shown on the homepage
+  CONFLUENCE_URL: ""              # Link to the company documentation / Confluence space
 
 # Replicas
 replicaCount:

@@ -115,7 +115,7 @@ export function AppSidebar() {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
             >
-              <h1 className="text-xl font-bold gradient-text">MCP Control</h1>
+              <h1 className="text-xl font-bold gradient-text">AI Portal</h1>
             </motion.div>
           )}
         </div>

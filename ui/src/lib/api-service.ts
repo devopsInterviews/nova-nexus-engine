@@ -637,6 +637,36 @@ export const analyticsService = {
       method: 'POST',                     // POST to trigger the test action
     });                                   // No additional data required
   },
+
+  // Get personal usage statistics for the currently logged-in user
+  getUserStats: async (): Promise<ApiResponse<{
+    login_count: number;
+    last_login: string | null;
+    page_views_30d: number;
+    test_runs_total: number;
+    marketplace_usage_total: number;
+    member_since: string | null;
+    recent_activities: Array<{
+      action: string;
+      type: string;
+      time: string;
+      status_type: 'success' | 'warning' | 'error';
+    }>;
+  }>> => {
+    return fetchApi('/api/analytics/user-stats');
+  },
+};
+
+// Application configuration fetched from server env vars at runtime
+export const appConfigService = {
+  getConfig: async (): Promise<ApiResponse<{
+    environment: string;
+    version: string;
+    confluence_url: string;
+    openwebui_url: string;
+  }>> => {
+    return fetchApi('/api/app-config');
+  },
 };
 
 // ============================================================

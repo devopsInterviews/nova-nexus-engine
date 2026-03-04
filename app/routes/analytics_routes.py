@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.models import User
 from app.routes.auth_routes import get_current_user
-from app.models import SystemMetrics, RequestLog, McpServerStatus, PageView, UserActivity
+from app.models import SystemMetrics, RequestLog, McpServerStatus, PageView, UserActivity, TestExecution, MarketplaceUsage
 
 logger = logging.getLogger(__name__)
 
@@ -714,3 +714,89 @@ def _format_number(num: int) -> str:
         return f"{num / 1000:.1f}K"
     else:
         return str(num)
+
+
+@router.get("/user-stats")
+async def get_user_stats(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get personal usage statistics for the currently authenticated user.
+
+    Returns login history, page view counts, test runs, marketplace usage,
+    and a recent activity feed — all scoped to the requesting user.
+    """
+    try:
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+
+        login_count = getattr(current_user, "login_count", 0) or 0
+        last_login = current_user.last_login
+
+        page_views_30d = db.query(func.count(PageView.id)).filter(
+            PageView.user_id == current_user.id,
+            PageView.timestamp >= thirty_days_ago,
+        ).scalar() or 0
+
+        test_runs_total = db.query(func.count(TestExecution.id)).filter(
+            TestExecution.user_id == current_user.id
+        ).scalar() or 0
+
+        marketplace_usage_total = db.query(func.count(MarketplaceUsage.id)).filter(
+            MarketplaceUsage.user_id == current_user.id
+        ).scalar() or 0
+
+        activity_records = db.query(UserActivity).filter(
+            UserActivity.user_id == current_user.id
+        ).order_by(desc(UserActivity.timestamp)).limit(8).all()
+
+        recent_activities = [
+            {
+                "action": act.action,
+                "type": act.activity_type,
+                "time": _time_ago(act.timestamp),
+                "status_type": (
+                    "success" if act.status == "success"
+                    else "error" if act.status == "error"
+                    else "warning"
+                ),
+            }
+            for act in activity_records
+        ]
+
+        return {
+            "status": "success",
+            "data": {
+                "login_count": login_count,
+                "last_login": last_login.isoformat() if last_login else None,
+                "page_views_30d": page_views_30d,
+                "test_runs_total": test_runs_total,
+                "marketplace_usage_total": marketplace_usage_total,
+                "member_since": (
+                    current_user.created_at.isoformat()
+                    if current_user.created_at else None
+                ),
+                "recent_activities": recent_activities,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get user stats: {e}")
+        return {
+            "status": "success",
+            "data": {
+                "login_count": getattr(current_user, "login_count", 0) or 0,
+                "last_login": (
+                    current_user.last_login.isoformat()
+                    if current_user.last_login else None
+                ),
+                "page_views_30d": 0,
+                "test_runs_total": 0,
+                "marketplace_usage_total": 0,
+                "member_since": (
+                    current_user.created_at.isoformat()
+                    if current_user.created_at else None
+                ),
+                "recent_activities": [],
+            },
+        }

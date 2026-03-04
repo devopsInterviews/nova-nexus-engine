@@ -483,6 +483,20 @@ async def health_check():
     return {"status": "ok", "service": "mcp-client"}
 
 
+@app.get("/api/app-config")
+async def get_app_config():
+    """
+    Return application configuration derived from environment variables.
+    Used by the frontend to display environment/version badges and external links.
+    """
+    return {
+        "environment": os.getenv("APP_ENVIRONMENT", "Production"),
+        "version": os.getenv("APP_VERSION", "1.0.0"),
+        "confluence_url": os.getenv("CONFLUENCE_URL", ""),
+        "openwebui_url": os.getenv("OPENWEBUI_URL", ""),
+    }
+
+
 @app.get("/tools", summary="List MCP server tools")
 async def list_tools() -> Dict[str, Any]:
     """

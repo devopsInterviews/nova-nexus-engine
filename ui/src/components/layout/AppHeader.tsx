@@ -12,9 +12,19 @@ import {
 import { useAuth } from "@/context/auth-context";
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from "lucide-react";
+import { appConfigService } from "@/lib/api-service";
 
 export function AppHeader() {
   const { user, logout } = useAuth();
+  const [appConfig, setAppConfig] = useState({ environment: 'Production', version: '1.0.0' });
+
+  useEffect(() => {
+    appConfigService.getConfig().then(res => {
+      if (res.status === 'success' && res.data) {
+        setAppConfig({ environment: res.data.environment, version: res.data.version });
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -72,11 +82,11 @@ export function AppHeader() {
           
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
-              PRODUCTION
+              {appConfig.environment.toUpperCase()}
             </span>
             
             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-              v1.0.0
+              v{appConfig.version}
             </span>
           </div>
         </div>
