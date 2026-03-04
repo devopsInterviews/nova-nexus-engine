@@ -19,6 +19,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { motion } from "framer-motion";
 import {
   ThemedTabs,
   ThemedTabsList,
@@ -43,14 +44,11 @@ import {
   Activity,
   AlertTriangle,
   Blocks,
-  Bot,
   Calendar,
   ChevronRight,
-  Circle,
   Clock,
   Cloud,
   Copy,
-  Edit3,
   ExternalLink,
   Github,
   PackageSearch,
@@ -61,6 +59,7 @@ import {
   Search,
   Send,
   Sparkles,
+  Store,
   Tag,
   Trash2,
   UploadCloud,
@@ -170,11 +169,12 @@ function ttlCls(r: number | null) {
 
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
 
+/** Used in the detail modal header only */
 const EntityIcon = memo(function EntityIcon({
   icon, item_type, size = "md",
 }: { icon: string | null; item_type: string; size?: "sm" | "md" | "lg" | "xl" }) {
-  const dim = { sm: "w-10 h-10", md: "w-14 h-14", lg: "w-16 h-16", xl: "w-20 h-20" }[size];
-  const iconSz = { sm: 16, md: 24, lg: 28, xl: 34 }[size];
+  const dim = { sm: "w-8 h-8", md: "w-10 h-10", lg: "w-16 h-16", xl: "w-20 h-20" }[size];
+  const iconSz = { sm: 14, md: 18, lg: 28, xl: 34 }[size];
 
   if (icon) {
     return (
@@ -188,117 +188,134 @@ const EntityIcon = memo(function EntityIcon({
         ? "bg-gradient-to-br from-sky-500 to-blue-600"
         : "bg-gradient-to-br from-violet-500 to-purple-600"}`}>
       {item_type === "agent"
-        ? <Zap size={iconSz} className="text-white drop-shadow-sm" />
-        : <Blocks size={iconSz} className="text-white drop-shadow-sm" />}
+        ? <Zap size={iconSz} className="text-white" />
+        : <Blocks size={iconSz} className="text-white" />}
     </div>
   );
 });
 
+/**
+ * ItemCard — mirrors the visual language of the homepage FeatureTeaserCard.
+ * Structure: gradient stripe → icon (standalone) → tagline → title → description → badges → footer
+ */
 const ItemCard = memo(function ItemCard({
   item, onClick,
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
   const nearExpiry = item.ttl_remaining_days !== null && item.ttl_remaining_days <= 3;
   const isAgent = item.item_type === "agent";
+  const iconGradient = isAgent ? "from-sky-500 to-blue-600" : "from-violet-500 to-purple-600";
+  const hoverGlow = isAgent
+    ? "hover:shadow-[0_20px_60px_rgba(14,165,233,0.22)]"
+    : "hover:shadow-[0_20px_60px_rgba(139,92,246,0.22)]";
 
   return (
-    <div
+    <motion.div
       role="button" tabIndex={0} onClick={onClick}
       onKeyDown={e => e.key === "Enter" && onClick()}
       className={`
-        group relative cursor-pointer rounded-2xl overflow-hidden flex flex-col
-        bg-card/90 backdrop-blur-sm
-        border ${st.ring}
-        transition-all duration-300 ease-out min-h-[300px]
-        hover:-translate-y-1.5 ${st.hoverShadow}
+        relative cursor-pointer rounded-2xl border ${st.ring} overflow-hidden flex flex-col
+        transition-shadow duration-300 ${hoverGlow}
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
       `}
+      style={{ background: "hsl(var(--surface) / 0.8)" }}
+      whileHover={{ y: -4 }}
+      transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
-      {/* Gradient top status bar */}
-      <div className={`h-[3px] w-full ${st.topBar}`} />
+      {/* Gradient top stripe — status-aware, matches homepage card stripe */}
+      <div className={`h-1 w-full ${st.topBar} rounded-t-2xl`} />
 
-      {/* Near-expiry banner */}
-      {nearExpiry && (
-        <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-red-300 bg-red-500/15 border-b border-red-500/30 py-1.5 z-10 tracking-wide">
-          <AlertTriangle size={9} className="shrink-0" /> AUTO-DELETE IN {item.ttl_remaining_days}d
-        </div>
-      )}
+      {/* Main content — same p-6 layout as FeatureTeaserCard */}
+      <div className="p-6 flex-1 flex flex-col">
 
-      {/* Main content */}
-      <div className="flex flex-col gap-4 p-5 flex-1">
-
-        {/* Icon + name/badges row */}
-        <div className="flex items-start gap-4">
-          <EntityIcon icon={item.icon} item_type={item.item_type} size="md" />
-          <div className="flex-1 min-w-0 pt-0.5">
-            <p className="font-bold text-base leading-snug text-foreground group-hover:text-primary transition-colors duration-200 truncate">
-              {item.name}
-            </p>
-            <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
-              by <span className="font-semibold text-foreground/60">{item.owner_name}</span>
-            </p>
-            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${st.envPill}`}>
-                {item.environment.toUpperCase()}
-              </span>
-              {item.deployment_status === "DEPLOYED" && (
-                <span className={`flex items-center gap-1 text-[10px] font-bold ${st.badge} px-2 py-0.5 rounded-full border`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} />
-                  LIVE
-                </span>
-              )}
-              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/50 bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded">
-                <Tag size={7} className="opacity-60" /> v{item.version}
-              </span>
-            </div>
+        {/* Near-expiry alert */}
+        {nearExpiry && (
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-red-300 bg-red-500/15 border border-red-500/30 rounded-lg px-2.5 py-1.5 mb-4 tracking-wide">
+            <AlertTriangle size={10} className="shrink-0" /> AUTO-DELETE IN {item.ttl_remaining_days}d
           </div>
-        </div>
+        )}
+
+        {/* Icon — standalone at top, exactly like homepage gradient icon */}
+        {item.icon ? (
+          <img src={item.icon} alt="icon"
+            className="w-10 h-10 rounded-xl object-cover border border-border/30 shadow-lg mb-3 shrink-0" />
+        ) : (
+          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${iconGradient} flex items-center justify-center shadow-lg mb-3 shrink-0`}>
+            {isAgent ? <Zap className="w-5 h-5 text-white" /> : <Blocks className="w-5 h-5 text-white" />}
+          </div>
+        )}
+
+        {/* Tagline — owner, like "Want to integrate AI?" on homepage */}
+        <p className="text-xs text-muted-foreground mb-1">
+          by <span className="font-semibold">{item.owner_name}</span>
+        </p>
+
+        {/* Title */}
+        <h3 className="text-lg font-bold text-foreground mb-2 leading-snug">
+          {item.name}
+        </h3>
 
         {/* Description */}
-        <p className="text-sm text-muted-foreground/80 line-clamp-3 leading-relaxed flex-1">
+        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3 flex-1">
           {item.description}
         </p>
 
-        {/* TTL countdown */}
-        {item.deployment_status === "DEPLOYED" && item.environment === "dev" && item.ttl_remaining_days !== null && (
-          <div className={`self-start inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border ${ttlCls(item.ttl_remaining_days)}`}>
-            <Clock size={11} />
-            {item.ttl_remaining_days === 0 ? "Expires today" : `${item.ttl_remaining_days}d left`}
-          </div>
-        )}
+        {/* Status + environment badges */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-4">
+          {item.deployment_status === "DEPLOYED" ? (
+            <span className={`flex items-center gap-1 text-[10px] font-bold ${st.badge} px-2.5 py-1 rounded-full border`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} />
+              LIVE
+            </span>
+          ) : (
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>BUILT</span>
+          )}
+          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.envPill}`}>
+            {item.environment.toUpperCase()}
+          </span>
+          <span className="text-[10px] font-mono text-muted-foreground/50 bg-muted/30 border border-border/30 px-1.5 py-0.5 rounded">
+            <Tag size={7} className="inline mr-0.5 opacity-60" />v{item.version}
+          </span>
+        </div>
 
-        {/* Chart reference */}
-        {item.chart_name && (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50 font-mono">
-            <PackageSearch size={11} className="shrink-0" />
-            <span className="truncate">{item.chart_name}{item.chart_version ? `@${item.chart_version}` : ""}</span>
+        {/* TTL + chart info */}
+        {(item.deployment_status === "DEPLOYED" && item.environment === "dev" && item.ttl_remaining_days !== null) || item.chart_name ? (
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            {item.deployment_status === "DEPLOYED" && item.environment === "dev" && item.ttl_remaining_days !== null && (
+              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-lg border ${ttlCls(item.ttl_remaining_days)}`}>
+                <Clock size={10} />
+                {item.ttl_remaining_days === 0 ? "Expires today" : `${item.ttl_remaining_days}d left`}
+              </span>
+            )}
+            {item.chart_name && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/45 font-mono">
+                <PackageSearch size={10} />
+                <span className="truncate max-w-[120px]">{item.chart_name}</span>
+              </span>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Footer metrics */}
-      <div className="border-t border-border/40 bg-muted/10 px-5 py-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-4 text-xs">
-          <span className="flex items-center gap-1.5" title="Total calls">
-            <Activity size={11} className={isAgent ? "text-sky-400/70" : "text-violet-400/70"} />
-            <span className="font-semibold text-foreground/80">{item.usage_count.toLocaleString()}</span>
-            <span className="text-muted-foreground/50">calls</span>
+      {/* Footer stats */}
+      <div className="border-t border-border/40 px-6 py-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <Activity size={11} className={isAgent ? "text-sky-400/80" : "text-violet-400/80"} />
+            <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
+            calls
           </span>
-          <span className="flex items-center gap-1.5" title="Unique users">
-            <Users size={11} className="text-emerald-400/70" />
-            <span className="font-semibold text-foreground/80">{item.unique_users}</span>
-            <span className="text-muted-foreground/50">users</span>
+          <span className="flex items-center gap-1.5">
+            <Users size={11} className="text-emerald-400/80" />
+            <span className="font-semibold text-foreground">{item.unique_users}</span>
+            users
           </span>
         </div>
         <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>
           {st.label}
         </span>
       </div>
-
-      {/* Ambient glow overlay on hover */}
-      <div className={`absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none bg-gradient-to-b
-        ${isAgent ? "from-sky-500/[0.04] to-transparent" : "from-violet-500/[0.04] to-transparent"}`} />
-    </div>
+    </motion.div>
   );
 });
 
@@ -702,20 +719,50 @@ export default function Marketplace() {
   return (
     <div className="flex flex-col gap-5 p-6 pb-16 min-h-full">
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-black gradient-text tracking-tight mb-2">Marketplace</h1>
-          <p className="text-muted-foreground/80 text-sm max-w-lg leading-relaxed">
-            Your team's internal app store for AI. Publish Agents and MCP Servers once —
-            discover, deploy, and use them without tribal knowledge.
-          </p>
+      {/* Hero Header — same visual language as the homepage hero */}
+      <motion.div
+        className="relative overflow-hidden rounded-2xl border border-border/30 p-6 glass"
+        style={{ background: "hsl(var(--surface) / 0.8)" }}
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shrink-0">
+                <Store className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-black gradient-text tracking-tight leading-none">AI Marketplace</h1>
+                <p className="text-xs text-muted-foreground mt-0.5">Internal App Store for AI Agents &amp; MCP Servers</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-lg mt-3">
+              Publish once, deploy anywhere. Connect Agents and MCP Servers to OpenWebUI,
+              your IDE, or any tool — and stop reinventing the wheel.
+            </p>
+          </div>
+          <Button size="lg" onClick={() => setIsCreateOpen(true)}
+            className="shrink-0 gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:opacity-90 transition-all font-bold">
+            <Plus size={17} /> Publish Entity
+          </Button>
         </div>
-        <Button size="lg" onClick={() => setIsCreateOpen(true)}
-          className="shrink-0 gap-2 bg-gradient-primary text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all hover:scale-[1.02] font-bold">
-          <Plus size={17} /> Publish Entity
-        </Button>
-      </div>
+
+        {/* Background ambient orbs */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <motion.div
+            className="absolute -right-12 -top-12 w-48 h-48 bg-violet-500/10 rounded-full blur-3xl"
+            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 6, repeat: Infinity }}
+          />
+          <motion.div
+            className="absolute left-1/3 -bottom-8 w-36 h-36 bg-purple-400/10 rounded-full blur-2xl"
+            animate={{ scale: [1.1, 1, 1.1], opacity: [0.2, 0.4, 0.2] }}
+            transition={{ duration: 5, repeat: Infinity, delay: 1 }}
+          />
+        </div>
+      </motion.div>
 
       <StatusLegend devTtlDays={config.dev_ttl_days} />
 
@@ -1091,26 +1138,26 @@ export default function Marketplace() {
               </div>
             )}
 
-            {/* Summary */}
+            {/* Summary — dark neutral bg + white text so it's always readable */}
             {selectedChart && selectedVersion && (
-              <div className={`flex items-start gap-3 p-4 rounded-xl border text-sm font-medium ${
-                deployEnv === "dev"
-                  ? "bg-violet-500/15 border-violet-500/50 text-violet-200"
-                  : "bg-emerald-500/15 border-emerald-500/50 text-emerald-200"
-              }`}>
-                {deployEnv === "dev"
-                  ? <Cloud size={15} className="mt-0.5 shrink-0 text-violet-300" />
-                  : <Rocket size={15} className="mt-0.5 shrink-0 text-emerald-300" />}
-                <div className="leading-relaxed">
-                  <strong>{isRedeploy ? "Redeploying" : "Deploying"}</strong>{" "}
-                  <code className={`text-xs font-mono px-1.5 py-0.5 rounded border ${
-                    deployEnv === "dev"
-                      ? "bg-violet-900/60 border-violet-400/40 text-violet-100"
-                      : "bg-emerald-900/60 border-emerald-400/40 text-emerald-100"
-                  }`}>{selectedChart}@{selectedVersion}</code>{" "}
-                  to <strong className={deployEnv === "dev" ? "text-violet-100" : "text-emerald-100"}>{deployEnv.toUpperCase()}</strong>.
+              <div className={`flex items-start gap-3 p-4 rounded-xl border bg-muted/50 text-sm`}
+                style={{ borderColor: deployEnv === "dev" ? "rgb(139 92 246 / 0.5)" : "rgb(34 197 94 / 0.5)" }}>
+                <div className={`mt-0.5 shrink-0 p-1.5 rounded-lg ${
+                  deployEnv === "dev" ? "bg-violet-500/20 text-violet-400" : "bg-emerald-500/20 text-emerald-400"
+                }`}>
+                  {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
+                </div>
+                <div className="leading-relaxed text-foreground">
+                  <span className="font-semibold">{isRedeploy ? "Redeploying" : "Deploying"}</span>{" "}
+                  <code className="text-xs font-mono px-1.5 py-0.5 rounded bg-foreground/10 border border-border/60 text-foreground">
+                    {selectedChart}@{selectedVersion}
+                  </code>{" "}
+                  to{" "}
+                  <span className={`font-bold ${deployEnv === "dev" ? "text-violet-400" : "text-emerald-400"}`}>
+                    {deployEnv.toUpperCase()}
+                  </span>.
                   {deployEnv === "dev" && (
-                    <span className={`text-[11px] block mt-1 text-violet-300/80`}>
+                    <span className="text-xs block mt-1 text-muted-foreground">
                       Auto-expires in {config.dev_ttl_days} days.
                     </span>
                   )}
