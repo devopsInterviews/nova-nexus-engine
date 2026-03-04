@@ -45,6 +45,9 @@ class UserUpdate(BaseModel):
     email: str | None = None
     full_name: str | None = None
 
+class RoleUpdateRequest(BaseModel):
+    is_admin: bool
+
 
 def is_admin(current_user: User = Depends(get_current_user)):
     """
@@ -233,6 +236,44 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     logger.info(f"User {db_user.username} updated")
     
     return db_user
+
+@router.put("/users/{user_id}/role")
+async def update_user_role(
+    user_id: int,
+    role_request: RoleUpdateRequest,
+    current_user: User = Depends(is_admin),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Grant or revoke admin role for a user.
+    Only admins can call this endpoint.
+    The built-in 'admin' account and the caller's own account cannot be modified.
+    """
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if db_user.username == 'admin':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify the role of the built-in admin account")
+
+    if db_user.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify your own role")
+
+    db_user.is_admin = role_request.is_admin
+    db.commit()
+    db.refresh(db_user)
+
+    action = "granted" if role_request.is_admin else "revoked"
+    logger.info(f"Admin role {action} for user {db_user.username} by {current_user.username}")
+
+    return {
+        "status": "success",
+        "data": {
+            "message": f"Admin role {action} for user {db_user.username}",
+            "user": db_user.to_dict()
+        }
+    }
+
 
 @router.delete("/users/{user_id}")
 async def delete_user(

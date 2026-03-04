@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Search, Save, Shield, Users, UsersRound, Plus, Trash2, Eye, LayoutDashboard } from "lucide-react";
+import { Search, Save, Shield, ShieldCheck, Crown, Users, UsersRound, Plus, Trash2, Eye, LayoutDashboard } from "lucide-react";
 import { navigationItems } from "@/components/layout/AppSidebar";
 
 interface PermissionData {
@@ -30,17 +30,28 @@ interface Group {
 
 export function PermissionsManager() {
   const [permissions, setPermissions] = useState<Permissions>({});
-  const [users, setUsers] = useState<User[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Dialog state
+  // Tab access dialog state
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [dialogMode, setDialogMode] = useState<'view' | 'add'>('view');
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Admin role dialog state
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+  const [adminDialogMode, setAdminDialogMode] = useState<'view' | 'add'>('view');
+  const [adminSearchQuery, setAdminSearchQuery] = useState("");
+  const [adminSaving, setAdminSaving] = useState(false);
+
   const TABS = navigationItems.map(item => item.title);
+
+  // Non-admin users eligible for tab permission grants
+  const users = useMemo(() => allUsers.filter(u => !u.is_admin), [allUsers]);
+  // Users that have been granted admin role (excluding the built-in admin account)
+  const adminUsers = useMemo(() => allUsers.filter(u => u.is_admin), [allUsers]);
 
   useEffect(() => {
     fetchData();
@@ -66,20 +77,19 @@ export function PermissionsManager() {
 
       const initialPermissions: Permissions = {};
       TABS.forEach(tab => {
-        initialPermissions[tab] = pData.status === 'success' && pData.data[tab] 
-          ? pData.data[tab] 
+        initialPermissions[tab] = pData.status === 'success' && pData.data[tab]
+          ? pData.data[tab]
           : { users: [], groups: [] };
       });
 
       setPermissions(initialPermissions);
-      
+
       if (uData.status === 'success' && uData.data && uData.data.users) {
-        // Filter out the main admin user, and any user marked as is_admin
-        // This ensures admins (who implicitly have all permissions) cannot have their access revoked
-        setUsers(uData.data.users.filter((u: User) => u.username !== 'admin' && !u.is_admin));
+        // Store all users except the built-in admin account
+        setAllUsers(uData.data.users.filter((u: User) => u.username !== 'admin'));
       }
       setGroups(gData.groups || []);
-      
+
     } catch (err) {
       console.error("Failed to fetch permissions data:", err);
       toast.error("Failed to load permissions data");
@@ -108,7 +118,7 @@ export function PermissionsManager() {
         },
         body: JSON.stringify(payload)
       });
-      
+
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.detail || "Failed to save permissions");
@@ -121,6 +131,8 @@ export function PermissionsManager() {
       setSaving(false);
     }
   };
+
+  // --- Tab permission handlers ---
 
   const handleAddUser = (userId: number) => {
     if (!selectedTab) return;
@@ -173,20 +185,78 @@ export function PermissionsManager() {
     setSearchQuery("");
   };
 
-  // Filter logic for the dialog
+  // --- Admin role handlers ---
+
+  const handleGrantAdmin = async (userId: number) => {
+    setAdminSaving(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/users/${userId}/role`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ is_admin: true })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to grant admin role");
+      }
+      // Promote user locally and strip their explicit tab permissions (admins don't need them)
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, is_admin: true } : u));
+      setPermissions(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(tab => {
+          next[tab] = { ...next[tab], users: next[tab].users.filter(id => id !== userId) };
+        });
+        return next;
+      });
+      toast.success("Admin role granted successfully");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to grant admin role");
+    } finally {
+      setAdminSaving(false);
+    }
+  };
+
+  const handleRevokeAdmin = async (userId: number) => {
+    setAdminSaving(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/users/${userId}/role`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ is_admin: false })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to revoke admin role");
+      }
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, is_admin: false } : u));
+      toast.success("Admin role revoked successfully");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to revoke admin role");
+    } finally {
+      setAdminSaving(false);
+    }
+  };
+
+  // Filter logic for the tab access dialog
   const currentTabPerms = selectedTab ? permissions[selectedTab] : { users: [], groups: [] };
-  
+
   const authorizedUsers = users.filter(u => currentTabPerms.users.includes(u.id));
   const authorizedGroups = groups.filter(g => currentTabPerms.groups.includes(g.id));
-  
+
   const unauthorizedUsers = users.filter(u => !currentTabPerms.users.includes(u.id));
   const unauthorizedGroups = groups.filter(g => !currentTabPerms.groups.includes(g.id));
 
   const filteredAuthUsers = authorizedUsers.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredAuthGroups = authorizedGroups.filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  
+
   const filteredUnauthUsers = unauthorizedUsers.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredUnauthGroups = unauthorizedGroups.filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  // Filter logic for the admin dialog
+  const filteredAdminUsers = adminUsers.filter(u => u.username.toLowerCase().includes(adminSearchQuery.toLowerCase()));
+  const filteredNonAdminUsers = users.filter(u => u.username.toLowerCase().includes(adminSearchQuery.toLowerCase()));
 
   if (loading) {
     return (
@@ -202,86 +272,142 @@ export function PermissionsManager() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between bg-surface/50 p-4 rounded-xl border border-border/50">
-        <div>
-          <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <Shield className="w-5 h-5 text-primary" />
-            Global Tab Access
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure which users and groups have access to specific portal functionalities. Admins always have access.
-          </p>
+    <div className="space-y-6">
+      {/* ── Global Tab Access ── */}
+      <div>
+        <div className="flex items-center justify-between bg-surface/50 p-4 rounded-xl border border-border/50">
+          <div>
+            <h3 className="font-semibold flex items-center gap-2 text-lg">
+              <Shield className="w-5 h-5 text-primary" />
+              Global Tab Access
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Configure which users and groups have access to specific portal functionalities. Admins always have access.
+            </p>
+          </div>
+          <Button
+            onClick={savePermissions}
+            disabled={saving}
+            className="bg-primary hover:bg-primary/90 min-w-[140px] shadow-glow"
+          >
+            {saving ? (
+              <span className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                Saving...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Save className="w-4 h-4" />
+                Save Changes
+              </span>
+            )}
+          </Button>
         </div>
-        <Button 
-          onClick={savePermissions} 
-          disabled={saving}
-          className="bg-primary hover:bg-primary/90 min-w-[140px] shadow-glow"
-        >
-          {saving ? (
-            <span className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-              Saving...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Save className="w-4 h-4" />
-              Save Changes
-            </span>
-          )}
-        </Button>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+          {TABS.map((tab) => {
+            const userCount = permissions[tab]?.users?.length || 0;
+            const groupCount = permissions[tab]?.groups?.length || 0;
+
+            return (
+              <Card key={tab} className="hover:border-primary/30 transition-all duration-300">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <LayoutDashboard className="w-5 h-5 text-muted-foreground" />
+                    {tab}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-3 mb-6">
+                    <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
+                      <Users className="w-3.5 h-3.5" />
+                      {userCount} {userCount === 1 ? 'User' : 'Users'}
+                    </Badge>
+                    <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20">
+                      <UsersRound className="w-3.5 h-3.5" />
+                      {groupCount} {groupCount === 1 ? 'Group' : 'Groups'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex gap-2 w-full">
+                    <Button
+                      variant="outline"
+                      className="flex-1 border-border/50 hover:bg-surface/50"
+                      onClick={() => openDialog(tab, 'view')}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View Access
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 border-border/50 hover:bg-primary/10 hover:text-primary hover:border-primary/30"
+                      onClick={() => openDialog(tab, 'add')}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Access
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {TABS.map((tab) => {
-          const userCount = permissions[tab]?.users?.length || 0;
-          const groupCount = permissions[tab]?.groups?.length || 0;
+      {/* ── Admin Role Management ── */}
+      <div>
+        <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl">
+          <div>
+            <h3 className="font-semibold flex items-center gap-2 text-lg">
+              <ShieldCheck className="w-5 h-5 text-amber-500" />
+              Admin Role Management
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Grant or revoke administrator access. Admins bypass all tab restrictions and can perform privileged actions.
+            </p>
+          </div>
+        </div>
 
-          return (
-            <Card key={tab} className="hover:border-primary/30 transition-all duration-300">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <LayoutDashboard className="w-5 h-5 text-muted-foreground" />
-                  {tab}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-3 mb-6">
-                  <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
-                    <Users className="w-3.5 h-3.5" />
-                    {userCount} {userCount === 1 ? 'User' : 'Users'}
-                  </Badge>
-                  <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20">
-                    <UsersRound className="w-3.5 h-3.5" />
-                    {groupCount} {groupCount === 1 ? 'Group' : 'Groups'}
-                  </Badge>
-                </div>
-                
-                <div className="flex gap-2 w-full">
-                  <Button 
-                    variant="outline" 
-                    className="flex-1 border-border/50 hover:bg-surface/50" 
-                    onClick={() => openDialog(tab, 'view')}
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    View Access
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="flex-1 border-border/50 hover:bg-primary/10 hover:text-primary hover:border-primary/30"
-                    onClick={() => openDialog(tab, 'add')}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Access
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        <div className="mt-4 max-w-sm">
+          <Card className="border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 transition-all duration-300">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-500" />
+                Administrators
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3 mb-6">
+                <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  {adminUsers.length} {adminUsers.length === 1 ? 'Admin' : 'Admins'}
+                </Badge>
+              </div>
+
+              <div className="flex gap-2 w-full">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50"
+                  onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('view'); setAdminSearchQuery(''); }}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  View Admins
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/50"
+                  onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('add'); setAdminSearchQuery(''); }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Admin
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      {/* Access Management Dialog */}
+      {/* ── Tab Access Dialog ── */}
       <Dialog open={!!selectedTab} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-background">
           <div className="p-6 border-b border-border/50 bg-surface/30">
@@ -290,20 +416,20 @@ export function PermissionsManager() {
               Manage Access: <span className="text-primary">{selectedTab}</span>
             </DialogTitle>
             <DialogDescription>
-              {dialogMode === 'view' 
+              {dialogMode === 'view'
                 ? 'View and remove currently authorized users and groups.'
                 : 'Search and add new users or groups to this tab.'}
             </DialogDescription>
           </div>
 
           <div className="flex border-b border-border/50">
-            <button 
+            <button
               className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${dialogMode === 'view' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
               onClick={() => { setDialogMode('view'); setSearchQuery(""); }}
             >
               Current Access
             </button>
-            <button 
+            <button
               className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${dialogMode === 'add' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
               onClick={() => { setDialogMode('add'); setSearchQuery(""); }}
             >
@@ -402,6 +528,103 @@ export function PermissionsManager() {
           <DialogFooter className="p-4 border-t border-border/50 bg-surface/30">
             <Button variant="outline" onClick={closeDialog}>Close</Button>
             <Button onClick={() => { closeDialog(); savePermissions(); }}>Save All Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Admin Role Dialog ── */}
+      <Dialog open={adminDialogOpen} onOpenChange={(open) => !open && setAdminDialogOpen(false)}>
+        <DialogContent className="max-w-xl max-h-[80vh] flex flex-col p-0 overflow-hidden bg-background">
+          <div className="p-6 border-b border-amber-500/20 bg-amber-500/5">
+            <DialogTitle className="text-2xl flex items-center gap-2 mb-2">
+              <ShieldCheck className="w-6 h-6 text-amber-500" />
+              Admin Role Management
+            </DialogTitle>
+            <DialogDescription>
+              {adminDialogMode === 'view'
+                ? 'View and revoke administrator access from users.'
+                : 'Grant administrator access to users.'}
+            </DialogDescription>
+          </div>
+
+          <div className="flex border-b border-border/50">
+            <button
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'view' ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
+              onClick={() => { setAdminDialogMode('view'); setAdminSearchQuery(''); }}
+            >
+              Current Admins
+            </button>
+            <button
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'add' ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
+              onClick={() => { setAdminDialogMode('add'); setAdminSearchQuery(''); }}
+            >
+              Add Admin
+            </button>
+          </div>
+
+          <div className="p-6 flex-1 overflow-y-auto">
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground" />
+              <Input
+                placeholder="Search users..."
+                className="pl-10 h-10 bg-surface/50"
+                value={adminSearchQuery}
+                onChange={(e) => setAdminSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              {adminDialogMode === 'view' ? (
+                filteredAdminUsers.length > 0 ? (
+                  filteredAdminUsers.map(u => (
+                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-amber-500" />
+                        <span className="font-medium">{u.username}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRevokeAdmin(u.id)}
+                        disabled={adminSaving}
+                        className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
+                    No admins found
+                  </div>
+                )
+              ) : (
+                filteredNonAdminUsers.length > 0 ? (
+                  filteredNonAdminUsers.map(u => (
+                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
+                      <span className="font-medium">{u.username}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleGrantAdmin(u.id)}
+                        disabled={adminSaving}
+                        className="h-8 px-3 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50"
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Add
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
+                    No users available to promote
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="p-4 border-t border-border/50 bg-surface/30">
+            <Button variant="outline" onClick={() => setAdminDialogOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
