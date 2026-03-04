@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/context/auth-context';
 import { useConnectionContext } from '@/context/connection-context';
-import { dbService } from '@/lib/api-service';
+import { analyticsService } from '@/lib/api-service';
 import { PermissionsManager } from '@/components/admin/PermissionsManager';
 import TableDataPreview from '@/components/admin/TableDataPreview';
 
@@ -69,6 +70,9 @@ const UsersPage: React.FC = () => {
   const { user: currentUser } = useAuth();
   const { currentConnection } = useConnectionContext();
 
+  // Active session tracking: user IDs with a live, non-expired JWT
+  const [activeSessionUserIds, setActiveSessionUserIds] = useState<Set<number>>(new Set());
+
   // Database tables state
   const [tables, setTables] = useState<string[]>([]);
   const [tablesLoading, setTablesLoading] = useState(false);
@@ -103,8 +107,23 @@ const UsersPage: React.FC = () => {
     }
   };
 
+  const fetchActiveSessionIds = async () => {
+    try {
+      const res = await analyticsService.getActiveSessionUserIds();
+      if (res.status === 'success' && res.data) {
+        setActiveSessionUserIds(new Set(res.data.user_ids));
+      }
+    } catch {
+      // Non-critical — silently ignore; the Online indicator just won't show
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchActiveSessionIds();
+    // Refresh active sessions every 60 seconds
+    const interval = setInterval(fetchActiveSessionIds, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const handlePasswordChange = async () => {
@@ -268,7 +287,8 @@ const UsersPage: React.FC = () => {
                 <TableHead>Username</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Full Name</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Account</TableHead>
+                <TableHead>Session</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Last Login</TableHead>
                 <TableHead>Login Count</TableHead>
@@ -285,9 +305,28 @@ const UsersPage: React.FC = () => {
                   <TableCell>{user.email || '-'}</TableCell>
                   <TableCell>{user.full_name || '-'}</TableCell>
                   <TableCell>
+                    {/* Account enabled/disabled flag — not the same as "currently online" */}
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                      {user.is_active ? 'Active' : 'Inactive'}
+                      {user.is_active ? 'Enabled' : 'Disabled'}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    {/* Real-time session indicator: green = has a live JWT, gray = no active token */}
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs cursor-default ${activeSessionUserIds.has(user.id) ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${activeSessionUserIds.has(user.id) ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                            {activeSessionUserIds.has(user.id) ? 'Online' : 'Offline'}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs max-w-[200px] text-center">
+                          {activeSessionUserIds.has(user.id)
+                            ? 'User has an active, non-expired login session right now.'
+                            : 'No active session — user is not currently logged in.'}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${user.is_admin ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
@@ -323,7 +362,7 @@ const UsersPage: React.FC = () => {
                 </TableRow>
               )) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8">
+                  <TableCell colSpan={10} className="text-center py-8">
                     {loading ? 'Loading users...' : 'No users found'}
                   </TableCell>
                 </TableRow>

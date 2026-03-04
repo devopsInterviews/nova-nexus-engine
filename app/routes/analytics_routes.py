@@ -17,7 +17,7 @@ from sqlalchemy import func, desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
-from app.models import User
+from app.models import User, UserSession
 from app.routes.auth_routes import get_current_user
 from app.models import SystemMetrics, RequestLog, McpServerStatus, PageView, UserActivity, TestExecution, MarketplaceUsage
 
@@ -319,20 +319,14 @@ async def get_key_metrics(
         
         requests_change = ((total_requests - prev_requests) / prev_requests * 100) if prev_requests > 0 else 0
         
-        # Active sessions (unique users in last hour)
-        hour_ago = datetime.utcnow() - timedelta(hours=1)
-        active_sessions = db.query(func.count(User.id.distinct())).filter(
-            User.last_login >= hour_ago
+        # Active sessions: users with a non-expired, non-revoked JWT token
+        now = datetime.utcnow()
+        active_sessions = db.query(func.count(UserSession.user_id.distinct())).filter(
+            UserSession.is_active == True,
+            UserSession.expires_at > now
         ).scalar() or 0
-        
-        # Previous hour for comparison
-        two_hours_ago = datetime.utcnow() - timedelta(hours=2)
-        prev_sessions = db.query(func.count(User.id.distinct())).filter(
-            User.last_login >= two_hours_ago,
-            User.last_login < hour_ago
-        ).scalar() or 0
-        
-        sessions_change = ((active_sessions - prev_sessions) / prev_sessions * 100) if prev_sessions > 0 else 0
+
+        sessions_change = 0  # no meaningful prev-period comparison for live sessions
         
         # Response time (95th percentile)
         response_times = db.execute(text("""
@@ -679,17 +673,6 @@ async def update_mcp_status(
         raise HTTPException(status_code=500, detail="Failed to update MCP server status")
 
 
-        return {
-            "status": "success",
-            "total_activities": len(activity_data),
-            "activities": activity_data
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get debug activities: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get activities: {str(e)}")
-
-
 # Helper functions
 def _time_ago(timestamp: datetime) -> str:
     """Convert timestamp to human-readable time ago format."""
@@ -714,6 +697,120 @@ def _format_number(num: int) -> str:
         return f"{num / 1000:.1f}K"
     else:
         return str(num)
+
+
+@router.get("/traffic-over-time")
+async def get_traffic_over_time(
+    hours: int = 24,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get request traffic grouped by hour for the specified time window.
+
+    Returns one data point per hour with total requests, successful requests,
+    and error counts. Missing hours (no traffic) are filled with zeros so the
+    frontend always receives a complete, gap-free series.
+    """
+    try:
+        time_threshold = datetime.utcnow() - timedelta(hours=hours)
+
+        rows = db.execute(text("""
+            SELECT
+                date_trunc('hour', timestamp) AS hour,
+                COUNT(*) AS total,
+                COUNT(CASE WHEN status_code < 400 THEN 1 END) AS success,
+                COUNT(CASE WHEN status_code >= 400 THEN 1 END) AS errors
+            FROM request_logs
+            WHERE timestamp >= :threshold
+            GROUP BY date_trunc('hour', timestamp)
+            ORDER BY hour
+        """), {"threshold": time_threshold}).fetchall()
+
+        # Build a lookup keyed by truncated hour string
+        data_by_hour: Dict[str, Dict] = {
+            str(row[0]): {"total": row[1], "success": row[2], "errors": row[3]}
+            for row in rows
+        }
+
+        # Generate every hour slot so the chart has no gaps
+        traffic: List[Dict[str, Any]] = []
+        for i in range(hours):
+            slot = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours - 1 - i)
+            slot_key = str(slot)
+            point = data_by_hour.get(slot_key, {"total": 0, "success": 0, "errors": 0})
+            traffic.append({
+                "hour": slot.strftime("%H:00"),
+                "label": slot.strftime("%b %d %H:00"),
+                "total": point["total"],
+                "success": point["success"],
+                "errors": point["errors"],
+            })
+
+        return {"status": "success", "data": {"traffic": traffic, "hours": hours}}
+
+    except Exception as e:
+        logger.error(f"Failed to get traffic over time: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch traffic data")
+
+
+@router.get("/user-activity-breakdown")
+async def get_user_activity_breakdown(
+    hours: int = 24,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get user activity counts grouped by activity_type for the given time window.
+
+    Useful for understanding which features (auth, database, mcp, etc.) are being
+    used most within the analytics dashboard.
+    """
+    try:
+        time_threshold = datetime.utcnow() - timedelta(hours=hours)
+
+        rows = db.execute(text("""
+            SELECT activity_type, COUNT(*) AS cnt
+            FROM user_activities
+            WHERE timestamp >= :threshold
+            GROUP BY activity_type
+            ORDER BY cnt DESC
+        """), {"threshold": time_threshold}).fetchall()
+
+        breakdown = [{"type": row[0], "count": row[1]} for row in rows]
+
+        return {"status": "success", "data": {"breakdown": breakdown, "hours": hours}}
+
+    except Exception as e:
+        logger.error(f"Failed to get user activity breakdown: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch activity breakdown")
+
+
+@router.get("/active-session-user-ids")
+async def get_active_session_user_ids(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Return the IDs of users who currently have a live (non-expired, non-revoked) JWT session.
+
+    Used by the admin Users page to display a real-time "Online" indicator next to each user
+    rather than the static account-enabled flag (is_active) which has a different meaning.
+    """
+    try:
+        now = datetime.utcnow()
+        rows = db.query(UserSession.user_id).filter(
+            UserSession.is_active == True,
+            UserSession.expires_at > now
+        ).distinct().all()
+
+        user_ids = [row[0] for row in rows]
+
+        return {"status": "success", "data": {"user_ids": user_ids}}
+
+    except Exception as e:
+        logger.error(f"Failed to get active session user IDs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch active sessions")
 
 
 @router.get("/user-stats")

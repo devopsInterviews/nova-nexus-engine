@@ -634,8 +634,35 @@ export const analyticsService = {
   // Trigger test activity (development/testing feature)
   triggerTestActivity: async (): Promise<ApiResponse<{ message: string }>> => {
     return fetchApi('/api/analytics/trigger-test-activity', {
-      method: 'POST',                     // POST to trigger the test action
-    });                                   // No additional data required
+      method: 'POST',
+    });
+  },
+
+  // Get hourly request traffic for the last N hours
+  getTrafficOverTime: async (hours: number = 24): Promise<ApiResponse<{
+    traffic: Array<{
+      hour: string;     // short label e.g. "14:00"
+      label: string;    // full label e.g. "Mar 04 14:00"
+      total: number;
+      success: number;
+      errors: number;
+    }>;
+    hours: number;
+  }>> => {
+    return fetchApi(`/api/analytics/traffic-over-time?hours=${hours}`);
+  },
+
+  // Get user activity counts grouped by activity_type
+  getUserActivityBreakdown: async (hours: number = 24): Promise<ApiResponse<{
+    breakdown: Array<{ type: string; count: number }>;
+    hours: number;
+  }>> => {
+    return fetchApi(`/api/analytics/user-activity-breakdown?hours=${hours}`);
+  },
+
+  // Get the IDs of users with a currently live (non-expired, non-revoked) JWT session
+  getActiveSessionUserIds: async (): Promise<ApiResponse<{ user_ids: number[] }>> => {
+    return fetchApi('/api/analytics/active-session-user-ids');
   },
 
   // Get personal usage statistics for the currently logged-in user.
