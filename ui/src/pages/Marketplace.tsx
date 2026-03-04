@@ -102,6 +102,8 @@ interface MarketplaceConfig {
 }
 
 // ─── Status / style helpers ────────────────────────────────────────────────────
+// Badge/pill classes use dark: variants so light mode has dark-on-light text
+// and dark mode has light-on-dark text — always readable.
 
 function getItemStyle(item: MarketplaceItem) {
   if (item.deployment_status === "DEPLOYED") {
@@ -109,11 +111,11 @@ function getItemStyle(item: MarketplaceItem) {
       return {
         topBar: "bg-gradient-to-r from-emerald-400 to-green-500",
         leftBar: "bg-emerald-500",
-        ring: "border-emerald-500/40 hover:border-emerald-400/70",
-        badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-        label: "Deployed · Release", dot: "bg-emerald-400", pulse: true,
-        envPill: "bg-sky-500/20 text-sky-300 border-sky-500/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(16,185,129,0.18)]",
+        ring: "border-emerald-500/60 hover:border-emerald-500/90 dark:border-emerald-500/40 dark:hover:border-emerald-400/70",
+        badge: "bg-emerald-100 text-emerald-800 border-emerald-300/80 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40",
+        label: "Deployed · Release", dot: "bg-emerald-500", pulse: true,
+        envPill: "bg-sky-100 text-sky-800 border-sky-300/80 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(16,185,129,0.2)]",
       };
     }
     const r = item.ttl_remaining_days;
@@ -121,50 +123,50 @@ function getItemStyle(item: MarketplaceItem) {
       return {
         topBar: "bg-gradient-to-r from-red-500 to-rose-600",
         leftBar: "bg-red-500",
-        ring: "border-red-500/50 hover:border-red-400/80",
-        badge: "bg-red-500/20 text-red-300 border-red-500/40",
-        label: "Expiring Soon!", dot: "bg-red-400 animate-pulse", pulse: true,
-        envPill: "bg-orange-500/20 text-orange-300 border-orange-500/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(239,68,68,0.18)]",
+        ring: "border-red-500/60 hover:border-red-500/90 dark:border-red-500/50 dark:hover:border-red-400/80",
+        badge: "bg-red-100 text-red-800 border-red-300/80 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/40",
+        label: "Expiring Soon!", dot: "bg-red-500 animate-pulse", pulse: true,
+        envPill: "bg-orange-100 text-orange-800 border-orange-300/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(239,68,68,0.2)]",
       };
     }
     if (r !== null && r <= 7) {
       return {
         topBar: "bg-gradient-to-r from-orange-400 to-amber-500",
         leftBar: "bg-orange-500",
-        ring: "border-orange-500/40 hover:border-orange-400/70",
-        badge: "bg-orange-500/20 text-orange-300 border-orange-500/40",
-        label: "Deployed · Dev", dot: "bg-orange-400", pulse: false,
-        envPill: "bg-orange-500/20 text-orange-300 border-orange-500/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(249,115,22,0.18)]",
+        ring: "border-orange-500/60 hover:border-orange-500/90 dark:border-orange-500/40 dark:hover:border-orange-400/70",
+        badge: "bg-orange-100 text-orange-800 border-orange-300/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/40",
+        label: "Deployed · Dev", dot: "bg-orange-500", pulse: false,
+        envPill: "bg-orange-100 text-orange-800 border-orange-300/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(249,115,22,0.2)]",
       };
     }
     return {
       topBar: "bg-gradient-to-r from-violet-500 to-purple-600",
       leftBar: "bg-violet-500",
-      ring: "border-violet-500/40 hover:border-violet-400/70",
-      badge: "bg-violet-500/20 text-violet-300 border-violet-500/40",
-      label: "Deployed · Dev", dot: "bg-violet-400", pulse: true,
-      envPill: "bg-violet-500/20 text-violet-300 border-violet-500/35",
-      hoverShadow: "hover:shadow-[0_12px_32px_rgba(139,92,246,0.18)]",
+      ring: "border-violet-500/60 hover:border-violet-500/90 dark:border-violet-500/40 dark:hover:border-violet-400/70",
+      badge: "bg-violet-100 text-violet-800 border-violet-300/80 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/40",
+      label: "Deployed · Dev", dot: "bg-violet-500", pulse: true,
+      envPill: "bg-violet-100 text-violet-800 border-violet-300/80 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/35",
+      hoverShadow: "hover:shadow-[0_12px_32px_rgba(139,92,246,0.2)]",
     };
   }
   return {
     topBar: "bg-gradient-to-r from-amber-400 to-yellow-500",
     leftBar: "bg-amber-500",
-    ring: "border-amber-500/35 hover:border-amber-400/65",
-    badge: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-    label: "Built", dot: "bg-amber-400", pulse: false,
-    envPill: "bg-slate-500/20 text-slate-300 border-slate-500/35",
-    hoverShadow: "hover:shadow-[0_12px_32px_rgba(245,158,11,0.15)]",
+    ring: "border-amber-500/55 hover:border-amber-500/85 dark:border-amber-500/35 dark:hover:border-amber-400/65",
+    badge: "bg-amber-100 text-amber-800 border-amber-300/80 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40",
+    label: "Built", dot: "bg-amber-500", pulse: false,
+    envPill: "bg-slate-100 text-slate-700 border-slate-300/80 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/35",
+    hoverShadow: "hover:shadow-[0_12px_32px_rgba(245,158,11,0.18)]",
   };
 }
 
 function ttlCls(r: number | null) {
   if (r === null) return "";
-  if (r <= 3) return "bg-red-500/10 text-red-400 border-red-500/20";
-  if (r <= 7) return "bg-orange-500/10 text-orange-400 border-orange-500/20";
-  return "bg-violet-500/10 text-violet-400 border-violet-500/20";
+  if (r <= 3) return "bg-red-100 text-red-700 border-red-300/80 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/30";
+  if (r <= 7) return "bg-orange-100 text-orange-700 border-orange-300/80 dark:bg-orange-500/15 dark:text-orange-400 dark:border-orange-500/30";
+  return "bg-violet-100 text-violet-700 border-violet-300/80 dark:bg-violet-500/15 dark:text-violet-400 dark:border-violet-500/30";
 }
 
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
@@ -321,22 +323,22 @@ const ItemCard = memo(function ItemCard({
 
 function StatusLegend({ devTtlDays }: { devTtlDays: number }) {
   const items = [
-    { dot: "bg-amber-500",           label: "Built",         sub: "Ready to deploy" },
-    { dot: "bg-violet-500",          label: "Dev Deployed",  sub: `≤${devTtlDays}d TTL` },
-    { dot: "bg-orange-500",          label: "Expiring",      sub: "≤7 days left" },
-    { dot: "bg-red-500 animate-pulse", label: "Critical",    sub: "≤3 days — auto-delete" },
-    { dot: "bg-emerald-500",         label: "Release",       sub: "Persistent" },
+    { dot: "bg-amber-500",             label: "Built",        sub: "Ready to deploy" },
+    { dot: "bg-violet-500",            label: "Dev Deployed", sub: `≤${devTtlDays}d TTL` },
+    { dot: "bg-orange-500",            label: "Expiring",     sub: "≤7 days left" },
+    { dot: "bg-red-500 animate-pulse", label: "Critical",     sub: "≤3 days — auto-delete" },
+    { dot: "bg-emerald-500",           label: "Release",      sub: "Persistent" },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/30 select-none">
+    <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50">
+      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 select-none">
         Status
       </span>
       {items.map(({ dot, label, sub }) => (
         <div key={label} className="flex items-center gap-1.5 text-xs">
           <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />
-          <span className="font-semibold text-foreground/60">{label}</span>
-          <span className="text-muted-foreground/35 hidden md:inline">· {sub}</span>
+          <span className="font-semibold text-foreground/80">{label}</span>
+          <span className="text-muted-foreground/60 hidden md:inline">· {sub}</span>
         </div>
       ))}
     </div>
@@ -347,12 +349,12 @@ function InfoTile({ label, value, sub, valueCls = "", icon }: {
   label: string; value: string; sub?: string; valueCls?: string; icon?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2.5 bg-white/[0.025] border border-white/[0.06] rounded-xl p-3">
-      {icon && <div className="mt-0.5 text-muted-foreground/40 shrink-0">{icon}</div>}
+    <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
+      {icon && <div className="mt-0.5 text-muted-foreground/60 shrink-0">{icon}</div>}
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-0.5">{label}</p>
-        <p className={`text-sm font-semibold truncate ${valueCls || "text-foreground/80"}`}>{value}</p>
-        {sub && <p className="text-[11px] text-muted-foreground/45 mt-0.5">{sub}</p>}
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">{label}</p>
+        <p className={`text-sm font-semibold truncate ${valueCls || "text-foreground"}`}>{value}</p>
+        {sub && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{sub}</p>}
       </div>
     </div>
   );
@@ -362,7 +364,7 @@ function StatBig({ value, label, color }: { value: number; label: string; color:
   return (
     <div className="flex flex-col items-center gap-1">
       <span className={`text-4xl font-black ${color} tabular-nums leading-none`}>{value.toLocaleString()}</span>
-      <span className="text-xs text-muted-foreground/50 font-medium">{label}</span>
+      <span className="text-xs text-muted-foreground/70 font-medium">{label}</span>
     </div>
   );
 }
@@ -827,7 +829,7 @@ export default function Marketplace() {
               <>
                 <div className={`h-[3px] w-full ${st.topBar}`} />
                 {/* Header */}
-                <div className="px-7 pt-5 pb-4 border-b border-white/[0.06]">
+                <div className="px-7 pt-5 pb-4 border-b border-border/50">
                   <div className="flex items-start gap-4">
                     <EntityIcon icon={item.icon} item_type={item.item_type} size="xl" />
                     <div className="flex-1 min-w-0">
@@ -866,30 +868,29 @@ export default function Marketplace() {
                 {/* Body */}
                 <div className="px-7 py-5 space-y-4">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-1.5">Description</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">Description</p>
                     {editMode
                       ? <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
-                          className="min-h-[80px] bg-white/[0.03] border-white/[0.08] resize-none" />
-                      : <p className="text-sm text-muted-foreground/70 bg-white/[0.02] border border-white/[0.05] rounded-xl p-4 leading-relaxed">{item.description}</p>}
+                          className="min-h-[80px] resize-none" />
+                      : <p className="text-sm text-muted-foreground bg-muted/30 border border-border/50 rounded-xl p-4 leading-relaxed">{item.description}</p>}
                   </div>
 
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-1.5">How to Use</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">How to Use</p>
                     {editMode
                       ? <Textarea value={editHowTo} onChange={e => setEditHowTo(e.target.value)}
-                          className="min-h-[72px] bg-white/[0.03] border-white/[0.08] resize-none"
+                          className="min-h-[72px] resize-none"
                           placeholder="Example prompts, prerequisites…" />
                       : item.how_to_use
-                        ? <p className="text-sm text-muted-foreground/70 bg-primary/[0.03] border border-primary/[0.12] rounded-xl p-4 leading-relaxed">{item.how_to_use}</p>
-                        : <p className="text-sm text-muted-foreground/30 italic">Not provided.</p>}
+                        ? <p className="text-sm text-muted-foreground bg-primary/5 border border-primary/20 rounded-xl p-4 leading-relaxed">{item.how_to_use}</p>
+                        : <p className="text-sm text-muted-foreground/50 italic">Not provided.</p>}
                   </div>
 
                   {editMode && (
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-1.5">Repo URL</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">Repo URL</p>
                       <Input value={editRepo} onChange={e => setEditRepo(e.target.value)}
-                        placeholder="https://bitbucket.company.internal/…"
-                        className="bg-white/[0.03] border-white/[0.08]" />
+                        placeholder="https://bitbucket.company.internal/…" />
                     </div>
                   )}
 
@@ -900,23 +901,23 @@ export default function Marketplace() {
                         sub={item.chart_version ? `version ${item.chart_version}` : undefined} />
                       <InfoTile label="TTL / Persistence" icon={<Clock size={14} />}
                         value={item.environment === "release" ? "Persistent (no TTL)" : `Dev · ${item.ttl_days ?? config.dev_ttl_days}d TTL`}
-                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 3 ? "text-red-400" : ""}
+                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 3 ? "text-red-600 dark:text-red-400" : ""}
                         sub={item.ttl_remaining_days !== null ? `${item.ttl_remaining_days} days remaining` : undefined} />
                       {item.bitbucket_repo && (
-                        <div className="flex items-start gap-2.5 bg-white/[0.025] border border-white/[0.06] rounded-xl p-3">
-                          <Github size={14} className="mt-0.5 text-muted-foreground/40 shrink-0" />
+                        <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
+                          <Github size={14} className="mt-0.5 text-muted-foreground/60 shrink-0" />
                           <div className="min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-0.5">Repository</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Repository</p>
                             <a href={item.bitbucket_repo} target="_blank" rel="noreferrer"
                               className="text-sm text-primary hover:underline truncate block">View Source ↗</a>
                           </div>
                         </div>
                       )}
                       {item.url_to_connect && (
-                        <div className="flex items-start gap-2.5 bg-white/[0.025] border border-white/[0.06] rounded-xl p-3">
-                          <ExternalLink size={14} className="mt-0.5 text-muted-foreground/40 shrink-0" />
+                        <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
+                          <ExternalLink size={14} className="mt-0.5 text-muted-foreground/60 shrink-0" />
                           <div className="min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-0.5">Connection URL</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Connection URL</p>
                             <a href={item.url_to_connect} target="_blank" rel="noreferrer"
                               className="text-sm text-primary hover:underline truncate block">{item.url_to_connect}</a>
                           </div>
@@ -932,18 +933,18 @@ export default function Marketplace() {
                   )}
 
                   {!editMode && (
-                    <div className="flex gap-10 pt-4 border-t border-white/[0.05]">
+                    <div className="flex gap-10 pt-4 border-t border-border/40">
                       <StatBig value={item.usage_count} label="Total Calls" color="text-primary" />
-                      <StatBig value={item.unique_users} label="Unique Users" color="text-emerald-400" />
+                      <StatBig value={item.unique_users} label="Unique Users" color="text-emerald-600 dark:text-emerald-400" />
                       {(item.tools_exposed?.length ?? 0) > 0 && (
-                        <StatBig value={item.tools_exposed.length} label="Tools" color="text-violet-400" />
+                        <StatBig value={item.tools_exposed.length} label="Tools" color="text-violet-600 dark:text-violet-400" />
                       )}
                     </div>
                   )}
                 </div>
 
                 {/* Footer actions */}
-                <div className="px-7 py-4 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-3 bg-black/10">
+                <div className="px-7 py-4 border-t border-border/40 flex flex-col sm:flex-row items-center justify-between gap-3 bg-muted/20">
                   {editMode ? (
                     <div className="flex gap-2 w-full justify-end">
                       <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>Cancel</Button>
@@ -1062,14 +1063,16 @@ export default function Marketplace() {
           <div className="space-y-5 py-1">
             {/* Environment */}
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-2">Environment</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-2">Environment</p>
               <div className="grid grid-cols-2 gap-2">
                 {(["dev", "release"] as const).map(env => (
                   <button key={env} type="button" onClick={() => handleDeployEnvChange(env)}
                     className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
                       deployEnv === env
-                        ? env === "dev" ? "border-violet-500 bg-violet-500/10 text-violet-400" : "border-emerald-500 bg-emerald-500/10 text-emerald-400"
-                        : "border-white/[0.08] text-muted-foreground/60 hover:border-white/[0.15]"
+                        ? env === "dev"
+                          ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+                          : "border-emerald-500 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                        : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
                     }`}>
                     {env === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
                     {env === "dev" ? "Dev" : "Release"}
@@ -1077,7 +1080,7 @@ export default function Marketplace() {
                 ))}
               </div>
               {deployEnv === "dev" && (
-                <p className="text-xs text-violet-400/60 mt-2 flex items-center gap-1.5">
+                <p className="text-xs text-violet-600 dark:text-violet-400 mt-2 flex items-center gap-1.5">
                   <Clock size={10} /> Auto-expires after {config.dev_ttl_days} days
                 </p>
               )}
@@ -1085,25 +1088,25 @@ export default function Marketplace() {
 
             {/* Chart picker */}
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-2">
                 Chart from Artifactory ({deployEnv === "dev" ? "my-helm-dev-local" : "my-helm-release-local"})
               </p>
               <div className="relative mb-2">
-                <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
-                <Input className="pl-7 h-8 text-sm bg-white/[0.03] border-white/[0.08]"
+                <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
+                <Input className="pl-7 h-8 text-sm"
                   placeholder="Filter charts…" value={chartFilter} onChange={e => setChartFilter(e.target.value)} />
               </div>
-              <div className="border border-white/[0.08] rounded-xl overflow-hidden max-h-44 overflow-y-auto bg-black/20">
+              <div className="border border-border/60 rounded-xl overflow-hidden max-h-44 overflow-y-auto bg-muted/20">
                 {chartsLoading
-                  ? <p className="text-center text-muted-foreground/40 text-xs py-8 animate-pulse">Loading charts…</p>
+                  ? <p className="text-center text-muted-foreground/60 text-xs py-8 animate-pulse">Loading charts…</p>
                   : filteredCharts.length === 0
-                    ? <p className="text-center text-muted-foreground/40 text-xs py-8">No charts found</p>
+                    ? <p className="text-center text-muted-foreground/60 text-xs py-8">No charts found</p>
                     : filteredCharts.map(chart => (
                       <button key={chart} type="button" onClick={() => handleChartSelect(chart)}
                         className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
-                          selectedChart === chart ? "bg-primary/15 text-primary font-semibold" : "hover:bg-white/[0.04] text-foreground/65"
+                          selectedChart === chart ? "bg-primary/15 text-primary font-semibold" : "hover:bg-muted/50 text-foreground/80"
                         }`}>
-                        <PackageSearch size={12} className="text-muted-foreground/40 shrink-0" />
+                        <PackageSearch size={12} className="text-muted-foreground/60 shrink-0" />
                         <span className="font-mono truncate">{chart}</span>
                         {selectedChart === chart && <span className="ml-auto text-primary text-xs">✓</span>}
                       </button>
@@ -1114,23 +1117,23 @@ export default function Marketplace() {
             {/* Versions */}
             {selectedChart && (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 mb-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-2">
                   Version — <span className="text-primary normal-case font-semibold">{selectedChart}</span>
                 </p>
                 <div className="relative mb-2">
-                  <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
-                  <Input className="pl-7 h-8 text-sm bg-white/[0.03] border-white/[0.08]"
+                  <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
+                  <Input className="pl-7 h-8 text-sm"
                     placeholder="Filter versions…" value={versionFilter} onChange={e => setVersionFilter(e.target.value)} />
                 </div>
                 {versionsLoading
-                  ? <p className="text-xs text-muted-foreground/40 animate-pulse">Loading versions…</p>
+                  ? <p className="text-xs text-muted-foreground/60 animate-pulse">Loading versions…</p>
                   : filteredVersions.length === 0
-                    ? <p className="text-xs text-muted-foreground/40">No versions found</p>
+                    ? <p className="text-xs text-muted-foreground/60">No versions found</p>
                     : <div className="flex flex-wrap gap-2">
                         {filteredVersions.map(v => (
                           <button key={v} type="button" onClick={() => setSelectedVersion(v)}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-semibold transition-all ${
-                              selectedVersion === v ? "border-primary bg-primary/15 text-primary" : "border-white/[0.08] text-muted-foreground/60 hover:border-white/[0.2]"
+                              selectedVersion === v ? "border-primary bg-primary/15 text-primary" : "border-border/60 text-foreground/70 hover:border-border"
                             }`}>{v}
                           </button>
                         ))}
@@ -1194,19 +1197,19 @@ export default function Marketplace() {
 
           <div className="space-y-4 py-1">
             {callItem?.url_to_connect ? (
-              <p className="text-xs text-muted-foreground/50 font-mono bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 truncate">
+              <p className="text-xs text-muted-foreground font-mono bg-muted/40 border border-border/50 rounded-lg px-3 py-2 truncate">
                 {callItem.url_to_connect}
               </p>
             ) : (
-              <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/10 border border-amber-300/80 dark:border-amber-500/20 rounded-lg px-3 py-2">
                 <AlertTriangle size={14} /> No connection URL — redeploy to assign one.
               </div>
             )}
 
             <div className="space-y-1.5">
-              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40">Prompt</Label>
+              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Prompt</Label>
               <Textarea
-                className="min-h-[100px] bg-white/[0.03] border-white/[0.08] resize-none font-mono text-sm"
+                className="min-h-[100px] resize-none font-mono text-sm"
                 placeholder={`Send a message to ${callItem?.name}…`}
                 value={callPrompt}
                 onChange={e => setCallPrompt(e.target.value)}
@@ -1215,14 +1218,14 @@ export default function Marketplace() {
 
             {callResponse !== null && (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/60 mb-1.5">Response</p>
-                <pre className="text-xs text-foreground/70 bg-black/25 border border-white/[0.06] rounded-xl p-4 overflow-auto max-h-60 whitespace-pre-wrap font-mono leading-relaxed">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400/80 mb-1.5">Response</p>
+                <pre className="text-xs text-foreground bg-muted/50 border border-border/50 rounded-xl p-4 overflow-auto max-h-60 whitespace-pre-wrap font-mono leading-relaxed">
                   {callResponse}
                 </pre>
               </div>
             )}
             {callError && (
-              <div className="flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+              <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-500/10 border border-red-300/80 dark:border-red-500/20 rounded-xl p-3">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>{callError}</span>
               </div>
@@ -1257,19 +1260,19 @@ export default function Marketplace() {
 
           <form onSubmit={handleCreate} className="mt-3 space-y-5">
             {/* Icon upload */}
-            <div className="flex items-start gap-5 p-4 rounded-2xl border border-white/[0.06] bg-white/[0.015]">
+            <div className="flex items-start gap-5 p-4 rounded-2xl border border-border/50 bg-muted/20">
               <div onClick={() => iconInputRef.current?.click()}
-                className="w-20 h-20 rounded-2xl border-2 border-dashed border-white/10 bg-black/20 flex items-center justify-center cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all shrink-0 overflow-hidden group">
+                className="w-20 h-20 rounded-2xl border-2 border-dashed border-border/60 bg-muted/30 flex items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-all shrink-0 overflow-hidden group">
                 {createIcon
                   ? <img src={createIcon} alt="preview" className="w-full h-full object-cover" />
-                  : <div className="flex flex-col items-center gap-1 text-muted-foreground/20 group-hover:text-muted-foreground/50 transition-colors">
+                  : <div className="flex flex-col items-center gap-1 text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors">
                       <UploadCloud size={20} /><span className="text-[9px] font-medium">Icon</span>
                     </div>}
               </div>
               <input ref={iconInputRef} type="file" accept="image/*" className="hidden" onChange={handleIconFile} />
               <div className="flex-1">
-                <p className="text-sm font-semibold mb-1 text-foreground/70">Entity Icon</p>
-                <p className="text-xs text-muted-foreground/40 mb-3">PNG / JPG / SVG · max 1 MB · stored in database</p>
+                <p className="text-sm font-semibold mb-1 text-foreground">Entity Icon</p>
+                <p className="text-xs text-muted-foreground/60 mb-3">PNG / JPG / SVG · max 1 MB · stored in database</p>
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => iconInputRef.current?.click()}>
                     <UploadCloud size={11} />{createIcon ? "Change" : "Choose"}
@@ -1282,14 +1285,14 @@ export default function Marketplace() {
             {/* Type + Name */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40">
+                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
                   Type <span className="text-destructive">*</span>
                 </Label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["agent", "mcp_server"] as const).map(t => (
                     <button key={t} type="button" onClick={() => setCreateType(t)}
                       className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
-                        createType === t ? "border-primary bg-primary/10 text-primary" : "border-white/[0.08] text-muted-foreground/50 hover:border-white/[0.15]"
+                        createType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
                       }`}>
                       {t === "agent" ? <Zap size={13} /> : <Blocks size={13} />}
                       {t === "agent" ? "Agent" : "MCP"}
@@ -1298,39 +1301,37 @@ export default function Marketplace() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cn" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40">
+                <Label htmlFor="cn" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
                   Name <span className="text-destructive">*</span>
                 </Label>
                 <Input id="cn" required placeholder="e.g. Jira Integration MCP"
-                  className="bg-white/[0.03] border-white/[0.08]"
                   value={createName} onChange={e => setCreateName(e.target.value)} />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cd" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40">
+              <Label htmlFor="cd" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
                 Description <span className="text-destructive">*</span>
               </Label>
-              <Textarea id="cd" required className="min-h-[80px] bg-white/[0.03] border-white/[0.08] resize-none"
+              <Textarea id="cd" required className="min-h-[80px] resize-none"
                 placeholder="What does this entity do? When should someone use it?"
                 value={createDesc} onChange={e => setCreateDesc(e.target.value)} />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cr" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40">Bitbucket Repo URL</Label>
+              <Label htmlFor="cr" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Bitbucket Repo URL</Label>
               <Input id="cr" placeholder="https://bitbucket.company.internal/…"
-                className="bg-white/[0.03] border-white/[0.08]"
                 value={createRepo} onChange={e => setCreateRepo(e.target.value)} />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ch" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40">How to Use</Label>
-              <Textarea id="ch" className="min-h-[72px] bg-white/[0.03] border-white/[0.08] resize-none"
+              <Label htmlFor="ch" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">How to Use</Label>
+              <Textarea id="ch" className="min-h-[72px] resize-none"
                 placeholder="Example prompts, prerequisites, example inputs…"
                 value={createHowTo} onChange={e => setCreateHowTo(e.target.value)} />
             </div>
 
-            <DialogFooter className="pt-4 border-t border-white/[0.05] gap-2">
+            <DialogFooter className="pt-4 border-t border-border/40 gap-2">
               <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); resetCreate(); }}>Cancel</Button>
               <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim()}
                 className="gap-1.5 bg-gradient-primary text-primary-foreground font-bold px-6">

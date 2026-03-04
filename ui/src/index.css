@@ -105,6 +105,8 @@
     --muted: 220 20% 20%;
     --muted-foreground: 220 15% 65%;
     --border: 220 30% 25%;
+    /* Primary foreground must be white in dark mode so active tabs/buttons are legible */
+    --primary-foreground: 210 40% 98%;
   }
 
   .light {
