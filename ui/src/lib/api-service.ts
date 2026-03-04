@@ -638,7 +638,9 @@ export const analyticsService = {
     });                                   // No additional data required
   },
 
-  // Get personal usage statistics for the currently logged-in user
+  // Get personal usage statistics for the currently logged-in user.
+  // NOTE: This calls /api/user-stats (not /api/analytics/user-stats) because the analytics
+  // router requires the "Analytics" tab permission which most users don't have.
   getUserStats: async (): Promise<ApiResponse<{
     login_count: number;
     last_login: string | null;
@@ -653,7 +655,7 @@ export const analyticsService = {
       status_type: 'success' | 'warning' | 'error';
     }>;
   }>> => {
-    return fetchApi('/api/analytics/user-stats');
+    return fetchApi('/api/user-stats');
   },
 };
 

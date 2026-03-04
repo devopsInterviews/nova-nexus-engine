@@ -164,11 +164,6 @@ function FeatureTeaserCard({
           <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg`}>
             <feature.icon className="w-5 h-5 text-white" />
           </div>
-          {!hasAccess && (
-            <span className="flex items-center gap-1 text-[11px] text-amber-400/80 bg-amber-400/10 border border-amber-400/20 rounded-full px-2 py-0.5">
-              <Lock className="w-3 h-3" /> Restricted
-            </span>
-          )}
         </div>
 
         <p className="text-xs text-muted-foreground mb-1">{feature.tagline}</p>
@@ -187,26 +182,30 @@ function FeatureTeaserCard({
               <ArrowRight className="ml-1 w-3 h-3 group-hover:translate-x-1 transition-transform" />
             </Button>
           ) : (
-            <p className="text-xs text-amber-400/70 flex items-center gap-1">
-              <Lock className="w-3 h-3" />
-              Ask DevOps to grant you access to this feature.
-            </p>
+            <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+              <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm font-medium text-amber-600 dark:text-amber-400 leading-snug">
+                You don't have access yet.{" "}
+                <span className="font-semibold">Contact DevOps</span> to request permission.
+              </p>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Floating preview panel */}
+      {/* Floating preview panel — dark overlay so content is always readable in both themes */}
       <AnimatePresence>
         {hovered && (
           <motion.div
-            className="absolute inset-x-0 bottom-0 bg-black/80 backdrop-blur-sm border-t border-white/10 rounded-b-2xl"
+            className="absolute inset-x-0 bottom-0 rounded-b-2xl overflow-hidden"
+            style={{ background: "rgba(10, 10, 20, 0.88)" }}
             initial={{ y: "100%", opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 35 }}
           >
-            <div className="px-3 pt-2 pb-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Preview</p>
+            <div className="px-3 pt-2 border-t border-white/10">
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Preview</p>
             </div>
             {feature.preview}
           </motion.div>
@@ -325,12 +324,12 @@ export default function Home() {
               Welcome, {user?.full_name || user?.username}!
             </h1>
             <p className="text-lg text-muted-foreground mb-2 max-w-3xl mx-auto">
-              This is your company's <span className="text-foreground font-semibold">AI Portal</span> —
-              a unified ecosystem where you build AI Agents, connect LLMs to your tools,
-              analyze data with natural language, and research binaries with the power of AI.
+              Where <span className="text-foreground font-semibold">intelligence meets infrastructure.</span>{" "}
+              A living AI ecosystem that evolves with your team — connecting models, tools, data,
+              and workflows into a single, continuously expanding platform.
             </p>
             <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-              Explore what's available to you below, or head to the documentation to get started.
+              Every team contributes. Every integration amplifies. Explore what's possible below.
             </p>
           </motion.div>
         </div>

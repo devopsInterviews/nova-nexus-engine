@@ -156,7 +156,12 @@ from app.routes.marketplace_routes import router as marketplace_router, start_tt
 
 # Register all route modules with the FastAPI app under /api prefix
 # This makes all endpoints accessible at /api/... URLs
-from app.routes.auth_routes import require_tab_permission
+from app.routes.auth_routes import require_tab_permission, get_current_user
+from app.database import get_db_session
+from app.models import User as _User, PageView, UserActivity, TestExecution, MarketplaceUsage
+from sqlalchemy.orm import Session as _Session
+from sqlalchemy import func as _func, desc as _desc
+from datetime import datetime as _dt, timedelta as _td
 
 app.include_router(db_router, prefix="/api", dependencies=[Depends(require_tab_permission("BI"))])  # Database routes: /api/database/*
 app.include_router(mcp_router, prefix="/api", dependencies=[Depends(require_tab_permission(["Tests", "Research"]))])  # MCP routes: /api/mcp/*
@@ -176,6 +181,95 @@ app.include_router(research_router, prefix="/api", dependencies=[Depends(require
 # Expose SSO / OIDC routes under /api (Authentik company login)
 app.include_router(sso_router, prefix="/api")
 app.include_router(marketplace_router)
+
+
+@app.get("/api/user-stats")
+async def user_stats_endpoint(
+    db: _Session = Depends(get_db_session),
+    current_user: _User = Depends(get_current_user),
+):
+    """
+    Personal usage statistics for the currently authenticated user.
+    Intentionally registered outside the analytics router so it does NOT
+    require the 'Analytics' tab permission — every logged-in user can see their own stats.
+    """
+
+    def _time_ago(ts):
+        if ts is None:
+            return "unknown"
+        naive = ts.replace(tzinfo=None) if hasattr(ts, "tzinfo") and ts.tzinfo else ts
+        diff = _dt.utcnow() - naive
+        if diff.total_seconds() < 60:
+            return f"{int(diff.total_seconds())} sec ago"
+        elif diff.total_seconds() < 3600:
+            return f"{int(diff.total_seconds() // 60)} min ago"
+        elif diff.total_seconds() < 86400:
+            return f"{int(diff.total_seconds() // 3600)} hr ago"
+        else:
+            return f"{int(diff.total_seconds() // 86400)} day ago"
+
+    try:
+        thirty_days_ago = _dt.utcnow() - _td(days=30)
+
+        page_views_30d = db.query(_func.count(PageView.id)).filter(
+            PageView.user_id == current_user.id,
+            PageView.timestamp >= thirty_days_ago,
+        ).scalar() or 0
+
+        test_runs_total = db.query(_func.count(TestExecution.id)).filter(
+            TestExecution.user_id == current_user.id
+        ).scalar() or 0
+
+        marketplace_usage_total = db.query(_func.count(MarketplaceUsage.id)).filter(
+            MarketplaceUsage.user_id == current_user.id
+        ).scalar() or 0
+
+        activity_records = db.query(UserActivity).filter(
+            UserActivity.user_id == current_user.id
+        ).order_by(_desc(UserActivity.timestamp)).limit(8).all()
+
+        recent_activities = [
+            {
+                "action": act.action,
+                "type": act.activity_type,
+                "time": _time_ago(act.timestamp),
+                "status_type": (
+                    "success" if act.status == "success"
+                    else "error" if act.status == "error"
+                    else "warning"
+                ),
+            }
+            for act in activity_records
+        ]
+
+        return {
+            "status": "success",
+            "data": {
+                "login_count": getattr(current_user, "login_count", 0) or 0,
+                "last_login": current_user.last_login.isoformat() if current_user.last_login else None,
+                "page_views_30d": page_views_30d,
+                "test_runs_total": test_runs_total,
+                "marketplace_usage_total": marketplace_usage_total,
+                "member_since": current_user.created_at.isoformat() if current_user.created_at else None,
+                "recent_activities": recent_activities,
+            },
+        }
+
+    except Exception as exc:
+        logger.error("user_stats_endpoint error: %s", exc, exc_info=True)
+        return {
+            "status": "success",
+            "data": {
+                "login_count": getattr(current_user, "login_count", 0) or 0,
+                "last_login": current_user.last_login.isoformat() if current_user.last_login else None,
+                "page_views_30d": 0,
+                "test_runs_total": 0,
+                "marketplace_usage_total": 0,
+                "member_since": current_user.created_at.isoformat() if current_user.created_at else None,
+                "recent_activities": [],
+            },
+        }
+
 
 # Lightweight request logging middleware (doesn't consume body)
 @app.middleware("http")  # Decorator registers this function as HTTP middleware that runs on every request
@@ -495,6 +589,8 @@ async def get_app_config():
         "confluence_url": os.getenv("CONFLUENCE_URL", ""),
         "openwebui_url": os.getenv("OPENWEBUI_URL", ""),
     }
+
+
 
 
 @app.get("/tools", summary="List MCP server tools")
