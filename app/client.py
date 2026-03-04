@@ -279,7 +279,7 @@ async def user_stats_endpoint(
                 usage.action, usage.action.capitalize()
             )
             events.append({
-                "action": f"{verb} {item_type} "{item_name}"",
+                "action": f'{verb} {item_type} "{item_name}"',
                 "type": "marketplace",
                 "ts": usage.timestamp,
                 "status_type": "success",
