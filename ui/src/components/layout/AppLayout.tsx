@@ -96,7 +96,7 @@ export function AppLayout() {
     ██║ ╚═╝ ██║╚██████╗██║        ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║╚██████╔╝███████╗
     ╚═╝     ╚═╝ ╚═════╝╚═╝         ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
     
-    🚀 Welcome to the future of MCP Control!
+    🚀 Welcome to the future of AI Portal!
     💡 Try the Konami Code: ↑↑↓↓←→←→BA
     🎨 Built with love and cyberpunk vibes
     `);

@@ -727,18 +727,25 @@ async def get_traffic_over_time(
             ORDER BY hour
         """), {"threshold": time_threshold}).fetchall()
 
-        # Build a lookup keyed by truncated hour string
-        data_by_hour: Dict[str, Dict] = {
-            str(row[0]): {"total": row[1], "success": row[2], "errors": row[3]}
-            for row in rows
-        }
+        # Build lookup keyed by (date, hour) tuple so timezone representation
+        # differences between the DB (tz-aware) and Python (naive UTC) never break matching.
+        data_by_hour: Dict[tuple, Dict] = {}
+        for row in rows:
+            hour_dt = row[0]
+            # Normalise to naive UTC so the key is always comparable
+            if hasattr(hour_dt, "tzinfo") and hour_dt.tzinfo is not None:
+                hour_dt = hour_dt.replace(tzinfo=None)
+            data_by_hour[(hour_dt.date(), hour_dt.hour)] = {
+                "total": row[1],
+                "success": row[2],
+                "errors": row[3],
+            }
 
         # Generate every hour slot so the chart has no gaps
         traffic: List[Dict[str, Any]] = []
         for i in range(hours):
             slot = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours - 1 - i)
-            slot_key = str(slot)
-            point = data_by_hour.get(slot_key, {"total": 0, "success": 0, "errors": 0})
+            point = data_by_hour.get((slot.date(), slot.hour), {"total": 0, "success": 0, "errors": 0})
             traffic.append({
                 "hour": slot.strftime("%H:00"),
                 "label": slot.strftime("%b %d %H:00"),

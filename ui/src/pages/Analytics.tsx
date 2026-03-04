@@ -72,21 +72,27 @@ function TrafficTooltip({ active, payload, label }: any) {
   );
 }
 
-// ─── Color mapping for activity types ────────────────────────────────────────
+// ─── Activity type metadata ───────────────────────────────────────────────────
 
-const ACTIVITY_COLORS: Record<string, string> = {
-  auth: "#6366f1",
-  database: "#10b981",
-  mcp: "#06b6d4",
-  analytics: "#f59e0b",
-  bi: "#8b5cf6",
-  testing: "#f97316",
-  user_management: "#ec4899",
-  marketplace: "#14b8a6",
+interface ActivityMeta {
+  label: string;
+  description: string;
+  color: string;
+}
+
+const ACTIVITY_META: Record<string, ActivityMeta> = {
+  auth:            { label: "Authentication",       description: "Login, logout, token refresh",              color: "#6366f1" },
+  database:        { label: "Database (BI)",         description: "SQL queries and DB connections via BI tab", color: "#10b981" },
+  mcp:             { label: "MCP / AI Tools",        description: "AI agent calls and MCP tool invocations",   color: "#06b6d4" },
+  analytics:       { label: "Analytics",             description: "Dashboard and metric page views",           color: "#f59e0b" },
+  bi:              { label: "Business Intelligence", description: "BI queries and natural-language analysis",  color: "#8b5cf6" },
+  testing:         { label: "Testing",               description: "Test runs and saved test configurations",   color: "#f97316" },
+  user_management: { label: "User Management",       description: "Admin operations on users and permissions", color: "#ec4899" },
+  marketplace:     { label: "Marketplace",           description: "Agent and MCP server deployments",         color: "#14b8a6" },
 };
 
-function activityColor(type: string) {
-  return ACTIVITY_COLORS[type] ?? "#64748b";
+function activityMeta(type: string): ActivityMeta {
+  return ACTIVITY_META[type] ?? { label: type, description: "Other system activity", color: "#64748b" };
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -156,8 +162,13 @@ export default function Analytics() {
     return () => clearInterval(interval);
   }, []);
 
-  const hasTraffic = traffic.some((p) => p.total > 0);
   const hasActivity = activityBreakdown.length > 0;
+
+  // Enrich breakdown with friendly labels so the chart and tooltip are human-readable
+  const enrichedBreakdown = activityBreakdown.map((item) => ({
+    ...item,
+    ...activityMeta(item.type),
+  }));
 
   return (
     <motion.div
@@ -202,12 +213,6 @@ export default function Analytics() {
             {isLoading ? (
               <div className="h-[260px] flex items-center justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-              </div>
-            ) : !hasTraffic ? (
-              <div className="h-[260px] flex flex-col items-center justify-center text-muted-foreground gap-3">
-                <TrendingUp className="w-10 h-10 opacity-25" />
-                <p className="text-sm">No traffic data yet for the last 24 hours.</p>
-                <p className="text-xs">Data is collected automatically as requests arrive.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
@@ -268,6 +273,11 @@ export default function Analytics() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            )}
+            {!isLoading && traffic.every((p) => p.total === 0) && (
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                No requests logged in the last 24 hours — data will appear here as traffic arrives.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -371,28 +381,37 @@ export default function Analytics() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.3 }}>
         <Card className="glass border-border/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PieChart className="w-5 h-5 text-primary" />
-              User Activity by Feature
-              <span className="text-xs font-normal text-muted-foreground ml-auto">Last 24 hours</span>
-            </CardTitle>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChart className="w-5 h-5 text-primary" />
+                  Feature Usage Breakdown
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  How many user actions were recorded per portal feature in the last 24 hours.
+                  Each bar shows the total number of tracked events (API calls, queries, logins, etc.)
+                  for that feature area.
+                </p>
+              </div>
+              <span className="text-xs text-muted-foreground whitespace-nowrap ml-4 mt-1">Last 24 hours</span>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="h-[220px] flex items-center justify-center">
+              <div className="h-[240px] flex items-center justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
             ) : !hasActivity ? (
-              <div className="h-[220px] flex flex-col items-center justify-center text-muted-foreground gap-3">
+              <div className="h-[240px] flex flex-col items-center justify-center text-muted-foreground gap-3">
                 <Activity className="w-10 h-10 opacity-25" />
                 <p className="text-sm">No user activity recorded in the last 24 hours.</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={Math.max(220, enrichedBreakdown.length * 42)}>
                 <BarChart
-                  data={activityBreakdown}
+                  data={enrichedBreakdown}
                   layout="vertical"
-                  margin={{ top: 4, right: 24, left: 16, bottom: 4 }}
+                  margin={{ top: 4, right: 48, left: 8, bottom: 4 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.3)" />
                   <XAxis
@@ -401,33 +420,36 @@ export default function Analytics() {
                     tickLine={false}
                     axisLine={false}
                     allowDecimals={false}
+                    label={{ value: "Actions", position: "insideBottom", offset: -2, fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                   />
                   <YAxis
                     type="category"
-                    dataKey="type"
+                    dataKey="label"
                     tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                     tickLine={false}
                     axisLine={false}
-                    width={100}
+                    width={140}
                   />
                   <Tooltip
                     cursor={{ fill: "hsl(var(--muted) / 0.3)" }}
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const d = payload[0];
+                      const meta = activityMeta(d.payload.type);
                       return (
-                        <div className="rounded-lg border border-border/60 bg-background/95 p-2 shadow-lg text-xs">
-                          <p className="font-semibold capitalize">{d.payload.type}</p>
-                          <p style={{ color: d.fill }}>
-                            Actions: <span className="font-medium">{d.value}</span>
+                        <div className="rounded-lg border border-border/60 bg-background/95 p-3 shadow-lg text-xs max-w-[200px]">
+                          <p className="font-semibold text-foreground">{meta.label}</p>
+                          <p className="text-muted-foreground mt-0.5 mb-1.5">{meta.description}</p>
+                          <p style={{ color: meta.color }}>
+                            Actions logged: <span className="font-semibold">{d.value}</span>
                           </p>
                         </div>
                       );
                     }}
                   />
                   <Bar dataKey="count" name="Actions" radius={[0, 4, 4, 0]}>
-                    {activityBreakdown.map((entry) => (
-                      <Cell key={entry.type} fill={activityColor(entry.type)} />
+                    {enrichedBreakdown.map((entry) => (
+                      <Cell key={entry.type} fill={entry.color} />
                     ))}
                   </Bar>
                 </BarChart>
