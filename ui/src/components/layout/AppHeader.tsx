@@ -1,6 +1,5 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -18,8 +17,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/auth-context";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Shield, User, Mail, Calendar, LogIn, Tag } from "lucide-react";
+import { Moon, Sun, Shield, User, Mail, Calendar, LogIn, Tag, Search } from "lucide-react";
 import { appConfigService } from "@/lib/api-service";
+import { GlobalCommandPalette } from "./GlobalCommandPalette";
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -63,6 +63,8 @@ export function AppHeader() {
     return user.username.substring(0, 2).toUpperCase();
   };
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
   const [themeMode, setThemeMode] = useState<"light" | "dark">(() => {
     const saved = localStorage.getItem("theme");
     return saved === "dark" || saved === "light" ? saved : "light";
@@ -94,15 +96,18 @@ export function AppHeader() {
             </div>
           </div>
 
-          {/* Center — search */}
+          {/* Center — command palette trigger */}
           <div className="flex-1 max-w-md mx-8">
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">🔍</span>
-              <Input
-                placeholder="Search across all systems..."
-                className="pl-10 dark:bg-gray-800 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
-              />
-            </div>
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="w-full flex items-center gap-2 px-3 h-9 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-500 transition-colors"
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              <span className="flex-1 text-left">Search across all systems…</span>
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-1.5 py-0.5 text-[10px] font-mono text-gray-400 dark:text-gray-500">
+                Ctrl K
+              </kbd>
+            </button>
           </div>
 
           {/* Right — theme toggle + user menu */}
@@ -174,6 +179,9 @@ export function AppHeader() {
           </div>
         </div>
       </header>
+
+      {/* ── Command Palette ────────────────────────────────────────────── */}
+      <GlobalCommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
       {/* ── Profile Dialog ─────────────────────────────────────────────── */}
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
