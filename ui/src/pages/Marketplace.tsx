@@ -108,51 +108,56 @@ function getItemStyle(item: MarketplaceItem) {
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
-        topBar: "bg-emerald-500",
+        topBar: "bg-gradient-to-r from-emerald-400 to-green-500",
         leftBar: "bg-emerald-500",
-        ring: "border-emerald-500/50 hover:border-emerald-400/80",
-        badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-        label: "Deployed · Release", dot: "bg-emerald-500", pulse: true,
-        envPill: "bg-sky-500/15 text-sky-400 border-sky-500/25",
+        ring: "border-emerald-500/40 hover:border-emerald-400/70",
+        badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+        label: "Deployed · Release", dot: "bg-emerald-400", pulse: true,
+        envPill: "bg-sky-500/20 text-sky-300 border-sky-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(16,185,129,0.18)]",
       };
     }
     const r = item.ttl_remaining_days;
     if (r !== null && r <= 3) {
       return {
-        topBar: "bg-red-500",
+        topBar: "bg-gradient-to-r from-red-500 to-rose-600",
         leftBar: "bg-red-500",
-        ring: "border-red-500/60 hover:border-red-400/90",
-        badge: "bg-red-500/15 text-red-400 border-red-500/30",
-        label: "Expiring Soon!", dot: "bg-red-500 animate-pulse", pulse: true,
-        envPill: "bg-orange-500/15 text-orange-400 border-orange-500/25",
+        ring: "border-red-500/50 hover:border-red-400/80",
+        badge: "bg-red-500/20 text-red-300 border-red-500/40",
+        label: "Expiring Soon!", dot: "bg-red-400 animate-pulse", pulse: true,
+        envPill: "bg-orange-500/20 text-orange-300 border-orange-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(239,68,68,0.18)]",
       };
     }
     if (r !== null && r <= 7) {
       return {
-        topBar: "bg-orange-500",
+        topBar: "bg-gradient-to-r from-orange-400 to-amber-500",
         leftBar: "bg-orange-500",
-        ring: "border-orange-500/50 hover:border-orange-400/80",
-        badge: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+        ring: "border-orange-500/40 hover:border-orange-400/70",
+        badge: "bg-orange-500/20 text-orange-300 border-orange-500/40",
         label: "Deployed · Dev", dot: "bg-orange-400", pulse: false,
-        envPill: "bg-orange-500/15 text-orange-400 border-orange-500/25",
+        envPill: "bg-orange-500/20 text-orange-300 border-orange-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(249,115,22,0.18)]",
       };
     }
     return {
-      topBar: "bg-violet-500",
+      topBar: "bg-gradient-to-r from-violet-500 to-purple-600",
       leftBar: "bg-violet-500",
-      ring: "border-violet-500/50 hover:border-violet-400/80",
-      badge: "bg-violet-500/15 text-violet-400 border-violet-500/30",
-      label: "Deployed · Dev", dot: "bg-violet-500", pulse: true,
-      envPill: "bg-orange-500/15 text-orange-400 border-orange-500/25",
+      ring: "border-violet-500/40 hover:border-violet-400/70",
+      badge: "bg-violet-500/20 text-violet-300 border-violet-500/40",
+      label: "Deployed · Dev", dot: "bg-violet-400", pulse: true,
+      envPill: "bg-violet-500/20 text-violet-300 border-violet-500/35",
+      hoverShadow: "hover:shadow-[0_12px_32px_rgba(139,92,246,0.18)]",
     };
   }
   return {
-    topBar: "bg-amber-500",
+    topBar: "bg-gradient-to-r from-amber-400 to-yellow-500",
     leftBar: "bg-amber-500",
-    ring: "border-amber-500/45 hover:border-amber-400/75",
-    badge: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-    label: "Built", dot: "bg-amber-500", pulse: false,
-    envPill: "bg-slate-500/15 text-slate-400 border-slate-500/25",
+    ring: "border-amber-500/35 hover:border-amber-400/65",
+    badge: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+    label: "Built", dot: "bg-amber-400", pulse: false,
+    envPill: "bg-slate-500/20 text-slate-300 border-slate-500/35",
+    hoverShadow: "hover:shadow-[0_12px_32px_rgba(245,158,11,0.15)]",
   };
 }
 
@@ -168,21 +173,23 @@ function ttlCls(r: number | null) {
 const EntityIcon = memo(function EntityIcon({
   icon, item_type, size = "md",
 }: { icon: string | null; item_type: string; size?: "sm" | "md" | "lg" | "xl" }) {
-  const dim = { sm: "w-10 h-10", md: "w-16 h-16", lg: "w-18 h-18", xl: "w-20 h-20" }[size];
-  const iconSz = { sm: 16, md: 28, lg: 32, xl: 36 }[size];
+  const dim = { sm: "w-10 h-10", md: "w-14 h-14", lg: "w-16 h-16", xl: "w-20 h-20" }[size];
+  const iconSz = { sm: 16, md: 24, lg: 28, xl: 34 }[size];
 
   if (icon) {
     return (
       <img src={icon} alt="icon"
-        className={`${dim} rounded-2xl object-cover border border-border shrink-0`} />
+        className={`${dim} rounded-xl object-cover border border-border/50 shrink-0 shadow-lg`} />
     );
   }
   return (
-    <div className={`${dim} rounded-2xl shrink-0 flex items-center justify-center border border-border
-      ${item_type === "agent" ? "bg-sky-500/15" : "bg-violet-500/15"}`}>
+    <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg
+      ${item_type === "agent"
+        ? "bg-gradient-to-br from-sky-500 to-blue-600"
+        : "bg-gradient-to-br from-violet-500 to-purple-600"}`}>
       {item_type === "agent"
-        ? <Zap size={iconSz} className="text-sky-400" />
-        : <Blocks size={iconSz} className="text-violet-400" />}
+        ? <Zap size={iconSz} className="text-white drop-shadow-sm" />
+        : <Blocks size={iconSz} className="text-white drop-shadow-sm" />}
     </div>
   );
 });
@@ -192,6 +199,7 @@ const ItemCard = memo(function ItemCard({
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
   const nearExpiry = item.ttl_remaining_days !== null && item.ttl_remaining_days <= 3;
+  const isAgent = item.item_type === "agent";
 
   return (
     <div
@@ -199,55 +207,55 @@ const ItemCard = memo(function ItemCard({
       onKeyDown={e => e.key === "Enter" && onClick()}
       className={`
         group relative cursor-pointer rounded-2xl overflow-hidden flex flex-col
-        bg-surface/60 backdrop-blur-sm
-        border-2 ${st.ring}
-        transition-all duration-200 ease-out min-h-[320px]
-        hover:scale-[1.015] hover:shadow-2xl
+        bg-card/90 backdrop-blur-sm
+        border ${st.ring}
+        transition-all duration-300 ease-out min-h-[300px]
+        hover:-translate-y-1.5 ${st.hoverShadow}
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
       `}
     >
-      {/* Colored top status bar */}
-      <div className={`absolute top-0 inset-x-0 h-[4px] ${st.topBar}`} />
+      {/* Gradient top status bar */}
+      <div className={`h-[3px] w-full ${st.topBar}`} />
 
       {/* Near-expiry banner */}
       {nearExpiry && (
-        <div className="absolute top-[4px] inset-x-0 flex items-center justify-center gap-1.5 text-[10px] font-bold text-red-400 bg-red-500/10 border-b border-red-500/25 py-1 z-10 tracking-wide">
+        <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-red-300 bg-red-500/15 border-b border-red-500/30 py-1.5 z-10 tracking-wide">
           <AlertTriangle size={9} className="shrink-0" /> AUTO-DELETE IN {item.ttl_remaining_days}d
         </div>
       )}
 
       {/* Main content */}
-      <div className={`flex flex-col gap-4 p-5 flex-1 ${nearExpiry ? "pt-8" : "pt-6"}`}>
+      <div className="flex flex-col gap-4 p-5 flex-1">
 
-        {/* Icon + name row */}
-        <div className="flex items-start gap-3.5">
+        {/* Icon + name/badges row */}
+        <div className="flex items-start gap-4">
           <EntityIcon icon={item.icon} item_type={item.item_type} size="md" />
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-[15px] leading-snug text-foreground group-hover:text-primary transition-colors truncate">
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className="font-bold text-base leading-snug text-foreground group-hover:text-primary transition-colors duration-200 truncate">
               {item.name}
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              by <span className="font-medium">{item.owner_name}</span>
+            <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+              by <span className="font-semibold text-foreground/60">{item.owner_name}</span>
             </p>
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-muted border border-border px-1.5 py-0.5 rounded text-muted-foreground">
-                <Tag size={7} /> v{item.version}
-              </span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${st.envPill}`}>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${st.envPill}`}>
                 {item.environment.toUpperCase()}
               </span>
               {item.deployment_status === "DEPLOYED" && (
-                <span className={`flex items-center gap-1 text-[10px] font-bold ${st.badge} px-1.5 py-0.5 rounded border`}>
+                <span className={`flex items-center gap-1 text-[10px] font-bold ${st.badge} px-2 py-0.5 rounded-full border`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} />
                   LIVE
                 </span>
               )}
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/50 bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded">
+                <Tag size={7} className="opacity-60" /> v{item.version}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Description — full-opacity muted text for legibility */}
-        <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed flex-1">
+        {/* Description */}
+        <p className="text-sm text-muted-foreground/80 line-clamp-3 leading-relaxed flex-1">
           {item.description}
         </p>
 
@@ -261,31 +269,35 @@ const ItemCard = memo(function ItemCard({
 
         {/* Chart reference */}
         {item.chart_name && (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50 font-mono">
             <PackageSearch size={11} className="shrink-0" />
-            <span className="truncate font-mono">{item.chart_name}{item.chart_version ? `@${item.chart_version}` : ""}</span>
+            <span className="truncate">{item.chart_name}{item.chart_version ? `@${item.chart_version}` : ""}</span>
           </div>
         )}
       </div>
 
       {/* Footer metrics */}
-      <div className="border-t border-border/50 bg-muted/20 px-5 py-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+      <div className="border-t border-border/40 bg-muted/10 px-5 py-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-4 text-xs">
           <span className="flex items-center gap-1.5" title="Total calls">
-            <Activity size={11} className="text-primary/70" />
-            <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
-            <span>calls</span>
+            <Activity size={11} className={isAgent ? "text-sky-400/70" : "text-violet-400/70"} />
+            <span className="font-semibold text-foreground/80">{item.usage_count.toLocaleString()}</span>
+            <span className="text-muted-foreground/50">calls</span>
           </span>
           <span className="flex items-center gap-1.5" title="Unique users">
-            <Users size={11} className="text-emerald-500/70" />
-            <span className="font-semibold text-foreground">{item.unique_users}</span>
-            <span>users</span>
+            <Users size={11} className="text-emerald-400/70" />
+            <span className="font-semibold text-foreground/80">{item.unique_users}</span>
+            <span className="text-muted-foreground/50">users</span>
           </span>
         </div>
         <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>
           {st.label}
         </span>
       </div>
+
+      {/* Ambient glow overlay on hover */}
+      <div className={`absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none bg-gradient-to-b
+        ${isAgent ? "from-sky-500/[0.04] to-transparent" : "from-violet-500/[0.04] to-transparent"}`} />
     </div>
   );
 });
@@ -694,7 +706,7 @@ export default function Marketplace() {
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <h1 className="text-4xl font-black gradient-text tracking-tight mb-2">Marketplace</h1>
-          <p className="text-muted-foreground/60 text-sm max-w-lg leading-relaxed">
+          <p className="text-muted-foreground/80 text-sm max-w-lg leading-relaxed">
             Your team's internal app store for AI. Publish Agents and MCP Servers once —
             discover, deploy, and use them without tribal knowledge.
           </p>
@@ -1081,15 +1093,27 @@ export default function Marketplace() {
 
             {/* Summary */}
             {selectedChart && selectedVersion && (
-              <div className={`flex items-start gap-3 p-3 rounded-xl border text-sm ${
-                deployEnv === "dev" ? "bg-violet-500/8 border-violet-500/20 text-violet-300" : "bg-emerald-500/8 border-emerald-500/20 text-emerald-300"
+              <div className={`flex items-start gap-3 p-4 rounded-xl border text-sm font-medium ${
+                deployEnv === "dev"
+                  ? "bg-violet-500/15 border-violet-500/50 text-violet-200"
+                  : "bg-emerald-500/15 border-emerald-500/50 text-emerald-200"
               }`}>
-                {deployEnv === "dev" ? <Cloud size={14} className="mt-0.5 shrink-0" /> : <Rocket size={14} className="mt-0.5 shrink-0" />}
-                <div>
+                {deployEnv === "dev"
+                  ? <Cloud size={15} className="mt-0.5 shrink-0 text-violet-300" />
+                  : <Rocket size={15} className="mt-0.5 shrink-0 text-emerald-300" />}
+                <div className="leading-relaxed">
                   <strong>{isRedeploy ? "Redeploying" : "Deploying"}</strong>{" "}
-                  <code className="text-xs bg-black/20 px-1 rounded">{selectedChart}@{selectedVersion}</code>{" "}
-                  to <strong>{deployEnv.toUpperCase()}</strong>.
-                  {deployEnv === "dev" && <span className="text-[11px] block mt-0.5 opacity-60">Auto-expires in {config.dev_ttl_days} days.</span>}
+                  <code className={`text-xs font-mono px-1.5 py-0.5 rounded border ${
+                    deployEnv === "dev"
+                      ? "bg-violet-900/60 border-violet-400/40 text-violet-100"
+                      : "bg-emerald-900/60 border-emerald-400/40 text-emerald-100"
+                  }`}>{selectedChart}@{selectedVersion}</code>{" "}
+                  to <strong className={deployEnv === "dev" ? "text-violet-100" : "text-emerald-100"}>{deployEnv.toUpperCase()}</strong>.
+                  {deployEnv === "dev" && (
+                    <span className={`text-[11px] block mt-1 text-violet-300/80`}>
+                      Auto-expires in {config.dev_ttl_days} days.
+                    </span>
+                  )}
                 </div>
               </div>
             )}
