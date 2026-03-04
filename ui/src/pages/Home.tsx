@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowRight, Store, Search, Database, BookOpen,
   MessageSquare, ExternalLink, Lock,
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { analyticsService, appConfigService } from "@/lib/api-service";
 import { useAuth } from "@/context/auth-context";
 
@@ -42,12 +42,12 @@ interface FeatureCard {
   title: string;
   tagline: string;
   description: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   tab: string;
   route: string;
   gradient: string;
   borderColor: string;
-  preview: React.ReactNode;
+  preview: ReactNode;
 }
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -58,31 +58,33 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-// ─── Miniature feature previews ──────────────────────────────────────────────
+// ─── Miniature feature previews (theme-aware: work in both light & dark) ─────
+
+const rowCls = "flex items-center justify-between rounded-md border border-border/40 bg-muted/50 px-3 py-1.5";
 
 function MarketplacePreview() {
   const items = [
-    { name: "code-review-agent", kind: "Agent", color: "bg-violet-500/20 text-violet-300" },
-    { name: "jenkins-mcp", kind: "MCP Server", color: "bg-blue-500/20 text-blue-300" },
-    { name: "sql-analyst", kind: "Agent", color: "bg-emerald-500/20 text-emerald-300" },
+    { name: "code-review-agent", kind: "Agent", accent: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
+    { name: "jenkins-mcp", kind: "MCP Server", accent: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+    { name: "sql-analyst", kind: "Agent", accent: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
   ];
   return (
-    <div className="space-y-2 p-3">
+    <div className="space-y-1.5">
       {items.map((item) => (
-        <div key={item.name} className="flex items-center justify-between rounded-md bg-white/5 px-3 py-2">
+        <div key={item.name} className={rowCls}>
           <div className="flex items-center gap-2">
             <Bot className="w-3 h-3 text-muted-foreground" />
-            <span className="text-xs text-foreground font-mono">{item.name}</span>
+            <span className="text-xs font-mono text-foreground">{item.name}</span>
           </div>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${item.color}`}>{item.kind}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${item.accent}`}>{item.kind}</span>
         </div>
       ))}
-      <div className="mt-2 flex gap-2">
-        <div className="h-6 flex-1 rounded bg-violet-500/30 flex items-center justify-center">
-          <span className="text-[10px] text-violet-200 font-medium">+ Deploy Agent</span>
+      <div className="flex gap-2 pt-1">
+        <div className="h-6 flex-1 rounded border border-violet-500/30 bg-violet-500/10 flex items-center justify-center">
+          <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium">+ Deploy Agent</span>
         </div>
-        <div className="h-6 flex-1 rounded bg-blue-500/30 flex items-center justify-center">
-          <span className="text-[10px] text-blue-200 font-medium">+ New MCP</span>
+        <div className="h-6 flex-1 rounded border border-blue-500/30 bg-blue-500/10 flex items-center justify-center">
+          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">+ New MCP</span>
         </div>
       </div>
     </div>
@@ -91,18 +93,21 @@ function MarketplacePreview() {
 
 function ResearchPreview() {
   return (
-    <div className="p-3 space-y-2">
-      <div className="rounded-md bg-white/5 px-3 py-2 flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-        <span className="text-xs font-mono text-cyan-300">firmware_v2.bin</span>
-        <span className="ml-auto text-[10px] text-muted-foreground">Analyzing…</span>
+    <div className="space-y-1.5">
+      <div className={rowCls}>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+          <span className="text-xs font-mono text-foreground">firmware_v2.bin</span>
+        </div>
+        <span className="text-[10px] text-muted-foreground">Analyzing…</span>
       </div>
-      <div className="rounded-md bg-black/30 px-3 py-2 text-[10px] font-mono text-green-400 leading-relaxed">
-        <span className="text-muted-foreground">LLM&gt;</span> Found 3 suspicious<br />
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;function patterns in<br />
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sub_0x4012A0…
+      <div className="rounded-md border border-border/40 bg-muted/50 px-3 py-2 text-[10px] font-mono leading-relaxed">
+        <span className="text-muted-foreground">LLM›</span>{" "}
+        <span className="text-foreground">Found 3 suspicious</span><br />
+        <span className="pl-6 text-foreground">function patterns in</span><br />
+        <span className="pl-6 text-cyan-600 dark:text-cyan-400">sub_0x4012A0…</span>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         <Cpu className="w-3 h-3 text-muted-foreground" />
         <span className="text-[10px] text-muted-foreground">IDA Pro connected via MCP</span>
       </div>
@@ -111,28 +116,32 @@ function ResearchPreview() {
 }
 
 function BIPreview() {
+  const rows = [["North", "$4.2M"], ["South", "$3.1M"], ["West", "$2.8M"]];
   return (
-    <div className="p-3 space-y-2">
-      <div className="rounded-md bg-black/30 px-3 py-2 text-[10px] font-mono text-yellow-300">
-        <span className="text-muted-foreground">You:</span> Show top 5 revenue regions<br />
-        <span className="text-emerald-400">SQL:</span> SELECT region, SUM(…)…
+    <div className="space-y-1.5">
+      <div className="rounded-md border border-border/40 bg-muted/50 px-3 py-2 text-[10px] font-mono leading-relaxed">
+        <span className="text-muted-foreground">You: </span>
+        <span className="text-foreground">Show top 5 revenue regions</span><br />
+        <span className="text-emerald-600 dark:text-emerald-400">SQL: </span>
+        <span className="text-foreground">SELECT region, SUM(…)…</span>
       </div>
-      <div className="rounded-md bg-white/5 px-3 py-2">
-        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-          <span>Region</span><span>Revenue</span>
+      <div className={rowCls}>
+        <span className="text-[10px] text-muted-foreground font-medium">Region</span>
+        <span className="text-[10px] text-muted-foreground font-medium">Revenue</span>
+      </div>
+      {rows.map(([r, v]) => (
+        <div key={r} className={rowCls}>
+          <span className="text-xs text-foreground">{r}</span>
+          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{v}</span>
         </div>
-        {[["North", "$4.2M"], ["South", "$3.1M"], ["West", "$2.8M"]].map(([r, v]) => (
-          <div key={r} className="flex justify-between text-[10px]">
-            <span className="text-foreground">{r}</span>
-            <span className="text-emerald-400 font-medium">{v}</span>
-          </div>
-        ))}
-      </div>
+      ))}
     </div>
   );
 }
 
 // ─── Feature Teaser Card ──────────────────────────────────────────────────────
+// Uses a cross-fade technique: main content fades out, preview fades in.
+// This avoids any dark-overlay clipping issues in light mode.
 
 function FeatureTeaserCard({
   feature,
@@ -147,7 +156,7 @@ function FeatureTeaserCard({
 
   return (
     <motion.div
-      className={`relative rounded-2xl border ${feature.borderColor} overflow-hidden cursor-pointer`}
+      className={`relative rounded-2xl border ${feature.borderColor} cursor-pointer`}
       style={{ background: "hsl(var(--surface) / 0.8)" }}
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}
@@ -156,68 +165,67 @@ function FeatureTeaserCard({
       onClick={() => hasAccess && onNavigate(feature.route)}
     >
       {/* Gradient top stripe */}
-      <div className={`h-1 w-full bg-gradient-to-r ${feature.gradient}`} />
+      <div className={`h-1 w-full bg-gradient-to-r ${feature.gradient} rounded-t-2xl`} />
 
-      <div className="p-6">
-        {/* Icon + title row */}
-        <div className="flex items-start justify-between mb-3">
-          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg`}>
+      {/* Fixed-height inner area so both panels share the same space */}
+      <div className="relative p-6" style={{ minHeight: 260 }}>
+
+        {/* ── Main content panel ── */}
+        <motion.div
+          animate={{ opacity: hovered ? 0 : 1, y: hovered ? -6 : 0 }}
+          transition={{ duration: 0.18 }}
+          style={{ pointerEvents: hovered ? "none" : "auto" }}
+        >
+          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg mb-3`}>
             <feature.icon className="w-5 h-5 text-white" />
           </div>
-        </div>
+          <p className="text-xs text-muted-foreground mb-1">{feature.tagline}</p>
+          <h3 className="text-lg font-bold text-foreground mb-2">{feature.title}</h3>
+          <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
 
-        <p className="text-xs text-muted-foreground mb-1">{feature.tagline}</p>
-        <h3 className="text-lg font-bold text-foreground mb-2">{feature.title}</h3>
-        <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
+          <div className="mt-4">
+            {hasAccess ? (
+              <Button
+                size="sm"
+                className={`bg-gradient-to-r ${feature.gradient} text-white border-0 hover:opacity-90 transition-opacity group`}
+                onClick={(e) => { e.stopPropagation(); onNavigate(feature.route); }}
+              >
+                Go to {feature.title}
+                <ArrowRight className="ml-1 w-3 h-3 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            ) : (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+                <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-amber-600 dark:text-amber-400 leading-snug">
+                  You don't have access yet.{" "}
+                  <span className="font-semibold">Contact DevOps</span> to request permission.
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.div>
 
-        {/* CTA */}
-        <div className="mt-4">
-          {hasAccess ? (
-            <Button
-              size="sm"
-              className={`bg-gradient-to-r ${feature.gradient} text-white border-0 hover:opacity-90 transition-opacity group`}
-              onClick={(e) => { e.stopPropagation(); onNavigate(feature.route); }}
-            >
-              Go to {feature.title}
-              <ArrowRight className="ml-1 w-3 h-3 group-hover:translate-x-1 transition-transform" />
-            </Button>
-          ) : (
-            <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-              <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-sm font-medium text-amber-600 dark:text-amber-400 leading-snug">
-                You don't have access yet.{" "}
-                <span className="font-semibold">Contact DevOps</span> to request permission.
-              </p>
-            </div>
-          )}
-        </div>
+        {/* ── Preview panel (cross-fades in on hover) ── */}
+        <motion.div
+          className="absolute inset-0 p-6"
+          animate={{ opacity: hovered ? 1 : 0, y: hovered ? 0 : 6 }}
+          initial={{ opacity: 0, y: 6 }}
+          transition={{ duration: 0.18 }}
+          style={{ pointerEvents: hovered ? "auto" : "none" }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+            Preview
+          </p>
+          {feature.preview}
+        </motion.div>
       </div>
-
-      {/* Floating preview panel — dark overlay so content is always readable in both themes */}
-      <AnimatePresence>
-        {hovered && (
-          <motion.div
-            className="absolute inset-x-0 bottom-0 rounded-b-2xl overflow-hidden"
-            style={{ background: "rgba(10, 10, 20, 0.88)" }}
-            initial={{ y: "100%", opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: "100%", opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 35 }}
-          >
-            <div className="px-3 pt-2 border-t border-white/10">
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Preview</p>
-            </div>
-            {feature.preview}
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
 
 // ─── Stat Badge ───────────────────────────────────────────────────────────────
 
-function StatBadge({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string | number }) {
+function StatBadge({ icon: Icon, label, value }: { icon: ComponentType<{ className?: string }>; label: string; value: string | number }) {
   return (
     <motion.div
       className="flex flex-col items-center gap-1 p-4 rounded-xl glass border border-border/40 bg-surface/60"
@@ -325,7 +333,7 @@ export default function Home() {
             </h1>
             <p className="text-lg text-muted-foreground mb-2 max-w-3xl mx-auto">
               Where <span className="text-foreground font-semibold">intelligence meets infrastructure.</span>{" "}
-              A living AI ecosystem that evolves with your team — connecting models, tools, data,
+              A living AI ecosystem that evolves with your team. Connecting models, tools, data,
               and workflows into a single, continuously expanding platform.
             </p>
             <p className="text-sm text-muted-foreground max-w-2xl mx-auto">

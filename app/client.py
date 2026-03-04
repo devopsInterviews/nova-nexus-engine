@@ -158,7 +158,7 @@ from app.routes.marketplace_routes import router as marketplace_router, start_tt
 # This makes all endpoints accessible at /api/... URLs
 from app.routes.auth_routes import require_tab_permission, get_current_user
 from app.database import get_db_session
-from app.models import User as _User, PageView, UserActivity, TestExecution, MarketplaceUsage
+from app.models import User as _User, PageView, UserActivity, TestExecution, MarketplaceUsage, IdaMcpDeployAudit, MarketplaceItem
 from sqlalchemy.orm import Session as _Session
 from sqlalchemy import func as _func, desc as _desc
 from datetime import datetime as _dt, timedelta as _td
@@ -190,14 +190,14 @@ async def user_stats_endpoint(
 ):
     """
     Personal usage statistics for the currently authenticated user.
-    Intentionally registered outside the analytics router so it does NOT
-    require the 'Analytics' tab permission — every logged-in user can see their own stats.
+    Intentionally outside the analytics router — no 'Analytics' tab permission required.
+    Activity feed aggregates UserActivity, IdaMcpDeployAudit, MarketplaceUsage, and TestExecution.
     """
 
     def _time_ago(ts):
         if ts is None:
             return "unknown"
-        naive = ts.replace(tzinfo=None) if hasattr(ts, "tzinfo") and ts.tzinfo else ts
+        naive = ts.replace(tzinfo=None) if getattr(ts, "tzinfo", None) else ts
         diff = _dt.utcnow() - naive
         if diff.total_seconds() < 60:
             return f"{int(diff.total_seconds())} sec ago"
@@ -210,36 +210,106 @@ async def user_stats_endpoint(
 
     try:
         thirty_days_ago = _dt.utcnow() - _td(days=30)
+        uid = current_user.id
 
+        # ── Counts ─────────────────────────────────────────────────────────
         page_views_30d = db.query(_func.count(PageView.id)).filter(
-            PageView.user_id == current_user.id,
+            PageView.user_id == uid,
             PageView.timestamp >= thirty_days_ago,
         ).scalar() or 0
 
         test_runs_total = db.query(_func.count(TestExecution.id)).filter(
-            TestExecution.user_id == current_user.id
+            TestExecution.user_id == uid
         ).scalar() or 0
 
         marketplace_usage_total = db.query(_func.count(MarketplaceUsage.id)).filter(
-            MarketplaceUsage.user_id == current_user.id
+            MarketplaceUsage.user_id == uid
         ).scalar() or 0
 
-        activity_records = db.query(UserActivity).filter(
-            UserActivity.user_id == current_user.id
-        ).order_by(_desc(UserActivity.timestamp)).limit(8).all()
+        # ── Unified activity feed from all sources ──────────────────────────
+        events = []
 
-        recent_activities = [
-            {
+        # 1. UserActivity (logins, DB ops, etc.)
+        for act in db.query(UserActivity).filter(
+            UserActivity.user_id == uid
+        ).order_by(_desc(UserActivity.timestamp)).limit(20).all():
+            events.append({
                 "action": act.action,
                 "type": act.activity_type,
-                "time": _time_ago(act.timestamp),
+                "ts": act.timestamp,
                 "status_type": (
                     "success" if act.status == "success"
                     else "error" if act.status == "error"
                     else "warning"
                 ),
+            })
+
+        # 2. Research tab — IDA MCP deploy/undeploy actions
+        for audit in db.query(IdaMcpDeployAudit).filter(
+            IdaMcpDeployAudit.user_id == uid
+        ).order_by(_desc(IdaMcpDeployAudit.timestamp)).limit(20).all():
+            action_label = {
+                "deploy": "Deployed IDA MCP server",
+                "undeploy": "Undeployed IDA MCP server",
+                "update": "Upgraded IDA MCP server",
+                "error": "IDA MCP server error",
+            }.get(audit.action, f"IDA MCP: {audit.action}")
+            events.append({
+                "action": action_label,
+                "type": "research",
+                "ts": audit.timestamp,
+                "status_type": (
+                    "success" if audit.status == "success"
+                    else "error" if audit.status == "failure"
+                    else "warning"
+                ),
+            })
+
+        # 3. Marketplace usage (deploy / install / call)
+        mp_rows = (
+            db.query(MarketplaceUsage, MarketplaceItem.name, MarketplaceItem.item_type)
+            .join(MarketplaceItem, MarketplaceUsage.item_id == MarketplaceItem.id)
+            .filter(MarketplaceUsage.user_id == uid)
+            .order_by(_desc(MarketplaceUsage.timestamp))
+            .limit(20)
+            .all()
+        )
+        for usage, item_name, item_type in mp_rows:
+            verb = {"deploy": "Deployed", "install": "Installed", "call": "Called"}.get(
+                usage.action, usage.action.capitalize()
+            )
+            events.append({
+                "action": f"{verb} {item_type} "{item_name}"",
+                "type": "marketplace",
+                "ts": usage.timestamp,
+                "status_type": "success",
+            })
+
+        # 4. Test executions
+        for tex in db.query(TestExecution).filter(
+            TestExecution.user_id == uid
+        ).order_by(_desc(TestExecution.executed_at)).limit(20).all():
+            events.append({
+                "action": "Ran test execution",
+                "type": "tests",
+                "ts": tex.executed_at,
+                "status_type": (
+                    "success" if tex.status == "success"
+                    else "error" if tex.status in ("failure", "error")
+                    else "warning"
+                ),
+            })
+
+        # Sort all events by timestamp descending and take the most recent 10
+        events.sort(key=lambda e: e["ts"] or _dt.min, reverse=True)
+        recent_activities = [
+            {
+                "action": e["action"],
+                "type": e["type"],
+                "time": _time_ago(e["ts"]),
+                "status_type": e["status_type"],
             }
-            for act in activity_records
+            for e in events[:10]
         ]
 
         return {
