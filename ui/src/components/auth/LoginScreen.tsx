@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
 import { ParticleBackground } from '@/components/effects/ParticleBackground';
 
 interface RobotEyeProps {
@@ -173,6 +172,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
   const [showAbout, setShowAbout] = useState(false);
   const [ssoConfig, setSsoConfig] = useState<SSOConfig | null>(null);
   const [ssoError, setSsoError] = useState<string | null>(null);
+  const [showCredentials, setShowCredentials] = useState(false);
   
   const blinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -412,7 +412,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 AI Portal
               </CardTitle>
               <CardDescription className="text-muted-foreground">
-                Welcome to the future of Model Context Protocol
+                Your unified platform for AI engagement and intelligent workflows
               </CardDescription>
             </motion.div>
           </CardHeader>
@@ -465,8 +465,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               >
                 <Button
                   type="button"
-                  variant="outline"
-                  className="w-full h-14 text-lg font-semibold border-2 border-primary/50 hover:bg-primary/10 hover:border-primary transition-all duration-300 gap-3"
+                  className="w-full h-14 text-lg font-semibold bg-gradient-primary hover:opacity-90 text-primary-foreground shadow-glow transition-all duration-300 gap-3"
                   onClick={handleSSOLogin}
                   disabled={loading}
                 >
@@ -476,81 +475,149 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               </motion.div>
             )}
 
-            {/* Separator between SSO and local login */}
-            {ssoConfig?.enabled && (
-              <div className="flex items-center gap-4">
-                <Separator className="flex-1" />
-                <span className="text-xs text-muted-foreground uppercase tracking-wider">
-                  or sign in with credentials
-                </span>
-                <Separator className="flex-1" />
+            {/* Collapsible local credentials — hidden by default when SSO is available */}
+            {ssoConfig?.enabled ? (
+              <div className="space-y-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2 py-1 cursor-pointer"
+                  onClick={() => setShowCredentials(v => !v)}
+                  onKeyDown={(e) => e.key === 'Enter' && setShowCredentials(v => !v)}
+                >
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="uppercase tracking-wider whitespace-nowrap">
+                    {showCredentials ? 'hide credentials login' : 'or sign in with credentials'}
+                  </span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+
+                <AnimatePresence>
+                  {showCredentials && (
+                    <motion.form
+                      onSubmit={handleSubmit}
+                      className="space-y-4"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <FloatingInput
+                        id="username"
+                        type="text"
+                        placeholder="Username"
+                        value={username}
+                        onChange={setUsername}
+                        icon={<User className="h-4 w-4" />}
+                        onFocus={() => handleFieldFocus('username')}
+                        onBlur={handleFieldBlur}
+                        disabled={loading}
+                      />
+                      <FloatingInput
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Password"
+                        value={password}
+                        onChange={setPassword}
+                        icon={<Lock className="h-4 w-4" />}
+                        onFocus={() => handleFieldFocus('password')}
+                        onBlur={handleFieldBlur}
+                        showPassword={showPassword}
+                        onTogglePassword={() => setShowPassword(!showPassword)}
+                        disabled={loading}
+                        isPasswordField
+                      />
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        className="w-full h-12 text-base font-semibold border-border/60 hover:bg-surface-elevated transition-all duration-300 disabled:opacity-50"
+                        disabled={loading || !username.trim() || !password.trim()}
+                      >
+                        {loading ? (
+                          <motion.div
+                            className="flex items-center gap-2"
+                            animate={{ opacity: [0.5, 1, 0.5] }}
+                            transition={{ duration: 1.5, repeat: Infinity }}
+                          >
+                            <motion.div
+                              className="w-4 h-4 border-2 border-current border-t-transparent rounded-full"
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                            />
+                            Authenticating...
+                          </motion.div>
+                        ) : (
+                          "Login with credentials"
+                        )}
+                      </Button>
+                    </motion.form>
+                  )}
+                </AnimatePresence>
               </div>
+            ) : (
+              /* No SSO — show credentials form directly as the primary action */
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <FloatingInput
+                  id="username"
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={setUsername}
+                  icon={<User className="h-4 w-4" />}
+                  onFocus={() => handleFieldFocus('username')}
+                  onBlur={handleFieldBlur}
+                  disabled={loading}
+                />
+                <FloatingInput
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Password"
+                  value={password}
+                  onChange={setPassword}
+                  icon={<Lock className="h-4 w-4" />}
+                  onFocus={() => handleFieldFocus('password')}
+                  onBlur={handleFieldBlur}
+                  showPassword={showPassword}
+                  onTogglePassword={() => setShowPassword(!showPassword)}
+                  disabled={loading}
+                  isPasswordField
+                />
+                <motion.div>
+                  <Button
+                    type="submit"
+                    className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold shadow-glow transition-all duration-300 disabled:opacity-50"
+                    disabled={loading || !username.trim() || !password.trim()}
+                  >
+                    {loading ? (
+                      <motion.div
+                        className="flex items-center gap-2"
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                      >
+                        <motion.div
+                          className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full"
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        />
+                        Authenticating...
+                      </motion.div>
+                    ) : (
+                      "Login"
+                    )}
+                  </Button>
+                </motion.div>
+              </form>
             )}
 
-            {/* Local Login Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <FloatingInput
-                id="username"
-                type="text"
-                placeholder="Username"
-                value={username}
-                onChange={setUsername}
-                icon={<User className="h-4 w-4" />}
-                onFocus={() => handleFieldFocus('username')}
-                onBlur={handleFieldBlur}
-                disabled={loading}
-              />
-
-              <FloatingInput
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                value={password}
-                onChange={setPassword}
-                icon={<Lock className="h-4 w-4" />}
-                onFocus={() => handleFieldFocus('password')}
-                onBlur={handleFieldBlur}
-                showPassword={showPassword}
-                onTogglePassword={() => setShowPassword(!showPassword)}
-                disabled={loading}
-                isPasswordField
-              />
-
-              <motion.div>
-                <Button
-                  type="submit"
-                  className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold shadow-glow transition-all duration-300 disabled:opacity-50"
-                  disabled={loading || !username.trim() || !password.trim()}
-                >
-                  {loading ? (
-                    <motion.div
-                      className="flex items-center gap-2"
-                      animate={{ opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                    >
-                      <motion.div
-                        className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      />
-                      Authenticating...
-                    </motion.div>
-                  ) : (
-                    "Login"
-                  )}
-                </Button>
-              </motion.div>
-
-              {/* Contact Information */}
-              <motion.div
-                className="text-center text-sm text-muted-foreground mt-4"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.2 }}
-              >
-                <p>If you want access to the system please contact the DevOps team.</p>
-              </motion.div>
-            </form>
+            {/* Contact Information */}
+            <motion.div
+              className="text-center text-sm text-muted-foreground mt-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.2 }}
+            >
+              <p>If you want access to the system please contact the DevOps team.</p>
+            </motion.div>
           </CardContent>
         </Card>
       </motion.div>

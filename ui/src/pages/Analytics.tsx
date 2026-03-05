@@ -194,7 +194,12 @@ export default function Analytics() {
         </motion.h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {metrics.map((metric, index) => (
-            <StatusCard key={metric.title} {...metric} delay={0.5 + index * 0.1} />
+            <StatusCard
+              key={metric.title}
+              {...metric}
+              delay={0.5 + index * 0.1}
+              invertTrendColor={metric.title === "Error Rate"}
+            />
           ))}
         </div>
       </section>
@@ -305,7 +310,7 @@ export default function Analytics() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 1.05 + index * 0.1 }}
-                      className="flex items-center justify-between p-3 rounded-lg bg-surface-elevated/50 hover:bg-surface-elevated transition-colors group"
+                      className="flex items-center justify-between p-3 rounded-lg bg-surface-elevated/50"
                     >
                       <div>
                         <code className="font-mono text-primary group-hover:text-primary-glow transition-colors text-sm">

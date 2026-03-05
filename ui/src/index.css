@@ -32,9 +32,9 @@
     --accent-foreground: 220 27% 5%;
     --accent-glow: 180 100% 60%;
     
-    /* Success - Matrix Green */
-    --success: 140 100% 50%;
-    --success-foreground: 220 27% 5%;
+    /* Success - Dark green for readable contrast on light backgrounds */
+    --success: 140 65% 32%;
+    --success-foreground: 210 40% 98%;
     
     /* Warning - Electric Orange */
     --warning: 30 100% 50%;
@@ -107,6 +107,9 @@
     --border: 220 30% 25%;
     /* Primary foreground must be white in dark mode so active tabs/buttons are legible */
     --primary-foreground: 210 40% 98%;
+    /* Bright green is fine for dark backgrounds */
+    --success: 140 80% 50%;
+    --success-foreground: 220 27% 5%;
   }
 
   .light {

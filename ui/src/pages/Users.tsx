@@ -21,6 +21,7 @@ interface User {
   full_name?: string;
   is_active: boolean;
   is_admin: boolean;
+  auth_provider?: string;
   created_at?: string;
   last_login?: string;
   login_count: number;
@@ -339,14 +340,17 @@ const UsersPage: React.FC = () => {
                   <TableCell>{user.login_count || 0}</TableCell>
                   <TableCell>
                     <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openDialog('password', user)}
-                        className="h-8 px-2"
-                      >
-                        🔑 Change
-                      </Button>
+                      {user.auth_provider !== 'sso' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDialog('password', user)}
+                          className="h-8 px-2"
+                          title="Change password"
+                        >
+                          🔑 Change Password
+                        </Button>
+                      )}
                       {!user.is_admin && (
                         <Button
                           variant="outline"

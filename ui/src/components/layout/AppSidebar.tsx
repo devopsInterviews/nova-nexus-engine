@@ -146,12 +146,8 @@ export function AppSidebar() {
                         to={item.url}
                         className={cn(
                           "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-smooth group relative",
-                          "hover:bg-surface-elevated hover:shadow-glow",
-                          isActive(item.url) && [
-                            "bg-gradient-primary text-primary-foreground shadow-glow",
-                            "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1",
-                            "before:bg-accent before:rounded-r-full"
-                          ]
+                          "hover:bg-surface-elevated",
+                          isActive(item.url) && "bg-gradient-primary text-primary-foreground"
                         )}
                       >
                         <item.icon className={cn(
@@ -167,15 +163,6 @@ export function AppSidebar() {
                             {item.title}
                           </span>
                         )}
-                        
-                        {isActive(item.url) && (
-                          <motion.div
-                            className="absolute right-2 w-2 h-2 bg-accent rounded-full animate-pulse-glow"
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                          />
-                        )}
                       </NavLink>
                     </SidebarMenuButton>
                   </motion.div>
@@ -188,15 +175,15 @@ export function AppSidebar() {
         {/* Status Indicator */}
         {open && (
           <motion.div 
-            className="mt-auto p-3 rounded-lg glass border border-success/20 bg-success/5"
+            className="mt-auto p-3 rounded-lg glass border border-green-500/30 bg-green-500/8"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
           >
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
               <div>
-                <p className="text-sm font-medium text-success">System Online</p>
+                <p className="text-sm font-medium text-green-700 dark:text-green-400">System Online</p>
                 <p className="text-xs text-muted-foreground">All services running</p>
               </div>
             </div>

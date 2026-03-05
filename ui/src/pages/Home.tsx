@@ -280,7 +280,7 @@ export default function Home() {
     },
     {
       id: "research",
-      title: "Binary Research",
+      title: "Binary File Research",
       tagline: "Want to use LLM to research binary files?",
       description:
         "Connect your IDA Pro workstation to the AI Portal and ask the LLM anything about your binaries. Reverse-engineering meets generative AI.",
@@ -307,7 +307,7 @@ export default function Home() {
   ];
 
   const statusColors: Record<string, string> = {
-    success: "bg-success/10 text-success border-success/20",
+    success: "bg-green-100 text-green-800 border-green-300 dark:bg-success/10 dark:text-success dark:border-success/20",
     warning: "bg-warning/10 text-warning border-warning/20",
     error: "bg-destructive/10 text-destructive border-destructive/20",
   };
@@ -329,15 +329,13 @@ export default function Home() {
             transition={{ delay: 0.15, duration: 0.7 }}
           >
             <h1 className="text-4xl font-bold mb-3 gradient-text">
-              Welcome, {user?.full_name || user?.username}!
+              Welcome, {user?.full_name?.split(' ')[0] || user?.username}!
             </h1>
-            <p className="text-lg text-muted-foreground mb-2 max-w-3xl mx-auto">
-              Where <span className="text-foreground font-semibold">intelligence meets infrastructure.</span>{" "}
-              A living AI ecosystem that evolves with your team. Connecting models, tools, data,
-              and workflows into a single, continuously expanding platform.
+            <p className="text-lg font-semibold text-foreground mb-1">
+              Your AI platform for intelligent workflows and connected systems.
             </p>
             <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-              Every team contributes. Every integration amplifies. Explore what's possible below.
+              Connecting models, tools, data, and teams — all in one place.
             </p>
           </motion.div>
         </div>

@@ -13,21 +13,17 @@ interface StatusCardProps {
   status?: "success" | "warning" | "error" | "info";
   trend?: "up" | "down" | "stable";
   trendValue?: string;
+  /** When true, "down" trend is shown as good (green) and "up" as bad (red). Useful for metrics like error rate. */
+  invertTrendColor?: boolean;
   className?: string;
   delay?: number;
 }
 
 const statusColors = {
-  success: "text-success border-success/20 bg-success/5",
+  success: "text-green-700 dark:text-success border-green-400/30 dark:border-success/20 bg-green-50 dark:bg-success/5",
   warning: "text-warning border-warning/20 bg-warning/5",
   error: "text-destructive border-destructive/20 bg-destructive/5",
   info: "text-primary border-primary/20 bg-primary/5",
-};
-
-const trendColors = {
-  up: "text-success",
-  down: "text-destructive",
-  stable: "text-muted-foreground",
 };
 
 export function StatusCard({
@@ -38,19 +34,24 @@ export function StatusCard({
   status = "info",
   trend,
   trendValue,
+  invertTrendColor = false,
   className,
   delay = 0,
 }: StatusCardProps) {
+  const trendColors = {
+    up: invertTrendColor ? "text-destructive" : "text-green-700 dark:text-success",
+    down: invertTrendColor ? "text-green-700 dark:text-success" : "text-destructive",
+    stable: "text-muted-foreground",
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.5 }}
-      whileHover={{ y: -4, scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
     >
       <Card className={cn(
-        "glass border-border/50 hover:shadow-glow hover:border-primary/30 transition-all duration-smooth group cursor-pointer",
+        "glass border-border/50 transition-all duration-smooth",
         className
       )}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
