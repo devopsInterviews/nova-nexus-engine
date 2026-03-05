@@ -1,0 +1,54 @@
+UX:
+
+Login page:
+"Welcome to the future of Model Context Protocol"
+	•	Why is mcp the main title? it is just one part of the whole solution.
+	•	Why is the website "the future" of mcp?
+  It should be more general about the AI portal and AI engagments.
+
+
+If you want people to login with "company credentials" then that should be the action button with highlighted colors. It is not immediately clear which optoin i need to use.
+As is, when i go to the login page for the first time, i am immediately presented with a choice. choice is bad - dont make me think!!!!!!!!
+Hide the option for "or sign in with credentials", make it expandab;e so that someone who is looking for it can find it but dont make it always appear by default for all users.
+
+Homepage:
+The main welcome banner - don't have 3 unrelated sentences in a center aligned paragraph It is cognitively heavy for absolutely no gain. pick one, make it front and center.
+If you REALLY need more than one sentence, have the scondary one be unerneath starting a new line. The first line can be bold, the scond one should not be.
+DO NOT OVERLOAD THE USER!!!!!!
+
+"Welcome, firstName lastName!" - if you want to be friendly, don't use the last name also. "Welcome firstName lastName!" vs "Welcome, firstName!" makes a HUGE difference and feels a lot more natural.
+"intelligence meets infrastructure." - why is this part bolded?
+
+AI marketplace - in what sense is it a marketplace? the description makes it sound like it is a "get started" panel. either the title or the description is not correct.
+Binary Research - it only makes sense after i read the small text. rename it to  "binary file research", which instantly makes it clear that this isnt chatgpt style deep research but but rather a binary file scanner.
+
+
+Marketplace:
+Slack Notifier Agent - i wouldnt use exmaples that arent relevant to us
+"MCP servers limit rweached - max 5" i should
+
+Analytics Dashboard:
+the panels are clickable but do nothing. they should not be clickable
+
+UI:
+"System Online All services running"
+	•	The font color is very hard to read over the light colored background. Darken the background or change the color to match the background
+
+
+The collapse/expand sidebar button's hover color doesnt match the website palette at all - where did neon blue come from? It appears in many places as a highlight color but it looks childish and disjointed.
+
+it also isnt clear what it does until you click it.
+
+In the sidebar, the currently selected tab has a blue neon dot and also the left side of the tab indicator has the same color in a small vertical line.
+the line looks like a bug and not like it is there on purpose. I would just have the dot, if at all. the whole currently selected tab is highlit anyway - why do we even need the dot?
+
+Recent Actions - "completed" pill - there isnt enough contrast with the green color and the background here either
+
+Analytics Dashboard:
+same hard to read /  low contrast green font color in panels like total requests
+under error rate, you use the same automatic graph coloring as elsewhere. but a declining error rate should be green not red!
+
+Admin:
+User Management:
+we shshouldnt be able to change password for sso users
+the "change" button isnt clear until you click it.
