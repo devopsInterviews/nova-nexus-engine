@@ -1015,28 +1015,23 @@ export default function Marketplace() {
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle size={18} /> Delete "{deleteTarget?.name}"?
             </DialogTitle>
-            <DialogDescription asChild>
-              <div className="space-y-3 mt-2">
-                <p>This action cannot be undone. The following will happen:</p>
-                <ul className="space-y-1.5 text-sm">
-                  <li className="flex items-start gap-2">
-                    <span className="text-destructive mt-0.5">•</span>
-                    The item will be <strong>permanently removed</strong> from the Marketplace database.
-                  </li>
-                  {deleteTarget?.deployment_status === "DEPLOYED" && (
-                    <li className="flex items-start gap-2">
-                      <span className="text-destructive mt-0.5">•</span>
-                      The deployment in the <strong>{deleteTarget.environment.toUpperCase()}</strong> cluster will be <strong>undeployed</strong> (when the infrastructure API is active).
-                    </li>
-                  )}
-                  <li className="flex items-start gap-2">
-                    <span className="text-destructive mt-0.5">•</span>
-                    All usage history for this entity will also be deleted.
-                  </li>
-                </ul>
-              </div>
+            <DialogDescription>
+              This action cannot be undone. The following will happen:
             </DialogDescription>
           </DialogHeader>
+          <ul className="list-disc pl-5 space-y-1.5 text-sm text-muted-foreground">
+            <li>
+              The item will be <strong className="text-foreground">permanently removed</strong> from the Marketplace database.
+            </li>
+            {deleteTarget?.deployment_status === "DEPLOYED" && (
+              <li>
+                The <strong className="text-foreground">{deleteTarget.environment.toUpperCase()}</strong> deployment will be <strong className="text-foreground">undeployed</strong>.
+              </li>
+            )}
+            <li>
+              All usage history for this entity will be deleted.
+            </li>
+          </ul>
           <DialogFooter className="gap-2 mt-2">
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button variant="destructive" disabled={deleteLoading} onClick={handleDelete} className="gap-1.5">
