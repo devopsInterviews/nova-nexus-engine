@@ -102,6 +102,14 @@ interface AuthProviderProps {
 // Base URL for all authentication API calls
 const API_BASE_URL = '/api';
 
+// In-memory timestamp of the last successful /api/me verification.
+// Intentionally NOT persisted to localStorage — storing it there would let
+// an attacker write Date.now() to bypass server verification after a reload.
+// Resetting to 0 on every page load guarantees /api/me is always called on
+// startup, so tampered auth_user data in localStorage can never survive a
+// page refresh.
+let lastVerifiedAt = 0;
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // State management for authentication data
   const [user, setUser] = useState<User | null>(null);    // Currently authenticated user
@@ -165,11 +173,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      // Check if we recently verified the token (within last 5 minutes)
-      const lastVerified = localStorage.getItem('auth_last_verified');
+      // Skip the server check only if we already verified in this same page
+      // session (in-memory variable resets to 0 on every page load, so a page
+      // reload always triggers a fresh /api/me call regardless of what is in
+      // localStorage).
       const now = Date.now();
-      if (lastVerified && (now - parseInt(lastVerified)) < 5 * 60 * 1000) {
-        // Token was recently verified, skip server check
+      if (lastVerifiedAt > 0 && (now - lastVerifiedAt) < 5 * 60 * 1000) {
         setIsInitializing(false);
         return;
       }
@@ -193,7 +202,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setToken(savedToken);
               setUser(userData);
               localStorage.setItem('auth_user', JSON.stringify(userData));
-              localStorage.setItem('auth_last_verified', Date.now().toString());
+              lastVerifiedAt = Date.now();
             }
             return true;
           } catch (err) {
@@ -202,7 +211,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 console.warn('Stored token invalid after retries, clearing auth state:', err);
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('auth_user');
-                localStorage.removeItem('auth_last_verified');
                 setToken(null);
                 setUser(null);
               }
@@ -434,7 +442,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(userData);
     localStorage.setItem('auth_token', ssoToken);
     localStorage.setItem('auth_user', JSON.stringify(userData));
-    localStorage.setItem('auth_last_verified', Date.now().toString());
+    lastVerifiedAt = Date.now();
     console.log('[AuthContext] SSO session established for user:', userData.username);
   };
 
@@ -467,8 +475,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);  // Clear any error messages
     
     // Step 2: Remove all authentication data from browser storage
-    localStorage.removeItem('auth_token');  // Remove JWT token
-    localStorage.removeItem('auth_user');   // Remove cached user data
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    localStorage.removeItem('auth_last_verified'); // Remove legacy key if present
+    lastVerifiedAt = 0;
     
     // Step 3: Optionally notify backend of logout (for server-side session cleanup)
     if (token) {
