@@ -228,8 +228,8 @@ function FeatureTeaserCard({
 function StatBadge({ icon: Icon, label, value }: { icon: ComponentType<{ className?: string }>; label: string; value: string | number }) {
   return (
     <motion.div
-      className="flex flex-col items-center gap-1 p-4 rounded-xl glass border border-border/40 bg-surface/60"
-      whileHover={{ scale: 1.03 }}
+      className="flex flex-col items-center gap-1 p-4 rounded-xl border border-border/40 bg-surface/80"
+      whileHover={{ y: -2 }}
       transition={{ type: "spring", stiffness: 400, damping: 25 }}
     >
       <Icon className="w-5 h-5 text-primary" />
@@ -344,17 +344,17 @@ export default function Home() {
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <motion.div
             className="absolute top-1/4 left-1/4 w-40 h-40 bg-primary/15 rounded-full blur-3xl"
-            animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.5, 0.3] }}
+            animate={{ opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 5, repeat: Infinity }}
           />
           <motion.div
             className="absolute bottom-1/4 right-1/4 w-32 h-32 bg-secondary/15 rounded-full blur-3xl"
-            animate={{ scale: [1.2, 1, 1.2], opacity: [0.4, 0.2, 0.4] }}
+            animate={{ opacity: [0.4, 0.2, 0.4] }}
             transition={{ duration: 4, repeat: Infinity, delay: 1.5 }}
           />
           <motion.div
             className="absolute top-1/2 right-1/3 w-20 h-20 bg-accent/10 rounded-full blur-2xl"
-            animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.4, 0.2] }}
+            animate={{ opacity: [0.2, 0.4, 0.2] }}
             transition={{ duration: 3.5, repeat: Infinity, delay: 0.7 }}
           />
         </div>
