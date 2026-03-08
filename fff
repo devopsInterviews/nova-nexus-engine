@@ -1,3 +1,0 @@
-Open browser developer settings >  storage tab >  Local Storage > auth_user > "is_admin" is set to "false". changing to "true" and then reloading (i didnt even reload, i just clicked on "settings" and it reloaded by itself) turns me into an admin!
-I can also add keys to "allowed_tabs":["Home","Settings"]} as desired, reloading makes those changes stick
-I can also change my username and email to be whatever i want. It seems to have no effect on my permissions, but it does change the user information visbile in profile. I wonder if it can mess up audit info?

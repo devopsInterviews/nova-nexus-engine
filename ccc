@@ -1,1 +1,0 @@
-2026-03-03 11:19:00 - ERROR - Request failed: ProgrammingError('(psycopg2.errors.UndefinedColumn) column marketplace_items.version does not exist\nLINE 1: ...nt_status AS marketplace_items_deployment_status, marketplac...\n                                                             ^\n')
