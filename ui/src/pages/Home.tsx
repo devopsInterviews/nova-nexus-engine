@@ -3,7 +3,7 @@ import {
   ArrowRight, Store, Search, Database, BookOpen,
   MessageSquare, ExternalLink, Lock,
   LogIn, Eye, Zap, Activity, Terminal,
-  Cpu, Layers, Bot,
+  Cpu, Layers, Bot, KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ interface AppConfig {
   version: string;
   confluence_url: string;
   openwebui_url: string;
+  developer_portal_url: string;
 }
 
 interface UserStats {
@@ -425,6 +426,19 @@ export default function Home() {
               >
                 <BookOpen className="mr-2 w-4 h-4" />
                 Open Documentation
+                <ExternalLink className="ml-2 w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full border-orange-400/40 text-orange-400 hover:bg-orange-400/10 hover:border-orange-400/70 group"
+                onClick={() => {
+                  const url = appConfig?.developer_portal_url;
+                  if (url) window.open(url, "_blank", "noopener,noreferrer");
+                }}
+                disabled={!appConfig?.developer_portal_url}
+              >
+                <KeyRound className="mr-2 w-4 h-4" />
+                Create API Keys &amp; Tokens
                 <ExternalLink className="ml-2 w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </Button>
             </CardContent>

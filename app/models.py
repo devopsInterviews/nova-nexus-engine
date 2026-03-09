@@ -1055,6 +1055,8 @@ class MarketplaceUsage(Base):
     user_identifier = Column(String(255), nullable=True)
     item_id = Column(Integer, ForeignKey("marketplace_items.id", ondelete="CASCADE"), nullable=False)
     action = Column(String(50), nullable=False)  # 'call', 'deploy', 'install'
+    # For MCP servers: the specific tool that was invoked (e.g. "search_jira", "create_ticket")
+    tool_name = Column(String(255), nullable=True)
 
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -1068,5 +1070,6 @@ class MarketplaceUsage(Base):
             "user_identifier": self.user_identifier,
             "item_id": self.item_id,
             "action": self.action,
+            "tool_name": self.tool_name,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
         }

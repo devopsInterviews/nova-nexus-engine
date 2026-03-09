@@ -1,6 +1,6 @@
 import os
 import time
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -71,6 +71,10 @@ def init_db():
     # This is the line that creates the tables.
     # It checks for the existence of tables and creates any that are missing.
     Base.metadata.create_all(engine)
+
+    # Inline schema migrations — add columns that were introduced after initial deployment.
+    # SQLAlchemy create_all does not ALTER existing tables, so we handle it manually here.
+    _run_schema_migrations(engine)
     
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
@@ -101,6 +105,41 @@ def init_db():
             logger.info("Admin user already exists.")
     finally:
         session.close()
+
+def _run_schema_migrations(engine) -> None:
+    """
+    Apply incremental DDL changes to existing databases.
+
+    Each migration is idempotent: it checks for the column/index before
+    running ALTER TABLE so repeated restarts are safe.
+    """
+    migrations = [
+        # v1.x → tool_name column for granular MCP tool tracking via /api/marketplace/ping
+        (
+            "marketplace_usage",
+            "tool_name",
+            "ALTER TABLE marketplace_usage ADD COLUMN tool_name VARCHAR(255)",
+        ),
+    ]
+
+    with engine.connect() as conn:
+        for table, column, ddl in migrations:
+            try:
+                # Check column existence via information_schema (works on PostgreSQL & SQLite)
+                result = conn.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name = :t AND column_name = :c"
+                    ),
+                    {"t": table, "c": column},
+                )
+                if result.fetchone() is None:
+                    conn.execute(text(ddl))
+                    conn.commit()
+                    logger.info("Schema migration applied: ADD COLUMN %s.%s", table, column)
+            except Exception as exc:
+                logger.warning("Schema migration skipped (%s.%s): %s", table, column, exc)
+
 
 def get_db_session():
     """

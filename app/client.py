@@ -658,6 +658,7 @@ async def get_app_config():
         "version": os.getenv("APP_VERSION", "1.0.0"),
         "confluence_url": os.getenv("CONFLUENCE_URL", ""),
         "openwebui_url": os.getenv("OPENWEBUI_URL", ""),
+        "developer_portal_url": os.getenv("DEVELOPER_AUTH_PORTAL_URL", ""),
     }
 
 

@@ -51,6 +51,7 @@ import {
   Copy,
   ExternalLink,
   Github,
+  Info,
   PackageSearch,
   Pencil,
   Plus,
@@ -1252,6 +1253,45 @@ export default function Marketplace() {
               Register an Agent or MCP Server. It will immediately be <strong>BUILT</strong> and ready to deploy.
             </DialogDescription>
           </DialogHeader>
+
+          {/* ── This-release prerequisites notice ─────────────────────────────── */}
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
+                <Info size={13} className="text-amber-500" />
+              </div>
+              <p className="text-sm font-bold text-amber-500">Prerequisites — This Release Only</p>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              In this release, repository provisioning and pipeline setup are <strong>manual</strong>. Before you can
+              start writing code, please open a Jira ticket to <strong>DevOps</strong> requesting the following:
+            </p>
+            <ol className="text-xs text-muted-foreground space-y-1.5 pl-1">
+              <li className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                <span>
+                  <strong>Fork the templates repository</strong> for your Agent or MCP Server — DevOps will create the repo and return the Bitbucket URL.
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                <span>
+                  <strong>Create a multibranch pipeline in Jenkins</strong> for the new repo — DevOps will return the Jenkins job URL.
+                </span>
+              </li>
+            </ol>
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
+              <p className="text-[11px] font-semibold text-amber-400">After DevOps responds:</p>
+              <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
+                <li>Enter the <strong>Bitbucket repo URL</strong> in the field below and start developing.</li>
+                <li>In the repository, replace every occurrence of <code className="bg-muted/60 px-1 rounded text-amber-400 font-mono">__appname__</code> with your Agent / MCP name.</li>
+                <li>Use the Jenkins URL to monitor builds and deployments.</li>
+              </ul>
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 italic">
+              This step will be automated in the next release.
+            </p>
+          </div>
 
           <form onSubmit={handleCreate} className="mt-3 space-y-5">
             {/* Icon upload */}

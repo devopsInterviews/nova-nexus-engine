@@ -8,6 +8,7 @@ Additional endpoints:
   GET  /charts            — list available Helm chart names from Artifactory
   GET  /chart-versions    — list versions for a specific chart
   POST /ping              — PUBLIC, no auth; agents/MCP servers self-report usage
+                            See PingRequest for full docs and curl examples.
   POST /items/{id}/clone  — fork a deployed item for a parallel deployment
   POST /redeploy          — undeploy then re-deploy with a new chart/version
 """
@@ -102,11 +103,58 @@ class PingRequest(BaseModel):
     """
     Public self-report payload sent by a running Agent or MCP Server.
     No authentication is required for this endpoint.
+
+    ─── Usage Tracking API — /api/marketplace/ping ───────────────────────────
+    This is a PUBLIC endpoint (no JWT token required). Agents and MCP Servers
+    should call it on every invocation to report usage to the portal.
+
+    Request body (JSON):
+        entity_name     (str, required)  — exact name as registered in the marketplace
+        entity_type     (str, required)  — "agent" or "mcp_server"
+        user_identifier (str, optional)  — username / email of the person triggering the call
+        action          (str, optional)  — event type; defaults to "call"
+                                           common values: "call", "tool_use"
+        tool_name       (str, optional)  — for MCP servers: the specific tool that was invoked
+                                           (e.g. "search_jira", "create_ticket")
+
+    ─── Example: Agent call ──────────────────────────────────────────────────
+    curl -X POST https://portal.company.internal/api/marketplace/ping \\
+      -H "Content-Type: application/json" \\
+      -d '{
+            "entity_name": "My Research Agent",
+            "entity_type": "agent",
+            "user_identifier": "john.doe@company.com",
+            "action": "call"
+          }'
+
+    ─── Example: MCP Server tool invocation ──────────────────────────────────
+    curl -X POST https://portal.company.internal/api/marketplace/ping \\
+      -H "Content-Type: application/json" \\
+      -d '{
+            "entity_name": "Jira Integration MCP",
+            "entity_type": "mcp_server",
+            "user_identifier": "jane.smith",
+            "action": "tool_use",
+            "tool_name": "create_ticket"
+          }'
+
+    ─── Success response (200 OK) ────────────────────────────────────────────
+    {
+      "status": "ok",
+      "item_id": 42,
+      "item_name": "Jira Integration MCP"
+    }
+
+    ─── Error responses ──────────────────────────────────────────────────────
+    404  entity_name + entity_type combo not found in the marketplace
+    422  missing / invalid required fields (FastAPI validation)
+    ──────────────────────────────────────────────────────────────────────────
     """
     entity_name: str
-    entity_type: str        # 'agent' or 'mcp_server'
-    user_identifier: Optional[str] = None  # optional caller identifier
-    action: str = "call"
+    entity_type: str                    # 'agent' or 'mcp_server'
+    user_identifier: Optional[str] = None  # optional caller username / email
+    action: str = "call"               # 'call' for agents, 'tool_use' for MCP tool invocations
+    tool_name: Optional[str] = None    # MCP only: the specific tool that was invoked
 
 
 # ─── Helper: build infra API base URL ────────────────────────────────────────
@@ -660,6 +708,8 @@ def public_ping(req: PingRequest, db: Session = Depends(get_db_session)):
 
     Agents and MCP servers call this to self-report usage so the portal
     can show accurate call counts and unique user metrics.
+
+    See the PingRequest docstring above for full usage docs and curl examples.
     """
     item = (
         db.query(MarketplaceItem)
@@ -685,13 +735,15 @@ def public_ping(req: PingRequest, db: Session = Depends(get_db_session)):
         user_identifier=req.user_identifier,
         item_id=item.id,
         action=req.action,
+        tool_name=req.tool_name,
     )
     db.add(usage)
     db.commit()
 
     logger.info(
-        "[MARKETPLACE] Public ping — item '%s' (id=%d), caller='%s', action='%s'",
+        "[MARKETPLACE] Public ping — item '%s' (id=%d), caller='%s', action='%s'%s",
         item.name, item.id, req.user_identifier or "anonymous", req.action,
+        f", tool='{req.tool_name}'" if req.tool_name else "",
     )
     return {"status": "ok", "item_id": item.id, "item_name": item.name}
 
