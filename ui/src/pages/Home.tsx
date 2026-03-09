@@ -428,19 +428,26 @@ export default function Home() {
                 Open Documentation
                 <ExternalLink className="ml-2 w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </Button>
-              <Button
-                variant="outline"
-                className="w-full border-orange-400/40 text-orange-400 hover:bg-orange-400/10 hover:border-orange-400/70 group"
-                onClick={() => {
-                  const url = appConfig?.developer_portal_url;
-                  if (url) window.open(url, "_blank", "noopener,noreferrer");
-                }}
-                disabled={!appConfig?.developer_portal_url}
-              >
-                <KeyRound className="mr-2 w-4 h-4" />
-                Create API Keys &amp; Tokens
-                <ExternalLink className="ml-2 w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-              </Button>
+
+              <div className="border-t border-border/30 pt-4 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  To use Agents and MCP Servers you need an <strong className="text-foreground/80">LLM API key</strong> and
+                  an <strong className="text-foreground/80">upstream token</strong>. Generate them in the developer portal
+                  and configure them in your client or agent settings.
+                </p>
+                <Button
+                  className="w-full bg-muted/60 hover:bg-muted/90 text-muted-foreground hover:text-foreground border border-border/50 hover:border-border/80 transition-all group"
+                  onClick={() => {
+                    const url = appConfig?.developer_portal_url;
+                    if (url) window.open(url, "_blank", "noopener,noreferrer");
+                  }}
+                  disabled={!appConfig?.developer_portal_url}
+                >
+                  <KeyRound className="mr-2 w-4 h-4" />
+                  Create API Keys &amp; Tokens
+                  <ExternalLink className="ml-2 w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
