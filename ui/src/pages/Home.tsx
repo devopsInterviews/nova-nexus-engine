@@ -436,7 +436,7 @@ export default function Home() {
                   and configure them in your client or agent settings.
                 </p>
                 <Button
-                  className="w-full bg-gradient-to-r from-violet-500/20 to-purple-600/20 hover:from-violet-500/30 hover:to-purple-600/30 text-violet-300 hover:text-violet-200 border border-violet-500/30 hover:border-violet-500/60 transition-all group"
+                  className="w-full bg-violet-600 hover:bg-violet-700 text-white border-0 transition-colors group"
                   onClick={() => {
                     const url = appConfig?.developer_portal_url;
                     if (url) window.open(url, "_blank", "noopener,noreferrer");
