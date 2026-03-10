@@ -35,6 +35,8 @@ export default function Settings() {
     document.documentElement.classList.remove("light", "dark");
     document.documentElement.classList.add(newTheme);
     localStorage.setItem("theme", newTheme);
+    // Notify AppHeader (and any other listeners in the same window) immediately
+    window.dispatchEvent(new CustomEvent("themechange", { detail: newTheme }));
   };
 
   return (
@@ -49,8 +51,8 @@ export default function Settings() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <h1 className="text-3xl font-bold gradient-text mb-1">Settings</h1>
-        <p className="text-muted-foreground">Manage your AI Portal preferences</p>
+        <h1 className="text-3xl font-bold gradient-text mb-1">Personal Settings</h1>
+        <p className="text-muted-foreground">Manage your personal AI Portal preferences</p>
       </motion.div>
 
       {/* ── Appearance ──────────────────────────────────────────────────── */}

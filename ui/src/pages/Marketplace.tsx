@@ -20,6 +20,7 @@ import React, {
   useState,
 } from "react";
 import { motion } from "framer-motion";
+import { useSearchParams } from "react-router-dom";
 import {
   ThemedTabs,
   ThemedTabsList,
@@ -38,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/context/auth-context";
 import { toast } from "sonner";
 import {
@@ -50,6 +52,7 @@ import {
   Cloud,
   Copy,
   ExternalLink,
+  Filter,
   Github,
   Info,
   PackageSearch,
@@ -103,8 +106,23 @@ interface MarketplaceConfig {
 }
 
 // ─── Status / style helpers ────────────────────────────────────────────────────
-// Badge/pill classes use dark: variants so light mode has dark-on-light text
-// and dark mode has light-on-dark text — always readable.
+
+/**
+ * Status categories for filtering:
+ * - "built"     → BUILT (not deployed)
+ * - "deployed"  → DEPLOYED dev, TTL > 7 days
+ * - "expiring"  → DEPLOYED dev, TTL ≤ 7 days (replaces old "critical" + "expiring")
+ * - "release"   → DEPLOYED release (persistent, no TTL)
+ */
+type StatusFilter = "all" | "built" | "deployed" | "expiring" | "release";
+
+function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> {
+  if (item.deployment_status === "BUILT") return "built";
+  if (item.environment === "release") return "release";
+  const r = item.ttl_remaining_days;
+  if (r !== null && r <= 7) return "expiring";
+  return "deployed";
+}
 
 function getItemStyle(item: MarketplaceItem) {
   if (item.deployment_status === "DEPLOYED") {
@@ -114,32 +132,22 @@ function getItemStyle(item: MarketplaceItem) {
         leftBar: "bg-emerald-500",
         ring: "border-emerald-500/60 hover:border-emerald-500/90 dark:border-emerald-500/40 dark:hover:border-emerald-400/70",
         badge: "bg-emerald-100 text-emerald-800 border-emerald-300/80 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40",
-        label: "Deployed · Release", dot: "bg-emerald-500", pulse: true,
+        label: "Release", dot: "bg-emerald-500", pulse: true,
         envPill: "bg-sky-100 text-sky-800 border-sky-300/80 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/35",
         hoverShadow: "hover:shadow-[0_12px_32px_rgba(16,185,129,0.2)]",
       };
     }
     const r = item.ttl_remaining_days;
-    if (r !== null && r <= 3) {
+    // ≤7 days: "Expiring" in red (combines old Critical ≤3d and Expiring ≤7d)
+    if (r !== null && r <= 7) {
       return {
         topBar: "bg-gradient-to-r from-red-500 to-rose-600",
         leftBar: "bg-red-500",
         ring: "border-red-500/60 hover:border-red-500/90 dark:border-red-500/50 dark:hover:border-red-400/80",
         badge: "bg-red-100 text-red-800 border-red-300/80 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/40",
-        label: "Expiring Soon!", dot: "bg-red-500 animate-pulse", pulse: true,
+        label: "Expiring", dot: "bg-red-500 animate-pulse", pulse: true,
         envPill: "bg-orange-100 text-orange-800 border-orange-300/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/35",
         hoverShadow: "hover:shadow-[0_12px_32px_rgba(239,68,68,0.2)]",
-      };
-    }
-    if (r !== null && r <= 7) {
-      return {
-        topBar: "bg-gradient-to-r from-orange-400 to-amber-500",
-        leftBar: "bg-orange-500",
-        ring: "border-orange-500/60 hover:border-orange-500/90 dark:border-orange-500/40 dark:hover:border-orange-400/70",
-        badge: "bg-orange-100 text-orange-800 border-orange-300/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/40",
-        label: "Deployed · Dev", dot: "bg-orange-500", pulse: false,
-        envPill: "bg-orange-100 text-orange-800 border-orange-300/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(249,115,22,0.2)]",
       };
     }
     return {
@@ -147,7 +155,7 @@ function getItemStyle(item: MarketplaceItem) {
       leftBar: "bg-violet-500",
       ring: "border-violet-500/60 hover:border-violet-500/90 dark:border-violet-500/40 dark:hover:border-violet-400/70",
       badge: "bg-violet-100 text-violet-800 border-violet-300/80 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/40",
-      label: "Deployed · Dev", dot: "bg-violet-500", pulse: true,
+      label: "Dev Deployed", dot: "bg-violet-500", pulse: true,
       envPill: "bg-violet-100 text-violet-800 border-violet-300/80 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/35",
       hoverShadow: "hover:shadow-[0_12px_32px_rgba(139,92,246,0.2)]",
     };
@@ -165,14 +173,12 @@ function getItemStyle(item: MarketplaceItem) {
 
 function ttlCls(r: number | null) {
   if (r === null) return "";
-  if (r <= 3) return "bg-red-100 text-red-700 border-red-300/80 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/30";
-  if (r <= 7) return "bg-orange-100 text-orange-700 border-orange-300/80 dark:bg-orange-500/15 dark:text-orange-400 dark:border-orange-500/30";
+  if (r <= 7) return "bg-red-100 text-red-700 border-red-300/80 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/30";
   return "bg-violet-100 text-violet-700 border-violet-300/80 dark:bg-violet-500/15 dark:text-violet-400 dark:border-violet-500/30";
 }
 
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
 
-/** Used in the detail modal header only */
 const EntityIcon = memo(function EntityIcon({
   icon, item_type, size = "md",
 }: { icon: string | null; item_type: string; size?: "sm" | "md" | "lg" | "xl" }) {
@@ -198,14 +204,13 @@ const EntityIcon = memo(function EntityIcon({
 });
 
 /**
- * ItemCard — mirrors the visual language of the homepage FeatureTeaserCard.
- * Structure: gradient stripe → icon (standalone) → tagline → title → description → badges → footer
+ * ItemCard — consistent card layout with equal heights via flex-col structure.
+ * The AUTO-DELETE banner has been removed to prevent height inconsistency.
  */
 const ItemCard = memo(function ItemCard({
   item, onClick,
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
-  const nearExpiry = item.ttl_remaining_days !== null && item.ttl_remaining_days <= 3;
   const isAgent = item.item_type === "agent";
   const iconGradient = isAgent ? "from-sky-500 to-blue-600" : "from-violet-500 to-purple-600";
   const hoverGlow = isAgent
@@ -225,20 +230,12 @@ const ItemCard = memo(function ItemCard({
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
-      {/* Gradient top stripe — status-aware, matches homepage card stripe */}
+      {/* Gradient top stripe */}
       <div className={`h-1 w-full ${st.topBar} rounded-t-2xl`} />
 
-      {/* Main content — same p-6 layout as FeatureTeaserCard */}
+      {/* Main content */}
       <div className="p-6 flex-1 flex flex-col">
-
-        {/* Near-expiry alert */}
-        {nearExpiry && (
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-red-300 bg-red-500/15 border border-red-500/30 rounded-lg px-2.5 py-1.5 mb-4 tracking-wide">
-            <AlertTriangle size={10} className="shrink-0" /> AUTO-DELETE IN {item.ttl_remaining_days}d
-          </div>
-        )}
-
-        {/* Icon — standalone at top, exactly like homepage gradient icon */}
+        {/* Icon */}
         {item.icon ? (
           <img src={item.icon} alt="icon"
             className="w-10 h-10 rounded-xl object-cover border border-border/30 shadow-lg mb-3 shrink-0" />
@@ -248,7 +245,7 @@ const ItemCard = memo(function ItemCard({
           </div>
         )}
 
-        {/* Tagline — owner, like "Want to integrate AI?" on homepage */}
+        {/* Owner tagline */}
         <p className="text-xs text-muted-foreground mb-1">
           by <span className="font-semibold">{item.owner_name}</span>
         </p>
@@ -268,34 +265,45 @@ const ItemCard = memo(function ItemCard({
           {item.deployment_status === "DEPLOYED" ? (
             <span className={`flex items-center gap-1 text-[10px] font-bold ${st.badge} px-2.5 py-1 rounded-full border`}>
               <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} />
-              LIVE
+              RUNNING
             </span>
           ) : (
             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>BUILT</span>
           )}
           <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.envPill}`}>
-            {item.environment.toUpperCase()}
+            {item.environment === "release" ? "RELEASE" : "DEV"}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground/50 bg-muted/30 border border-border/30 px-1.5 py-0.5 rounded">
             <Tag size={7} className="inline mr-0.5 opacity-60" />v{item.version}
           </span>
         </div>
 
-        {/* TTL + chart info */}
-        {(item.deployment_status === "DEPLOYED" && item.environment === "dev" && item.ttl_remaining_days !== null) || item.chart_name ? (
+        {/* TTL info (no banner — just inline badge) */}
+        {item.deployment_status === "DEPLOYED" && item.environment !== "release" && item.ttl_remaining_days !== null ? (
           <div className="flex flex-wrap items-center gap-3 mt-3">
-            {item.deployment_status === "DEPLOYED" && item.environment === "dev" && item.ttl_remaining_days !== null && (
-              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-lg border ${ttlCls(item.ttl_remaining_days)}`}>
-                <Clock size={10} />
-                {item.ttl_remaining_days === 0 ? "Expires today" : `${item.ttl_remaining_days}d left`}
-              </span>
-            )}
+            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-lg border ${ttlCls(item.ttl_remaining_days)}`}>
+              <Clock size={10} />
+              {item.ttl_remaining_days === 0 ? "Expires today" : `${item.ttl_remaining_days}d left`}
+            </span>
             {item.chart_name && (
               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/45 font-mono">
                 <PackageSearch size={10} />
                 <span className="truncate max-w-[120px]">{item.chart_name}</span>
               </span>
             )}
+          </div>
+        ) : item.deployment_status === "DEPLOYED" && item.environment === "release" ? (
+          <div className="mt-3">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border bg-emerald-100 text-emerald-700 border-emerald-300/80 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30">
+              <Sparkles size={9} /> Persistent · No expiry
+            </span>
+          </div>
+        ) : item.chart_name ? (
+          <div className="mt-3">
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/45 font-mono">
+              <PackageSearch size={10} />
+              <span className="truncate max-w-[120px]">{item.chart_name}</span>
+            </span>
           </div>
         ) : null}
       </div>
@@ -322,26 +330,87 @@ const ItemCard = memo(function ItemCard({
   );
 });
 
-function StatusLegend({ devTtlDays }: { devTtlDays: number }) {
-  const items = [
-    { dot: "bg-amber-500",             label: "Built",        sub: "Ready to deploy" },
-    { dot: "bg-violet-500",            label: "Dev Deployed", sub: `≤${devTtlDays}d TTL` },
-    { dot: "bg-orange-500",            label: "Expiring",     sub: "≤7 days left" },
-    { dot: "bg-red-500 animate-pulse", label: "Critical",     sub: "≤3 days — auto-delete" },
-    { dot: "bg-emerald-500",           label: "Release",      sub: "Persistent" },
-  ];
+// Status filter button component
+function StatusFilterButton({
+  active, dot, label, count, onClick,
+}: { active: boolean; dot: string; label: string; count?: number; onClick: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 select-none">
-        Status
-      </span>
-      {items.map(({ dot, label, sub }) => (
-        <div key={label} className="flex items-center gap-1.5 text-xs">
-          <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />
-          <span className="font-semibold text-foreground/80">{label}</span>
-          <span className="text-muted-foreground/60 hidden md:inline">· {sub}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
+        active
+          ? "border-primary/50 bg-primary/10 text-foreground font-semibold"
+          : "border-border/50 text-muted-foreground/70 hover:border-border hover:text-foreground"
+      }`}
+    >
+      <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />
+      <span>{label}</span>
+      {count !== undefined && (
+        <span className={`text-[9px] font-black px-1 py-0 rounded ${active ? "bg-primary/20" : "bg-muted/40"}`}>
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function StatusLegend({
+  devTtlDays,
+  items,
+  statusFilter,
+  onFilterChange,
+}: {
+  devTtlDays: number;
+  items: MarketplaceItem[];
+  statusFilter: StatusFilter;
+  onFilterChange: (f: StatusFilter) => void;
+}) {
+  const counts = {
+    all: items.length,
+    built: items.filter(i => getStatusCategory(i) === "built").length,
+    deployed: items.filter(i => getStatusCategory(i) === "deployed").length,
+    expiring: items.filter(i => getStatusCategory(i) === "expiring").length,
+    release: items.filter(i => getStatusCategory(i) === "release").length,
+  };
+
+  const filters: { key: StatusFilter; dot: string; label: string }[] = [
+    { key: "all",      dot: "bg-gray-400",            label: "All" },
+    { key: "built",    dot: "bg-amber-500",            label: "Built" },
+    { key: "deployed", dot: "bg-violet-500",           label: "Dev Deployed" },
+    { key: "expiring", dot: "bg-red-500 animate-pulse", label: "Expiring" },
+    { key: "release",  dot: "bg-emerald-500",          label: "Release" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-2 px-4 py-3 rounded-xl bg-muted/30 border border-border/50">
+      <div className="flex items-center gap-2">
+        <Filter size={11} className="text-muted-foreground/60" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 select-none">
+          Filter by Status
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {filters.map(({ key, dot, label }, idx) => (
+          <React.Fragment key={key}>
+            {idx > 0 && (
+              <span className="text-muted-foreground/30 text-xs select-none">|</span>
+            )}
+            <StatusFilterButton
+              active={statusFilter === key}
+              dot={dot}
+              label={label}
+              count={key === "all" ? counts.all : counts[key]}
+              onClick={() => onFilterChange(key)}
+            />
+          </React.Fragment>
+        ))}
+        {/* Legend sub-labels */}
+        <div className="flex-1" />
+        <div className="hidden md:flex items-center gap-3 text-[10px] text-muted-foreground/50">
+          <span>Built=ready · Dev≤{devTtlDays}d TTL · Expiring≤7d · Release=persistent</span>
         </div>
-      ))}
+      </div>
     </div>
   );
 }
@@ -374,12 +443,14 @@ function StatBig({ value, label, color }: { value: number; label: string; color:
 
 export default function Marketplace() {
   const { token, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Core state ─────────────────────────────────────────────────────────────
   const [items, setItems] = useState<MarketplaceItem[]>([]);
   const [config, setConfig] = useState<MarketplaceConfig>({ max_agents_per_user: 5, max_mcp_per_user: 5, dev_ttl_days: 10 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   // ── Detail modal ───────────────────────────────────────────────────────────
   const [detailItem, setDetailItem] = useState<MarketplaceItem | null>(null);
@@ -456,6 +527,21 @@ export default function Marketplace() {
   useEffect(() => {
     if (token) { fetchConfig(); fetchItems(); }
   }, [token, fetchConfig, fetchItems]);
+
+  // Open a specific item if navigated here via URL param ?itemId=xxx
+  useEffect(() => {
+    const itemIdParam = searchParams.get("itemId");
+    if (itemIdParam && items.length > 0) {
+      const targetId = parseInt(itemIdParam, 10);
+      const found = items.find(i => i.id === targetId);
+      if (found) {
+        setDetailItem(found);
+        setEditMode(false);
+        // Remove the param from URL so refreshing doesn't re-open it
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [searchParams, items, setSearchParams]);
 
   // ── Reload when switching agent/mcp tabs ──────────────────────────────────
   const handleTabChange = useCallback((value: string) => {
@@ -661,7 +747,6 @@ export default function Marketplace() {
       const d = await r.json();
       if (r.ok && d.status === "ok") {
         setCallResponse(typeof d.response === "string" ? d.response : JSON.stringify(d.response, null, 2));
-        // Refresh usage counter
         fetchItems();
       } else {
         setCallError(d.error || d.detail || "Unknown error");
@@ -683,13 +768,17 @@ export default function Marketplace() {
   // ── Derived state ─────────────────────────────────────────────────────────
 
   const q = search.toLowerCase();
-  const filter = useCallback((arr: MarketplaceItem[]) =>
+  const filterBySearch = useCallback((arr: MarketplaceItem[]) =>
     q ? arr.filter(i => i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q)
       || i.owner_name?.toLowerCase().includes(q) || i.chart_name?.toLowerCase().includes(q)) : arr,
     [q]);
 
-  const agents     = useMemo(() => filter(items.filter(i => i.item_type === "agent")),      [items, filter]);
-  const mcpServers = useMemo(() => filter(items.filter(i => i.item_type === "mcp_server")), [items, filter]);
+  const filterByStatus = useCallback((arr: MarketplaceItem[]) =>
+    statusFilter === "all" ? arr : arr.filter(i => getStatusCategory(i) === statusFilter),
+    [statusFilter]);
+
+  const agents     = useMemo(() => filterByStatus(filterBySearch(items.filter(i => i.item_type === "agent"))),      [items, filterBySearch, filterByStatus]);
+  const mcpServers = useMemo(() => filterByStatus(filterBySearch(items.filter(i => i.item_type === "mcp_server"))), [items, filterBySearch, filterByStatus]);
 
   const isOwnerOrAdmin = useCallback((item: MarketplaceItem) =>
     user?.is_admin || user?.id === item.owner_id, [user]);
@@ -722,7 +811,7 @@ export default function Marketplace() {
   return (
     <div className="flex flex-col gap-5 p-6 pb-16 min-h-full">
 
-      {/* Hero Header — same visual language as the homepage hero */}
+      {/* Hero Header */}
       <motion.div
         className="relative overflow-hidden rounded-2xl border border-border/30 p-6 glass"
         style={{ background: "hsl(var(--surface) / 0.8)" }}
@@ -742,14 +831,24 @@ export default function Marketplace() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-lg mt-3">
-              Publish once, deploy anywhere. Connect Agents and MCP Servers to OpenWebUI,
-              your IDE, or any tool — and stop reinventing the wheel.
+              Publish once, deploy anywhere.
+              <br />
+              Connect Agents and MCP Servers to OpenWebUI, your IDE, or any tool — and stop reinventing the wheel.
             </p>
           </div>
-          <Button size="lg" onClick={() => setIsCreateOpen(true)}
-            className="shrink-0 gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:opacity-90 transition-all font-bold">
-            <Plus size={17} /> Publish Entity
-          </Button>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="lg" onClick={() => setIsCreateOpen(true)}
+                  className="shrink-0 gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:opacity-90 transition-all font-bold">
+                  <Plus size={17} /> Publish Agent / MCP Server
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="text-xs max-w-[200px] text-center">
+                Publish a new AI Agent or MCP Server to the marketplace
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         {/* Background ambient orbs */}
@@ -767,7 +866,13 @@ export default function Marketplace() {
         </div>
       </motion.div>
 
-      <StatusLegend devTtlDays={config.dev_ttl_days} />
+      {/* Status Legend / Filter */}
+      <StatusLegend
+        devTtlDays={config.dev_ttl_days}
+        items={items}
+        statusFilter={statusFilter}
+        onFilterChange={setStatusFilter}
+      />
 
       {/* Tabs */}
       <ThemedTabs defaultValue="agents" className="flex-1 flex flex-col" onValueChange={handleTabChange}>
@@ -775,13 +880,13 @@ export default function Marketplace() {
           <ThemedTabsList className="grid grid-cols-3 sm:w-auto sm:min-w-[380px]">
             <ThemedTabsTrigger value="agents" className="py-2.5 gap-1.5 text-sm font-semibold">
               <Zap size={13} /> Agents
-              <span className="ml-1 text-[10px] font-black bg-white/5 px-1.5 py-0.5 rounded-full">
+              <span className="ml-1 text-[10px] font-black bg-white/10 px-1.5 py-0.5 rounded-full">
                 {items.filter(i => i.item_type === "agent").length}
               </span>
             </ThemedTabsTrigger>
             <ThemedTabsTrigger value="mcp-servers" className="py-2.5 gap-1.5 text-sm font-semibold">
               <Blocks size={13} /> MCP Servers
-              <span className="ml-1 text-[10px] font-black bg-white/5 px-1.5 py-0.5 rounded-full">
+              <span className="ml-1 text-[10px] font-black bg-white/10 px-1.5 py-0.5 rounded-full">
                 {items.filter(i => i.item_type === "mcp_server").length}
               </span>
             </ThemedTabsTrigger>
@@ -791,9 +896,11 @@ export default function Marketplace() {
           </ThemedTabsList>
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
-            <Input className="pl-8 h-9 text-sm bg-white/[0.03] border-white/[0.08]"
+            <Input
+              className="pl-8 h-9 text-sm border border-border/60 ring-1 ring-border/20 focus:border-primary/50 focus:ring-primary/20 bg-white/[0.03]"
               placeholder="Search by name, owner, chart…"
-              value={search} onChange={e => setSearch(e.target.value)} />
+              value={search} onChange={e => setSearch(e.target.value)}
+            />
           </div>
         </div>
 
@@ -846,7 +953,12 @@ export default function Marketplace() {
                         <span className={`font-bold px-2 py-0.5 rounded-full border text-[10px] ${st.envPill}`}>{item.environment.toUpperCase()}</span>
                         {item.deployment_status === "DEPLOYED" && (
                           <span className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold">
-                            <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} /> LIVE
+                            <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} /> RUNNING
+                          </span>
+                        )}
+                        {item.deployment_status === "DEPLOYED" && item.environment === "release" && (
+                          <span className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold">
+                            <Sparkles size={9} /> Persistent · No expiry
                           </span>
                         )}
                       </DialogDescription>
@@ -902,8 +1014,12 @@ export default function Marketplace() {
                         sub={item.chart_version ? `version ${item.chart_version}` : undefined} />
                       <InfoTile label="TTL / Persistence" icon={<Clock size={14} />}
                         value={item.environment === "release" ? "Persistent (no TTL)" : `Dev · ${item.ttl_days ?? config.dev_ttl_days}d TTL`}
-                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 3 ? "text-red-600 dark:text-red-400" : ""}
-                        sub={item.ttl_remaining_days !== null ? `${item.ttl_remaining_days} days remaining` : undefined} />
+                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-red-600 dark:text-red-400" : ""}
+                        sub={item.environment === "release"
+                          ? "Release deployments never expire"
+                          : item.ttl_remaining_days !== null
+                            ? `${item.ttl_remaining_days} days remaining`
+                            : undefined} />
                       {item.bitbucket_repo && (
                         <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
                           <Github size={14} className="mt-0.5 text-muted-foreground/60 shrink-0" />
@@ -1080,6 +1196,11 @@ export default function Marketplace() {
                   <Clock size={10} /> Auto-expires after {config.dev_ttl_days} days
                 </p>
               )}
+              {deployEnv === "release" && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1.5">
+                  <Sparkles size={10} /> Release deployments are persistent and never expire automatically
+                </p>
+              )}
             </div>
 
             {/* Chart picker */}
@@ -1137,7 +1258,7 @@ export default function Marketplace() {
               </div>
             )}
 
-            {/* Summary — dark neutral bg + white text so it's always readable */}
+            {/* Summary */}
             {selectedChart && selectedVersion && (
               <div className={`flex items-start gap-3 p-4 rounded-xl border bg-muted/50 text-sm`}
                 style={{ borderColor: deployEnv === "dev" ? "rgb(139 92 246 / 0.5)" : "rgb(34 197 94 / 0.5)" }}>
@@ -1158,6 +1279,11 @@ export default function Marketplace() {
                   {deployEnv === "dev" && (
                     <span className="text-xs block mt-1 text-muted-foreground">
                       Auto-expires in {config.dev_ttl_days} days.
+                    </span>
+                  )}
+                  {deployEnv === "release" && (
+                    <span className="text-xs block mt-1 text-emerald-600 dark:text-emerald-400">
+                      Persistent deployment — will not expire automatically.
                     </span>
                   )}
                 </div>
@@ -1247,14 +1373,14 @@ export default function Marketplace() {
         <DialogContent className="sm:max-w-[740px] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-black">
-              <Sparkles size={19} className="text-primary" /> Publish New Entity
+              <Sparkles size={19} className="text-primary" /> Publish New Agent / MCP Server
             </DialogTitle>
             <DialogDescription>
               Register an Agent or MCP Server. It will immediately be <strong>BUILT</strong> and ready to deploy.
             </DialogDescription>
           </DialogHeader>
 
-          {/* ── This-release prerequisites notice ─────────────────────────────── */}
+          {/* Prerequisites notice */}
           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 space-y-3">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
@@ -1370,7 +1496,7 @@ export default function Marketplace() {
               <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); resetCreate(); }}>Cancel</Button>
               <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim()}
                 className="gap-1.5 bg-gradient-primary text-primary-foreground font-bold px-6">
-                <Plus size={14} />{createLoading ? "Publishing…" : "Publish Entity"}
+                <Plus size={14} />{createLoading ? "Publishing…" : "Publish Agent / MCP Server"}
               </Button>
             </DialogFooter>
           </form>

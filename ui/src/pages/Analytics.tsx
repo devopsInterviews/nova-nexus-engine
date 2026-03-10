@@ -95,6 +95,15 @@ function activityMeta(type: string): ActivityMeta {
   return ACTIVITY_META[type] ?? { label: type, description: "Other system activity", color: "#64748b" };
 }
 
+// ─── KPI metric descriptions (frontend overrides) ─────────────────────────────
+// These are shown below each KPI value in the StatusCard to explain what the metric represents.
+const METRIC_DESCRIPTIONS: Record<string, string> = {
+  "Total Requests":   "All HTTP requests handled by the backend in the last 24 h, including API calls, page loads, and health checks.",
+  "Active Sessions":  "Users currently authenticated with a valid session or JWT token — a proxy for real-time concurrency.",
+  "Response Time":    "Median server-side latency across all API endpoints. High values indicate backend slowness or DB bottlenecks.",
+  "Error Rate":       "Percentage of requests that returned a 4xx or 5xx status. Values above 1 % warrant investigation.",
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Analytics() {
@@ -128,6 +137,8 @@ export default function Analytics() {
             metricsRes.data.metrics.map((m) => ({
               ...m,
               icon: iconMap[m.title] ?? Activity,
+              // Enrich with a more detailed description if we have one
+              description: METRIC_DESCRIPTIONS[m.title] ?? m.description,
             }))
           );
         }

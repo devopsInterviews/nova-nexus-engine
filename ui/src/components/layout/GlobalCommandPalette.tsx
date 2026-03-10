@@ -64,6 +64,11 @@ const NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Users, Settings,
 };
 
+// Display labels for navigation items (maps internal title → display label)
+const NAV_LABELS: Record<string, string> = {
+  Users: "Administration",
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MarketplaceItem {
@@ -168,15 +173,16 @@ export function GlobalCommandPalette({ open, onOpenChange }: Props) {
         <CommandGroup heading="Navigation">
           {allowedNavItems.map((item) => {
             const Icon = NAV_ICONS[item.title] ?? Home;
+            const label = NAV_LABELS[item.title] ?? item.title;
             return (
               <CommandItem
                 key={item.url}
-                value={item.title}
+                value={`${item.title} ${label}`}
                 onSelect={() => go(item.url)}
                 className="cursor-pointer"
               >
                 <Icon className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>{item.title}</span>
+                <span>{label}</span>
                 {item.url === "/" ? (
                   <CommandShortcut>Home</CommandShortcut>
                 ) : null}
@@ -194,7 +200,7 @@ export function GlobalCommandPalette({ open, onOpenChange }: Props) {
                 <CommandItem
                   key={`agent-${item.id}`}
                   value={`agent ${item.name} ${item.description}`}
-                  onSelect={() => go("/marketplace")}
+                  onSelect={() => go(`/marketplace?itemId=${item.id}`)}
                   className="cursor-pointer"
                 >
                   <Bot className="mr-2 h-4 w-4 text-violet-500 shrink-0" />
@@ -222,7 +228,7 @@ export function GlobalCommandPalette({ open, onOpenChange }: Props) {
                 <CommandItem
                   key={`mcp-${item.id}`}
                   value={`mcp server ${item.name} ${item.description}`}
-                  onSelect={() => go("/marketplace")}
+                  onSelect={() => go(`/marketplace?itemId=${item.id}`)}
                   className="cursor-pointer"
                 >
                   <Server className="mr-2 h-4 w-4 text-blue-500 shrink-0" />
@@ -241,11 +247,11 @@ export function GlobalCommandPalette({ open, onOpenChange }: Props) {
           </>
         )}
 
-        {/* ── Users (admin only) ─────────────────────────────────────────── */}
+        {/* ── Users / Administration (admin only) ────────────────────────── */}
         {user?.is_admin && (users.length > 0 || loadingUsers) && (
           <>
             <CommandSeparator />
-            <CommandGroup heading={loadingUsers ? "Users (loading…)" : "Users"}>
+            <CommandGroup heading={loadingUsers ? "Administration (loading…)" : "Administration"}>
               {users.map((u) => (
                 <CommandItem
                   key={`user-${u.id}`}

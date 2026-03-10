@@ -107,7 +107,9 @@ export function AppLayout() {
   }, []);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      style={{ "--sidebar-width-icon": "4rem" } as React.CSSProperties}
+    >
       <div className="min-h-screen flex w-full bg-background">
         <ParticleBackground />
         {showMatrix && <MatrixRain />}

@@ -247,11 +247,15 @@ const UsersPage: React.FC = () => {
 
   return (
     <div className="p-4">
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold gradient-text">Administration</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage users, permissions, and system data.</p>
+      </div>
       <Tabs defaultValue="users" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="users">User Management</TabsTrigger>
-          <TabsTrigger value="permissions">Permissions</TabsTrigger>
-          <TabsTrigger value="tables">Database Tables</TabsTrigger>
+          <TabsTrigger value="users" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">User Management</TabsTrigger>
+          <TabsTrigger value="permissions" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">Permissions</TabsTrigger>
+          <TabsTrigger value="tables" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">Database Tables</TabsTrigger>
         </TabsList>
         
         <TabsContent value="users">
@@ -290,6 +294,7 @@ const UsersPage: React.FC = () => {
                 <TableHead>Full Name</TableHead>
                 <TableHead>Account</TableHead>
                 <TableHead>Session</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Last Login</TableHead>
                 <TableHead>Login Count</TableHead>
@@ -325,6 +330,27 @@ const UsersPage: React.FC = () => {
                           {activeSessionUserIds.has(user.id)
                             ? 'User has an active, non-expired login session right now.'
                             : 'No active session — user is not currently logged in.'}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </TableCell>
+                  <TableCell>
+                    {/* Account type: SSO (via LDAP/Authentik) vs System (local account) */}
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs cursor-default ${
+                            user.auth_provider === 'sso'
+                              ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300'
+                              : 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300'
+                          }`}>
+                            {user.auth_provider === 'sso' ? '🔗 SSO' : '🖥️ System'}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs max-w-[200px] text-center">
+                          {user.auth_provider === 'sso'
+                            ? 'SSO user — authenticated via Authentik/LDAP'
+                            : 'System user — local account managed in this portal'}
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -366,7 +392,7 @@ const UsersPage: React.FC = () => {
                 </TableRow>
               )) : (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8">
+                  <TableCell colSpan={11} className="text-center py-8">
                     {loading ? 'Loading users...' : 'No users found'}
                   </TableCell>
                 </TableRow>

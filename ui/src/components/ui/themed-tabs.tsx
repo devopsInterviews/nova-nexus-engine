@@ -22,30 +22,26 @@ ThemedTabsList.displayName = TabsPrimitive.List.displayName;
 
 const ThemedTabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger> & {
-    layoutId?: string;
-  }
->(({ className, layoutId = "activeTab", ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, children, ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "relative inline-flex items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm hover:text-foreground hover:bg-surface-elevated/50",
+      "group relative inline-flex items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium",
+      "ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      "disabled:pointer-events-none disabled:opacity-50",
+      "text-muted-foreground hover:text-foreground hover:bg-surface-elevated/50",
+      // Active state: white text over gradient background
+      "data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm",
       className
     )}
     {...props}
   >
-    {props.children}
-    <motion.div
-      className="absolute inset-0 bg-gradient-primary rounded-md -z-10"
-      initial={false}
-      animate={{
-        opacity: props["data-state"] === "active" ? 1 : 0,
-      }}
-      transition={{
-        type: "spring",
-        stiffness: 500,
-        damping: 30,
-      }}
+    {children}
+    {/* Gradient background pill — visible only when active via CSS */}
+    <span
+      className="absolute inset-0 rounded-md bg-gradient-primary opacity-0 group-data-[state=active]:opacity-100 transition-opacity duration-200 -z-10"
+      aria-hidden
     />
   </TabsPrimitive.Trigger>
 ));
