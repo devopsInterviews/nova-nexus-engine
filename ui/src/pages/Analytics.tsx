@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusCard } from "@/components/ui/status-card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3, TrendingUp, Users, Activity, Server, Zap, Eye, PieChart } from "lucide-react";
+import { BarChart3, TrendingUp, Users, Activity, Server, Zap, Eye, PieChart, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { analyticsService } from "@/lib/api-service";
 import {
@@ -113,6 +113,8 @@ export default function Analytics() {
   const [traffic, setTraffic] = useState<TrafficPoint[]>([]);
   const [activityBreakdown, setActivityBreakdown] = useState<ActivityBreakdownItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Which KPI card has its description expanded
+  const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
 
   const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
     "Total Requests": Activity,
@@ -204,14 +206,37 @@ export default function Analytics() {
           Key Metrics
         </motion.h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {metrics.map((metric, index) => (
-            <StatusCard
-              key={metric.title}
-              {...metric}
-              delay={0.5 + index * 0.1}
-              invertTrendColor={metric.title === "Error Rate"}
-            />
-          ))}
+          {metrics.map((metric, index) => {
+            const isExpanded = expandedMetric === metric.title;
+            return (
+              <div key={metric.title} className="flex flex-col gap-0">
+                <StatusCard
+                  {...metric}
+                  description={undefined}
+                  delay={0.5 + index * 0.1}
+                  invertTrendColor={metric.title === "Error Rate"}
+                />
+                {metric.description && (
+                  <button
+                    onClick={() => setExpandedMetric(isExpanded ? null : metric.title)}
+                    className="flex items-center gap-1 px-3 pb-1 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors self-start"
+                  >
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                    {isExpanded ? "Hide" : "What does this measure?"}
+                  </button>
+                )}
+                {isExpanded && metric.description && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-xs text-muted-foreground px-3 pb-3 leading-relaxed border border-t-0 border-border/40 rounded-b-lg bg-surface/30 -mt-1 pt-2"
+                  >
+                    {metric.description}
+                  </motion.p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 

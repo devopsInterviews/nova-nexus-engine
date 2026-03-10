@@ -260,31 +260,29 @@ export function AppSidebar() {
         <motion.div
           className={cn(
             "mt-auto rounded-xl border border-border/40 bg-surface/50",
-            open ? "p-3" : "p-2 flex justify-center"
+            open ? "p-4" : "p-2 flex justify-center"
           )}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
           {open ? (
-            <div className="flex items-center gap-3">
-              <CompanyLogo size={28} />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-foreground/80 truncate">AI Portal</p>
-                <p className="text-[10px] text-muted-foreground/60 truncate">
-                  {appConfig.environment.toUpperCase()} · v{appConfig.version}
-                </p>
-              </div>
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <CompanyLogo size={40} />
+              <p className="text-xs font-semibold text-foreground/80 leading-tight">AI Portal</p>
+              <p className="text-[10px] text-muted-foreground/60">
+                {appConfig.environment.toUpperCase()} · v{appConfig.version}
+              </p>
             </div>
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="cursor-default">
-                  <CompanyLogo size={24} />
+                  <CompanyLogo size={28} />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs">
-                {appConfig.environment} · v{appConfig.version}
+                AI Portal · {appConfig.environment} · v{appConfig.version}
               </TooltipContent>
             </Tooltip>
           )}

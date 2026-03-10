@@ -45,7 +45,7 @@ export function PermissionsManager() {
 
   // Admin role dialog state
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
-  const [adminDialogMode, setAdminDialogMode] = useState<'view' | 'add' | 'viewGroup' | 'addGroup'>('view');
+  const [adminDialogMode, setAdminDialogMode] = useState<'view' | 'add'>('view');
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [adminSaving, setAdminSaving] = useState(false);
 
@@ -82,8 +82,11 @@ export function PermissionsManager() {
         gData = await gRes.json();
       }
       if (agRes && agRes.ok) {
-        const agData = await agRes.json();
-        setAdminGroupIds(agData.group_ids || []);
+        const ct = agRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const agData = await agRes.json();
+          setAdminGroupIds(agData.group_ids || []);
+        }
       }
 
       const initialPermissions: Permissions = {};
@@ -448,20 +451,23 @@ export function PermissionsManager() {
           </div>
         </div>
 
-        <div className="mt-4 flex gap-4 flex-wrap">
-          {/* Users card */}
-          <Card className="border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 transition-all duration-300 flex-1 min-w-[220px]">
+        <div className="mt-4 max-w-sm">
+          <Card className="border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 transition-all duration-300">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Crown className="w-5 h-5 text-amber-500" />
-                Admin Users
+                Administrators
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex gap-3 mb-6">
                 <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  {adminUsers.length} {adminUsers.length === 1 ? 'Admin' : 'Admins'}
+                  <Users className="w-3.5 h-3.5" />
+                  {adminUsers.length} {adminUsers.length === 1 ? 'User' : 'Users'}
+                </Badge>
+                <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">
+                  <UsersRound className="w-3.5 h-3.5" />
+                  {adminGroupIds.length} {adminGroupIds.length === 1 ? 'Group' : 'Groups'}
                 </Badge>
               </div>
               <div className="flex gap-2 w-full">
@@ -471,7 +477,7 @@ export function PermissionsManager() {
                   onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('view'); setAdminSearchQuery(''); }}
                 >
                   <Eye className="w-4 h-4 mr-2" />
-                  View
+                  View Admins
                 </Button>
                 <Button
                   variant="outline"
@@ -479,43 +485,7 @@ export function PermissionsManager() {
                   onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('add'); setAdminSearchQuery(''); }}
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Groups card */}
-          <Card className="border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 transition-all duration-300 flex-1 min-w-[220px]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <UsersRound className="w-5 h-5 text-amber-500" />
-                Admin Groups
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-3 mb-6">
-                <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  {adminGroupIds.length} {adminGroupIds.length === 1 ? 'Group' : 'Groups'}
-                </Badge>
-              </div>
-              <div className="flex gap-2 w-full">
-                <Button
-                  variant="outline"
-                  className="flex-1 border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50"
-                  onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('viewGroup'); setAdminSearchQuery(''); }}
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  View
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/50"
-                  onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('addGroup'); setAdminSearchQuery(''); }}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add
+                  Add Admin
                 </Button>
               </div>
             </CardContent>
@@ -650,17 +620,16 @@ export function PermissionsManager() {
 
       {/* ── Admin Role Dialog ── */}
       <Dialog open={adminDialogOpen} onOpenChange={(open) => !open && setAdminDialogOpen(false)}>
-        <DialogContent className="max-w-xl max-h-[80vh] flex flex-col p-0 overflow-hidden bg-background">
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-background">
           <div className="p-6 border-b border-amber-500/20 bg-amber-500/5">
             <DialogTitle className="text-2xl flex items-center gap-2 mb-2">
               <ShieldCheck className="w-6 h-6 text-amber-500" />
               Admin Role Management
             </DialogTitle>
             <DialogDescription>
-              {adminDialogMode === 'view' && 'View and revoke administrator access from users.'}
-              {adminDialogMode === 'add' && 'Grant administrator access to users.'}
-              {adminDialogMode === 'viewGroup' && 'View and revoke administrator access from groups.'}
-              {adminDialogMode === 'addGroup' && 'Grant administrator access to groups.'}
+              {adminDialogMode === 'view'
+                ? 'View and revoke administrator access from users and groups.'
+                : 'Grant administrator access to users and groups.'}
             </DialogDescription>
           </div>
 
@@ -669,25 +638,13 @@ export function PermissionsManager() {
               className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'view' ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
               onClick={() => { setAdminDialogMode('view'); setAdminSearchQuery(''); }}
             >
-              User Admins
+              Current Admins
             </button>
             <button
               className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'add' ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
               onClick={() => { setAdminDialogMode('add'); setAdminSearchQuery(''); }}
             >
-              Add User
-            </button>
-            <button
-              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'viewGroup' ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
-              onClick={() => { setAdminDialogMode('viewGroup'); setAdminSearchQuery(''); }}
-            >
-              Group Admins
-            </button>
-            <button
-              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'addGroup' ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
-              onClick={() => { setAdminDialogMode('addGroup'); setAdminSearchQuery(''); }}
-            >
-              Add Group
+              Add Admin Access
             </button>
           </div>
 
@@ -695,122 +652,102 @@ export function PermissionsManager() {
             <div className="relative mb-6">
               <Search className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground" />
               <Input
-                placeholder={adminDialogMode.includes('Group') ? 'Search groups...' : 'Search users...'}
+                placeholder="Search users or groups..."
                 className="pl-10 h-10 bg-surface/50"
                 value={adminSearchQuery}
                 onChange={(e) => setAdminSearchQuery(e.target.value)}
               />
             </div>
 
-            <div className="space-y-2">
-              {adminDialogMode === 'view' && (
-                filteredAdminUsers.length > 0 ? (
-                  filteredAdminUsers.map(u => (
-                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-amber-500" />
-                        <span className="font-medium">{u.username}</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRevokeAdmin(u.id)}
-                        disabled={adminSaving}
-                        className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-                    No admin users found
-                  </div>
-                )
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Users Column */}
+              <div>
+                <h4 className="flex items-center gap-2 font-semibold mb-4 text-foreground/80 pb-2 border-b">
+                  <Users className="w-4 h-4 text-amber-500" />
+                  Users
+                </h4>
+                <div className="space-y-2">
+                  {adminDialogMode === 'view' ? (
+                    filteredAdminUsers.length > 0 ? (
+                      filteredAdminUsers.map(u => (
+                        <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-amber-500" />
+                            <span className="font-medium">{u.username}</span>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => handleRevokeAdmin(u.id)} disabled={adminSaving}
+                            className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No admin users</div>
+                    )
+                  ) : (
+                    filteredNonAdminUsers.length > 0 ? (
+                      filteredNonAdminUsers.map(u => (
+                        <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
+                          <span className="font-medium">{u.username}</span>
+                          <Button variant="outline" size="sm" onClick={() => handleGrantAdmin(u.id)} disabled={adminSaving}
+                            className="h-8 px-3 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50">
+                            <Plus className="w-4 h-4 mr-1" /> Add
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No users available to promote</div>
+                    )
+                  )}
+                </div>
+              </div>
 
-              {adminDialogMode === 'add' && (
-                filteredNonAdminUsers.length > 0 ? (
-                  filteredNonAdminUsers.map(u => (
-                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
-                      <span className="font-medium">{u.username}</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleGrantAdmin(u.id)}
-                        disabled={adminSaving}
-                        className="h-8 px-3 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50"
-                      >
-                        <Plus className="w-4 h-4 mr-1" /> Add
-                      </Button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-                    No users available to promote
-                  </div>
-                )
-              )}
-
-              {adminDialogMode === 'viewGroup' && (
-                groups.length === 0 ? (
-                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-                    No SSO groups available
-                  </div>
-                ) : filteredAdminGroups.length > 0 ? (
-                  filteredAdminGroups.map(g => (
-                    <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-amber-500" />
-                        <span className="font-medium">{g.name}</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRevokeAdminGroup(g.id)}
-                        disabled={adminSaving}
-                        className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-                    No admin groups found
-                  </div>
-                )
-              )}
-
-              {adminDialogMode === 'addGroup' && (
-                groups.length === 0 ? (
-                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-                    No SSO groups available
-                  </div>
-                ) : filteredNonAdminGroups.length > 0 ? (
-                  filteredNonAdminGroups.map(g => (
-                    <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <UsersRound className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-medium">{g.name}</span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleGrantAdminGroup(g.id)}
-                        disabled={adminSaving}
-                        className="h-8 px-3 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50"
-                      >
-                        <Plus className="w-4 h-4 mr-1" /> Add
-                      </Button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-                    All groups already have admin access
-                  </div>
-                )
-              )}
+              {/* Groups Column */}
+              <div>
+                <h4 className="flex items-center gap-2 font-semibold mb-4 text-foreground/80 pb-2 border-b">
+                  <UsersRound className="w-4 h-4 text-amber-500" />
+                  Groups
+                </h4>
+                <div className="space-y-2">
+                  {groups.length === 0 ? (
+                    <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No SSO groups available</div>
+                  ) : adminDialogMode === 'view' ? (
+                    filteredAdminGroups.length > 0 ? (
+                      filteredAdminGroups.map(g => (
+                        <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-amber-500" />
+                            <span className="font-medium">{g.name}</span>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => handleRevokeAdminGroup(g.id)} disabled={adminSaving}
+                            className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">No admin groups</div>
+                    )
+                  ) : (
+                    filteredNonAdminGroups.length > 0 ? (
+                      filteredNonAdminGroups.map(g => (
+                        <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
+                          <div className="flex items-center gap-2">
+                            <UsersRound className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-medium">{g.name}</span>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => handleGrantAdminGroup(g.id)} disabled={adminSaving}
+                            className="h-8 px-3 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50">
+                            <Plus className="w-4 h-4 mr-1" /> Add
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">All groups already have admin access</div>
+                    )
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

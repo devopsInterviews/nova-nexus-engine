@@ -120,6 +120,12 @@ def _run_schema_migrations(engine) -> None:
             "tool_name",
             "ALTER TABLE marketplace_usage ADD COLUMN tool_name VARCHAR(255)",
         ),
+        # v2.x → is_admin flag on SSO groups for group-level admin role grants
+        (
+            "sso_groups",
+            "is_admin",
+            "ALTER TABLE sso_groups ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE",
+        ),
     ]
 
     with engine.connect() as conn:

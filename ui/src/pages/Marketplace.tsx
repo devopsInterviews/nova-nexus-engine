@@ -687,7 +687,7 @@ export default function Marketplace() {
       if (r.ok) {
         const d = await r.json();
         setItems(prev => prev.map(i => i.id === deployItem.id ? d.item : i));
-        toast.success(`${isRedeploy ? "Redeployed" : "Deployed"} to ${deployEnv.toUpperCase()} — ${selectedChart}@${selectedVersion}`);
+        toast.success(`${isRedeploy ? "Upgraded" : "Deployed"} to ${deployEnv.toUpperCase()} — ${selectedChart}@${selectedVersion}`);
         setIsDeployOpen(false);
         setDetailItem(null);
       } else {
@@ -697,6 +697,21 @@ export default function Marketplace() {
     } catch { toast.error("Network error."); }
     finally { setDeployLoading(false); }
   }, [deployItem, deployEnv, selectedChart, selectedVersion, isRedeploy, authHeaders]);
+
+  const handleExtendTTL = useCallback(async (item: MarketplaceItem) => {
+    try {
+      const r = await fetch(`/api/marketplace/items/${item.id}/extend-ttl`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) {
+        const d = await r.json();
+        setItems(prev => prev.map(i => i.id === item.id ? d.item : i));
+        toast.success(`TTL extended — ${item.ttl_days ?? "default"} more days added.`);
+        setDetailItem(null);
+      } else {
+        const e = await r.json();
+        toast.error(e.detail || "Extend TTL failed.");
+      }
+    } catch { toast.error("Network error."); }
+  }, [token]);
 
   const handleClone = useCallback(async (item: MarketplaceItem) => {
     try {
@@ -831,9 +846,7 @@ export default function Marketplace() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-lg mt-3">
-              Publish once, deploy anywhere.
-              <br />
-              Connect Agents and MCP Servers to OpenWebUI, your IDE, or any tool — and stop reinventing the wheel.
+              Publish once, deploy anywhere. Connect Agents and MCP Servers to OpenWebUI, your IDE, or any tool - and stop reinventing the wheel.
             </p>
           </div>
           <TooltipProvider delayDuration={300}>
@@ -1094,13 +1107,20 @@ export default function Marketplace() {
                             <Rocket size={13} /> Deploy Release
                           </Button>
                         </>)}
-                        {canManage && item.deployment_status === "DEPLOYED" && (
+                        {canManage && item.deployment_status === "DEPLOYED" && (<>
                           <Button size="sm" variant="outline"
                             className="gap-1.5 border-amber-500/30 text-amber-400 hover:bg-amber-600 hover:text-white hover:border-amber-600"
                             onClick={() => { setDetailItem(null); openDeploy(item, true, item.environment as "dev" | "release"); }}>
-                            <RefreshCw size={13} /> Redeploy
+                            <RefreshCw size={13} /> Upgrade
                           </Button>
-                        )}
+                          {item.environment === "dev" && (
+                            <Button size="sm" variant="outline"
+                              className="gap-1.5 border-teal-500/30 text-teal-400 hover:bg-teal-600 hover:text-white hover:border-teal-600"
+                              onClick={() => handleExtendTTL(item)}>
+                              <Clock size={13} /> Extend Life
+                            </Button>
+                          )}
+                        </>)}
                         {canManage && (item.deployment_status === "BUILT" || item.deployment_status === "DEPLOYED") && (
                           <Button size="sm" variant="outline" className="gap-1.5"
                             onClick={() => handleClone(item)}>
@@ -1167,7 +1187,7 @@ export default function Marketplace() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-black text-lg">
               {isRedeploy ? <RefreshCw size={17} className="text-amber-400" /> : <Rocket size={17} className="text-violet-400" />}
-              {isRedeploy ? "Redeploy" : "Deploy"} — {deployItem?.name}
+              {isRedeploy ? "Upgrade" : "Deploy"} — {deployItem?.name}
             </DialogTitle>
             <DialogDescription>Select environment, chart, and version from your Artifactory registry.</DialogDescription>
           </DialogHeader>
@@ -1268,7 +1288,7 @@ export default function Marketplace() {
                   {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
                 </div>
                 <div className="leading-relaxed text-foreground">
-                  <span className="font-semibold">{isRedeploy ? "Redeploying" : "Deploying"}</span>{" "}
+                  <span className="font-semibold">{isRedeploy ? "Upgrading" : "Deploying"}</span>{" "}
                   <code className="text-xs font-mono px-1.5 py-0.5 rounded bg-foreground/10 border border-border/60 text-foreground">
                     {selectedChart}@{selectedVersion}
                   </code>{" "}
@@ -1296,7 +1316,7 @@ export default function Marketplace() {
             <Button disabled={!selectedChart || !selectedVersion || deployLoading} onClick={handleDeploy}
               className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-violet-600 hover:bg-violet-500 text-white" : "bg-emerald-600 hover:bg-emerald-500 text-white"}`}>
               {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
-              {deployLoading ? "Working…" : isRedeploy ? "Redeploy" : "Deploy"}
+              {deployLoading ? "Working…" : isRedeploy ? "Upgrade" : "Deploy"}
             </Button>
           </DialogFooter>
         </DialogContent>

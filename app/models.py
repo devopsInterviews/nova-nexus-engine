@@ -801,6 +801,9 @@ class SSOGroup(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
+    # When True, all members of this group are treated as portal admins
+    is_admin = Column(Boolean, default=False, nullable=False)
+
     users = relationship("User", secondary=user_group_association, back_populates="groups")
 
     __table_args__ = (

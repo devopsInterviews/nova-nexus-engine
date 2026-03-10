@@ -113,6 +113,52 @@ async def update_permissions(
             detail="Internal server error"
         )
 
+class AdminGroupRequest(BaseModel):
+    group_id: int
+
+
+@router.get("/admin-groups")
+async def get_admin_groups(
+    current_user: User = Depends(is_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Return IDs of SSO groups that have been granted portal admin access."""
+    groups = db.query(SSOGroup).filter(SSOGroup.is_admin == True).all()
+    return {"group_ids": [g.id for g in groups]}
+
+
+@router.post("/admin-groups", status_code=201)
+async def grant_admin_group(
+    req: AdminGroupRequest,
+    current_user: User = Depends(is_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Grant portal admin role to an SSO group."""
+    group = db.query(SSOGroup).filter(SSOGroup.id == req.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group.is_admin = True
+    db.commit()
+    logger.info("Admin granted to group '%s' (id=%d) by %s", group.name, group.id, current_user.username)
+    return {"status": "ok", "group_id": group.id}
+
+
+@router.delete("/admin-groups/{group_id}", status_code=200)
+async def revoke_admin_group(
+    group_id: int,
+    current_user: User = Depends(is_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Revoke portal admin role from an SSO group."""
+    group = db.query(SSOGroup).filter(SSOGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group.is_admin = False
+    db.commit()
+    logger.info("Admin revoked from group '%s' (id=%d) by %s", group.name, group.id, current_user.username)
+    return {"status": "ok", "group_id": group.id}
+
+
 @router.get("/permissions/user/{user_id}")
 async def get_user_permissions(
     user_id: int,

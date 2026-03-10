@@ -2,8 +2,7 @@ import { motion } from "framer-motion";
 import {
   ArrowRight, Store, Search, Database, BookOpen,
   MessageSquare, ExternalLink, Lock,
-  LogIn, Eye, Zap, Activity, Terminal,
-  Cpu, Layers, Bot, KeyRound,
+  Terminal, Cpu, Layers, Bot, KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,21 +22,6 @@ interface AppConfig {
   developer_portal_url: string;
 }
 
-interface UserStats {
-  login_count: number;
-  last_login: string | null;
-  page_views_30d: number;
-  test_runs_total: number;
-  marketplace_usage_total: number;
-  member_since: string | null;
-  recent_activities: Array<{
-    action: string;
-    type: string;
-    time: string;
-    status_type: "success" | "warning" | "error";
-  }>;
-}
-
 interface FeatureCard {
   id: string;
   title: string;
@@ -49,14 +33,6 @@ interface FeatureCard {
   gradient: string;
   borderColor: string;
   preview: ReactNode;
-}
-
-// ─── Helper ──────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "Never";
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
 // ─── Miniature feature previews (theme-aware: work in both light & dark) ─────
@@ -224,22 +200,6 @@ function FeatureTeaserCard({
   );
 }
 
-// ─── Stat Badge ───────────────────────────────────────────────────────────────
-
-function StatBadge({ icon: Icon, label, value }: { icon: ComponentType<{ className?: string }>; label: string; value: string | number }) {
-  return (
-    <motion.div
-      className="flex flex-col items-center gap-1 p-4 rounded-xl border border-border/40 bg-surface/80"
-      whileHover={{ y: -2 }}
-      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-    >
-      <Icon className="w-5 h-5 text-primary" />
-      <span className="text-2xl font-bold text-foreground">{value}</span>
-      <span className="text-xs text-muted-foreground text-center">{label}</span>
-    </motion.div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -247,17 +207,11 @@ export default function Home() {
   const { user } = useAuth();
 
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
-  const [userStats, setUserStats] = useState<UserStats | null>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   useEffect(() => {
     appConfigService.getConfig().then(res => {
       if (res.status === "success" && res.data) setAppConfig(res.data);
     }).catch(() => {});
-
-    analyticsService.getUserStats().then(res => {
-      if (res.status === "success" && res.data) setUserStats(res.data);
-    }).catch(() => {}).finally(() => setIsLoadingStats(false));
 
     analyticsService.logPageView({ path: "/", title: "Home", loadTime: performance.now() });
   }, []);
@@ -306,12 +260,6 @@ export default function Home() {
       preview: <BIPreview />,
     },
   ];
-
-  const statusColors: Record<string, string> = {
-    success: "bg-green-100 text-green-800 border-green-300 dark:bg-success/10 dark:text-success dark:border-success/20",
-    warning: "bg-warning/10 text-warning border-warning/20",
-    error: "bg-destructive/10 text-destructive border-destructive/20",
-  };
 
   return (
     <div className="space-y-10 pb-8">
@@ -525,119 +473,6 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* ── Your Activity ─────────────────────────────────────────────────── */}
-      <section>
-        <motion.h2
-          className="text-2xl font-bold mb-6 text-foreground"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.8 }}
-        >
-          Your Activity
-        </motion.h2>
-
-        {/* Stats row */}
-        <motion.div
-          className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.9 }}
-        >
-          <StatBadge
-            icon={LogIn}
-            label="Total logins"
-            value={isLoadingStats ? "…" : userStats?.login_count ?? 0}
-          />
-          <StatBadge
-            icon={Eye}
-            label="Pages visited (30d)"
-            value={isLoadingStats ? "…" : userStats?.page_views_30d ?? 0}
-          />
-          <StatBadge
-            icon={Zap}
-            label="Test runs"
-            value={isLoadingStats ? "…" : userStats?.test_runs_total ?? 0}
-          />
-          <StatBadge
-            icon={Store}
-            label="Marketplace actions"
-            value={isLoadingStats ? "…" : userStats?.marketplace_usage_total ?? 0}
-          />
-        </motion.div>
-
-        {/* Recent activity feed */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.0 }}
-        >
-          <Card className="glass border-border/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-primary" />
-                  Recent Actions
-                </CardTitle>
-                {userStats?.last_login && (
-                  <span className="text-xs text-muted-foreground">
-                    Last login: {formatDate(userStats.last_login)}
-                  </span>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingStats ? (
-                <div className="space-y-3">
-                  {[...Array(3)].map((_, i) => (
-                    <div key={i} className="h-10 rounded-lg bg-surface-elevated/40 animate-pulse" />
-                  ))}
-                </div>
-              ) : !userStats?.recent_activities?.length ? (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  <p>No recent activity yet.</p>
-                  <p className="text-xs mt-1">Start exploring the portal — your actions will appear here.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {userStats.recent_activities.map((activity, index) => (
-                    <motion.div
-                      key={index}
-                      className="flex items-center justify-between py-2.5 px-4 rounded-lg bg-surface-elevated/40 hover:bg-surface-elevated transition-colors group"
-                      initial={{ opacity: 0, x: -16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 1.05 + index * 0.06 }}
-                      whileHover={{ x: 3 }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                        <div>
-                          <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                            {activity.action}
-                          </p>
-                          <p className="text-xs text-muted-foreground capitalize">{activity.type} · {activity.time}</p>
-                        </div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={`text-xs ${statusColors[activity.status_type] ?? statusColors.warning}`}
-                      >
-                        {activity.status_type === "success" ? "Completed" : activity.status_type === "error" ? "Failed" : "Running"}
-                      </Badge>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-
-              {userStats?.member_since && (
-                <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Member since {formatDate(userStats.member_since)}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-      </section>
     </div>
   );
 }

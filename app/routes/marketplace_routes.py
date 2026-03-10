@@ -463,6 +463,38 @@ def redeploy_marketplace_item(
     return {"status": "ok", "message": f"Redeployed to {req.environment}", "item": _enrich_item(item, db)}
 
 
+@router.post("/items/{item_id}/extend-ttl")
+def extend_item_ttl(
+    item_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Extend the TTL of a dev-deployed item by resetting its deployed_at timestamp to now.
+    This effectively gives it a fresh TTL window equal to the configured dev TTL days.
+    Release items (no TTL) are unaffected.
+    """
+    item = db.query(MarketplaceItem).filter_by(id=item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to extend this item's TTL")
+    if item.deployment_status != "DEPLOYED":
+        raise HTTPException(status_code=400, detail="Only DEPLOYED items can have their TTL extended")
+    if item.environment == "release":
+        raise HTTPException(status_code=400, detail="Release deployments have no TTL — nothing to extend")
+
+    item.deployed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(item)
+
+    logger.info(
+        "[MARKETPLACE] TTL extended for '%s' (id=%d) by '%s' — new expiry in %s days",
+        item.name, item.id, current_user.username, item.ttl_days,
+    )
+    return {"status": "ok", "message": f"TTL extended by {item.ttl_days} days", "item": _enrich_item(item, db)}
+
+
 @router.patch("/items/{item_id}")
 def update_marketplace_item(
     item_id: int,

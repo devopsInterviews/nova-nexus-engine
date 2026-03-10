@@ -344,7 +344,7 @@ const UsersPage: React.FC = () => {
                               ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300'
                               : 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300'
                           }`}>
-                            {user.auth_provider === 'sso' ? '🔗 SSO' : '🖥️ System'}
+                            {user.auth_provider === 'sso' ? 'SSO' : 'System'}
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-xs max-w-[200px] text-center">

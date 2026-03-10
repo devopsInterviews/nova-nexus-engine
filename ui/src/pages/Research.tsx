@@ -383,43 +383,15 @@ export default function Research() {
             )}
           </AnimatePresence>
 
-          {/* Step Banner */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-            className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 flex items-center gap-4"
-          >
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-black text-lg">
-                1
-              </div>
-              <div>
-                <p className="text-sm font-bold text-primary">Installation &amp; Setup</p>
-                <p className="text-xs text-muted-foreground">Complete this first — one-time setup on your workstation</p>
-              </div>
-            </div>
-            <div className="h-px flex-1 bg-border/40 hidden sm:block" />
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="w-9 h-9 rounded-full bg-muted border border-border/60 flex items-center justify-center text-muted-foreground font-black text-lg">
-                2
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground">Connect Workstation</p>
-                <p className="text-xs text-muted-foreground/60">Register each time you change location</p>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Main Content: Instructions (Step 1) above, then Configuration (Step 2) */}
+          {/* Main Content: Installation (Step 1) left, Configuration (Step 2) right */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
           >
-            {/* Configuration Card - Takes 2/3 */}
-            <Card className="glass border-border/50 lg:col-span-2 lg:order-2">
+            {/* Configuration Card */}
+            <Card className="glass border-border/50 lg:order-2">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -537,19 +509,14 @@ export default function Research() {
           </CardContent>
         </Card>
 
-        {/* Instructions Card - Takes 1/3, shown first on desktop */}
+        {/* Instructions Card - Step 1, shown first on desktop */}
         <Card className="glass border-2 border-primary/40 bg-primary/3 lg:order-1 relative overflow-hidden">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-black shrink-0">1</div>
-                <BookOpen className="w-5 h-5 text-primary" />
-                Installation &amp; Setup
-              </CardTitle>
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-primary/20 text-primary px-2 py-0.5 rounded-full">
-                Do This First
-              </span>
-            </div>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-black shrink-0">1</div>
+              <BookOpen className="w-5 h-5 text-primary" />
+              Installation &amp; Setup
+            </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               Complete once on your workstation before connecting for the first time.
             </p>
