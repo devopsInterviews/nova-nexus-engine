@@ -28,7 +28,7 @@ import re
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
@@ -1367,6 +1367,38 @@ async def on_pr_event(request: Request):
     logger.debug("[on_pr_event] completed, handled %d keys", len(new_keys))
     return JSONResponse({"status": "ok", "handled": len(new_keys)})
 
+
+# ── Public root-level asset routes ───────────────────────────────────────────
+# In Docker the Vite build output (including ui/public/ files) lands in ./static/.
+# The SPA catch-all below would intercept bare paths like /logo.png and return HTML,
+# so we expose the most common root assets explicitly here — before the catch-all.
+
+def _serve_static_file(filename: str, media_type: str):
+    """Return a file from the static directory, or 404 if it doesn't exist."""
+    path = os.path.join(STATIC_DIR, filename)
+    if os.path.isfile(path):
+        return FileResponse(path, media_type=media_type)
+    raise HTTPException(status_code=404, detail=f"{filename} not found")
+
+@app.get("/logo.png", include_in_schema=False)
+async def serve_logo_png():
+    return _serve_static_file("logo.png", "image/png")
+
+@app.get("/logo.svg", include_in_schema=False)
+async def serve_logo_svg():
+    return _serve_static_file("logo.svg", "image/svg+xml")
+
+@app.get("/favicon.svg", include_in_schema=False)
+async def serve_favicon_svg():
+    return _serve_static_file("favicon.svg", "image/svg+xml")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def serve_favicon_ico():
+    return _serve_static_file("favicon.ico", "image/x-icon")
+
+@app.get("/favicon.png", include_in_schema=False)
+async def serve_favicon_png():
+    return _serve_static_file("favicon.png", "image/png")
 
 # SPA catch-all route - MUST be defined last to avoid intercepting API routes
 @app.get("/{full_path:path}", response_class=HTMLResponse)
