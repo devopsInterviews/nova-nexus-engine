@@ -89,7 +89,7 @@ export const navigationItems: NavigationItem[] = [
 // To use your own logo: place your image file in ui/public/ (e.g. logo.png)
 // then change COMPANY_LOGO_SRC below to "/logo.png" (or whatever filename).
 // Set it to null to keep the built-in SVG placeholder.
-const COMPANY_LOGO_SRC: string | null = "/logo.png";
+const COMPANY_LOGO_SRC: string | null = `${import.meta.env.BASE_URL}logo.png`;
 
 function CompanyLogo({ size = 32 }: { size?: number }) {
   if (COMPANY_LOGO_SRC) {

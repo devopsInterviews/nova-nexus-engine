@@ -1,57 +1,68 @@
-# Multi-stage Dockerfile for MCP Client
-# Combines both frontend and backend into a single image
+################################################################################
+# Stage 0: Build the UI (Vite + React)
+################################################################################
+FROM node:20-alpine AS ui_builder
+WORKDIR /ui
 
-# Stage 1: Build React Frontend
-FROM node:18-alpine AS frontend-build
-WORKDIR /app
-
-# Copy frontend package files
+# Install deps using lockfile for reproducible builds
 COPY ui/package*.json ./
-RUN npm ci
+COPY resources/.npmrc /root/.npmrc
 
-# Copy frontend source and build
-COPY ui/ ./
+RUN npm ci --no-audit --no-fund --loglevel=verbose
+
+# Copy source and build for subpath deployment
+COPY ui/ .
+# Make sure ui/vite.config.ts has: base: '/static/ui/'
 RUN npm run build
 
-# Stage 2: Setup Python Backend with built frontend
-FROM python:3.11-slim AS production
 
-# Set working directory
+############################################## ##################################
+# Stage 1: Builder
+################################################################################
+FROM python:3.13-slim-bookworm AS builder
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install any system dependencies if needed (empty here if none required).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt  
 
-# Copy and install Python requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
 
-# Copy backend application
-COPY app/ ./app/
-COPY *.py ./
-COPY logging_config.json ./
+# Ensure target dirs exist so later COPYs won’t fail
+RUN mkdir -p /app/static/ui/assets
 
-# Copy built frontend from previous stage
-COPY --from=frontend-build /app/dist ./static/
 
-# Create directories and set permissions
-RUN mkdir -p /app/logs && \
-    chown -R appuser:appuser /app
+################################################################################
+# Stage 2: Final Image
+################################################################################
+FROM python:3.13-slim-bookworm  
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /home/appuser  
+WORKDIR /app
 
-# Switch to non-root user
-USER appuser
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
+COPY --from=builder /app /app  
 
-# Expose port
-EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+COPY --from=ui_builder /ui/dist/index.html /app/templates/ui.html
+COPY --from=ui_builder /ui/dist /app/static/ui/
 
-# Start the application
-CMD ["python", "-m", "uvicorn", "client:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Ensure uvicorn is executable
+RUN chmod 755 /usr/local/bin/uvicorn
+
+USER appuser  
+
+EXPOSE 8000  
+
+# Set default environment variables (overridable via Kubernetes/Helm).
+ENV CLIENT_HOST=0.0.0.0 \
+    CLIENT_PORT=8000 \
+    LOG_LEVEL=INFO  
+
+# Run Uvicorn with auto-reload disabled in production. In development, you might add --reload.
+CMD ["uvicorn", "app.client:app", "--host", "0.0.0.0", "--port", "8000"]  
