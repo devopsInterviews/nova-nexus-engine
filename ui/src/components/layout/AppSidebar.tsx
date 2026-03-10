@@ -86,13 +86,25 @@ export const navigationItems: NavigationItem[] = [
 ];
 
 // ─── COMPANY LOGO ────────────────────────────────────────────────────────────
-// To use your own logo: place logo.png inside ui/public/ then rebuild the
-// Docker image.  The file lands at ./static/logo.png in the container and is
-// served by the explicit /logo.png route in client.py.
-// Set COMPANY_LOGO_SRC to null to always show the built-in SVG placeholder.
+// To use your own logo: place your image file in ui/public/ (e.g. logo.png)
+// then change COMPANY_LOGO_SRC below to "/logo.png" (or whatever filename).
+// Set it to null to keep the built-in SVG placeholder.
 const COMPANY_LOGO_SRC: string | null = "/logo.png";
 
-function LogoSVGPlaceholder({ size }: { size: number }) {
+function CompanyLogo({ size = 32 }: { size?: number }) {
+  if (COMPANY_LOGO_SRC) {
+    return (
+      <img
+        src={COMPANY_LOGO_SRC}
+        alt="Company Logo"
+        width={size}
+        height={size}
+        style={{ width: size, height: size, objectFit: "contain", borderRadius: 6 }}
+      />
+    );
+  }
+
+  // SVG placeholder — shown until COMPANY_LOGO_SRC is set
   return (
     <svg
       width={size}
@@ -119,25 +131,6 @@ function LogoSVGPlaceholder({ size }: { size: number }) {
       </defs>
     </svg>
   );
-}
-
-function CompanyLogo({ size = 32 }: { size?: number }) {
-  const [imgFailed, setImgFailed] = React.useState(false);
-
-  if (COMPANY_LOGO_SRC && !imgFailed) {
-    return (
-      <img
-        src={COMPANY_LOGO_SRC}
-        alt="Company Logo"
-        width={size}
-        height={size}
-        style={{ width: size, height: size, objectFit: "contain", borderRadius: 6 }}
-        onError={() => setImgFailed(true)}
-      />
-    );
-  }
-
-  return <LogoSVGPlaceholder size={size} />;
 }
 
 export function AppSidebar() {
