@@ -846,7 +846,8 @@ export default function Marketplace() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-lg mt-3">
-              Publish once, deploy anywhere. Connect Agents and MCP Servers to OpenWebUI, your IDE, or any tool - and stop reinventing the wheel.
+              Publish once, deploy anywhere.
+              Connect Agents and MCP Servers to OpenWebUI, your IDE, or any tool.
             </p>
           </div>
           <TooltipProvider delayDuration={300}>
