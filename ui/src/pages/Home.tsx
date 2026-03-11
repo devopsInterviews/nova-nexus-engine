@@ -255,8 +255,8 @@ export default function Home() {
       icon: Database,
       tab: "BI",
       route: "/bi",
-      gradient: "from-[#00C986] to-[#43AB8B]",
-      borderColor: "border-[#00C986]/20",
+      gradient: "from-[#55C5E2] to-[#5F27CD]",
+      borderColor: "border-[#55C5E2]/20",
       preview: <BIPreview />,
     },
   ];
@@ -384,7 +384,7 @@ export default function Home() {
                   and configure them in your client or agent settings.
                 </p>
                 <Button
-                  className="w-full bg-[#5F27CD] hover:opacity-90 text-white border-0 transition-colors group"
+                  className="w-full bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white border-0 hover:opacity-90 transition-colors group"
                   onClick={() => {
                     const url = appConfig?.developer_portal_url;
                     if (url) window.open(url, "_blank", "noopener,noreferrer");

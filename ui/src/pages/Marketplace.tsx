@@ -124,7 +124,8 @@ function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> 
   return "deployed";
 }
 
-/* Company palette: Release #00C986, Expiring #F16C6C, Dev #5F27CD, Built #FFB24C. Card: color on top bar only, neutral border. */
+/* Status colors from index.html (Status colors / Marketplace Status colors):
+   Success/Release: #00C986 | Warning/Built: #FFB24C (#FFE64C light) | Error/Expiring: #F16C6C (#F28583 light) | Dev: #5F27CD | Primary: #55C5E2. Card: color bar inside only. */
 function getItemStyle(item: MarketplaceItem) {
   const neutralRing =
     "border-border/60 hover:border-border dark:border-border/50 dark:hover:border-border/80";
@@ -239,17 +240,17 @@ const ItemCard = memo(function ItemCard({
       className={`
         relative cursor-pointer rounded-2xl border ${st.ring} overflow-hidden flex flex-col
         transition-shadow duration-300 ${hoverGlow}
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55C5E2]/60
       `}
       style={{ background: "hsl(var(--surface) / 0.8)" }}
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
-      {/* Gradient top stripe */}
-      <div className={`h-1 w-full ${st.topBar} rounded-t-2xl`} />
-
-      {/* Main content */}
+      {/* Main content — coloring only inside the card per design */}
       <div className="p-6 flex-1 flex flex-col">
+        {/* Colored topping inside card only (per design — not on frame) */}
+        <div className={`h-1 w-full ${st.topBar} rounded-md mb-3 shrink-0`} />
+
         {/* Icon */}
         {item.icon ? (
           <img src={item.icon} alt="icon"
@@ -355,14 +356,14 @@ function StatusFilterButton({
       onClick={onClick}
       className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
         active
-          ? "border-primary/50 bg-primary/10 text-foreground font-semibold"
+          ? "border-[#55C5E2]/50 bg-[#55C5E2]/10 text-foreground font-semibold"
           : "border-border/50 text-muted-foreground/70 hover:border-border hover:text-foreground"
       }`}
     >
       <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />
       <span>{label}</span>
       {count !== undefined && (
-        <span className={`text-[9px] font-black px-1 py-0 rounded ${active ? "bg-primary/20" : "bg-muted/40"}`}>
+        <span className={`text-[9px] font-black px-1 py-0 rounded ${active ? "bg-[#55C5E2]/20" : "bg-muted/40"}`}>
           {count}
         </span>
       )}
@@ -926,7 +927,7 @@ export default function Marketplace() {
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
             <Input
-              className="pl-8 h-9 text-sm border border-border/60 ring-1 ring-border/20 focus:border-primary/50 focus:ring-primary/20 bg-white/[0.03]"
+              className="pl-8 h-9 text-sm border border-border/60 ring-1 ring-border/20 focus:border-[#55C5E2]/50 focus:ring-[#55C5E2]/20 bg-white/[0.03]"
               placeholder="Search by name, owner, chart…"
               value={search} onChange={e => setSearch(e.target.value)}
             />
@@ -938,14 +939,14 @@ export default function Marketplace() {
           <ThemedTabsContent value="mcp-servers">{renderGrid(mcpServers, "No MCP servers yet.", Blocks)}</ThemedTabsContent>
           <ThemedTabsContent value="skills">
             <div className="flex flex-col items-center justify-center min-h-[420px] border border-dashed border-white/[0.07] rounded-2xl bg-gradient-to-b from-surface/20 to-background">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-5">
-                <Sparkles size={34} className="text-primary/60" />
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#55C5E2]/20 to-[#5F27CD]/20 flex items-center justify-center mb-5">
+                <Sparkles size={34} className="text-[#55C5E2]" />
               </div>
               <h3 className="text-2xl font-black mb-3">Coming Soon</h3>
               <p className="text-muted-foreground/50 text-sm max-w-md text-center leading-relaxed">
                 Skills will let you compose Agents and MCP Servers into autonomous multi-step pipelines — without any glue code.
               </p>
-              <div className="flex items-center gap-2 mt-5 text-xs text-primary/40">
+              <div className="flex items-center gap-2 mt-5 text-xs text-[#55C5E2]/70">
                 <ChevronRight size={12} /> Coming in the next release
               </div>
             </div>
@@ -1024,7 +1025,7 @@ export default function Marketplace() {
                           className="min-h-[72px] resize-none"
                           placeholder="Example prompts, prerequisites…" />
                       : item.how_to_use
-                        ? <p className="text-sm text-muted-foreground bg-primary/5 border border-primary/20 rounded-xl p-4 leading-relaxed">{item.how_to_use}</p>
+                        ? <p className="text-sm text-muted-foreground bg-[#55C5E2]/5 border border-[#55C5E2]/20 rounded-xl p-4 leading-relaxed">{item.how_to_use}</p>
                         : <p className="text-sm text-muted-foreground/50 italic">Not provided.</p>}
                   </div>
 
@@ -1055,7 +1056,7 @@ export default function Marketplace() {
                           <div className="min-w-0">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Repository</p>
                             <a href={item.bitbucket_repo} target="_blank" rel="noreferrer"
-                              className="text-sm text-primary hover:underline truncate block">View Source ↗</a>
+                              className="text-sm text-[#55C5E2] hover:underline truncate block">View Source ↗</a>
                           </div>
                         </div>
                       )}
@@ -1065,7 +1066,7 @@ export default function Marketplace() {
                           <div className="min-w-0">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Connection URL</p>
                             <a href={item.url_to_connect} target="_blank" rel="noreferrer"
-                              className="text-sm text-primary hover:underline truncate block">{item.url_to_connect}</a>
+                              className="text-sm text-[#55C5E2] hover:underline truncate block">{item.url_to_connect}</a>
                           </div>
                         </div>
                       )}
@@ -1080,7 +1081,7 @@ export default function Marketplace() {
 
                   {!editMode && (
                     <div className="flex gap-10 pt-4 border-t border-border/40">
-                      <StatBig value={item.usage_count} label="Total Calls" color="text-primary" />
+                      <StatBig value={item.usage_count} label="Total Calls" color="text-[#55C5E2]" />
                       <StatBig value={item.unique_users} label="Unique Users" color="text-[#00C986]" />
                       {(item.tools_exposed?.length ?? 0) > 0 && (
                         <StatBig value={item.tools_exposed.length} label="Tools" color="text-[#5F27CD]" />
@@ -1095,7 +1096,7 @@ export default function Marketplace() {
                     <div className="flex gap-2 w-full justify-end">
                       <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>Cancel</Button>
                       <Button size="sm" disabled={editLoading}
-                        className="bg-primary text-primary-foreground gap-1.5"
+                        className="bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white gap-1.5"
                         onClick={() => handleSaveEdit(item)}>
                         {editLoading ? "Saving…" : "Save Changes"}
                       </Button>
@@ -1144,7 +1145,7 @@ export default function Marketplace() {
                           </Button>
                         )}
                         {item.deployment_status === "DEPLOYED" && (
-                          <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground"
+                          <Button size="sm" className="gap-1.5 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white"
                             onClick={() => { setDetailItem(null); setCallItem(item); setCallPrompt(""); setCallResponse(null); setCallError(null); }}>
                             <Zap size={13} /> Run / Call
                           </Button>
@@ -1165,7 +1166,7 @@ export default function Marketplace() {
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
+            <DialogTitle className="flex items-center gap-2 text-[#F16C6C]">
               <AlertTriangle size={18} /> Delete "{deleteTarget?.name}"?
             </DialogTitle>
             <DialogDescription>
@@ -1257,11 +1258,11 @@ export default function Marketplace() {
                     : filteredCharts.map(chart => (
                       <button key={chart} type="button" onClick={() => handleChartSelect(chart)}
                         className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
-                          selectedChart === chart ? "bg-primary/15 text-primary font-semibold" : "hover:bg-muted/50 text-foreground/80"
+                          selectedChart === chart ? "bg-[#55C5E2]/15 text-[#55C5E2] font-semibold" : "hover:bg-muted/50 text-foreground/80"
                         }`}>
                         <PackageSearch size={12} className="text-muted-foreground/60 shrink-0" />
                         <span className="font-mono truncate">{chart}</span>
-                        {selectedChart === chart && <span className="ml-auto text-primary text-xs">✓</span>}
+                        {selectedChart === chart && <span className="ml-auto text-[#55C5E2] text-xs">✓</span>}
                       </button>
                     ))}
               </div>
@@ -1271,7 +1272,7 @@ export default function Marketplace() {
             {selectedChart && (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-2">
-                  Version — <span className="text-primary normal-case font-semibold">{selectedChart}</span>
+                  Version — <span className="text-[#55C5E2] normal-case font-semibold">{selectedChart}</span>
                 </p>
                 <div className="relative mb-2">
                   <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
@@ -1286,7 +1287,7 @@ export default function Marketplace() {
                         {filteredVersions.map(v => (
                           <button key={v} type="button" onClick={() => setSelectedVersion(v)}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-semibold transition-all ${
-                              selectedVersion === v ? "border-primary bg-primary/15 text-primary" : "border-border/60 text-foreground/70 hover:border-border"
+                              selectedVersion === v ? "border-[#55C5E2] bg-[#55C5E2]/15 text-[#55C5E2]" : "border-border/60 text-foreground/70 hover:border-border"
                             }`}>{v}
                           </button>
                         ))}
@@ -1345,7 +1346,7 @@ export default function Marketplace() {
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-black">
-              <Zap size={17} className="text-primary" /> Test — {callItem?.name}
+              <Zap size={17} className="text-[#55C5E2]" /> Test — {callItem?.name}
             </DialogTitle>
             <DialogDescription>
               Send a prompt to this {callItem?.item_type === "agent" ? "agent" : "MCP server"}.
@@ -1395,7 +1396,7 @@ export default function Marketplace() {
               Close
             </Button>
             <Button disabled={callLoading || !callPrompt.trim() || !callItem?.url_to_connect}
-              onClick={handleCall} className="gap-1.5 bg-primary text-primary-foreground font-bold">
+              onClick={handleCall} className="gap-1.5 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white font-bold">
               <Send size={13} /> {callLoading ? "Sending…" : "Send Prompt"}
             </Button>
           </DialogFooter>
@@ -1409,7 +1410,7 @@ export default function Marketplace() {
         <DialogContent className="sm:max-w-[740px] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-black">
-              <Sparkles size={19} className="text-primary" /> Publish New Agent / MCP Server
+              <Sparkles size={19} className="text-[#55C5E2]" /> Publish New Agent / MCP Server
             </DialogTitle>
             <DialogDescription>
               Register an Agent or MCP Server. It will immediately be <strong>BUILT</strong> and ready to deploy.
@@ -1459,7 +1460,7 @@ export default function Marketplace() {
             {/* Icon upload */}
             <div className="flex items-start gap-5 p-4 rounded-2xl border border-border/50 bg-muted/20">
               <div onClick={() => iconInputRef.current?.click()}
-                className="w-20 h-20 rounded-2xl border-2 border-dashed border-border/60 bg-muted/30 flex items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-all shrink-0 overflow-hidden group">
+                className="w-20 h-20 rounded-2xl border-2 border-dashed border-border/60 bg-muted/30 flex items-center justify-center cursor-pointer hover:border-[#55C5E2]/60 hover:bg-[#55C5E2]/5 transition-all shrink-0 overflow-hidden group">
                 {createIcon
                   ? <img src={createIcon} alt="preview" className="w-full h-full object-cover" />
                   : <div className="flex flex-col items-center gap-1 text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors">
@@ -1483,13 +1484,13 @@ export default function Marketplace() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                  Type <span className="text-destructive">*</span>
+                  Type <span className="text-[#F16C6C]">*</span>
                 </Label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["agent", "mcp_server"] as const).map(t => (
                     <button key={t} type="button" onClick={() => setCreateType(t)}
                       className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
-                        createType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
+                        createType === t ? "border-[#55C5E2] bg-[#55C5E2]/10 text-[#55C5E2]" : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
                       }`}>
                       {t === "agent" ? <Zap size={13} /> : <Blocks size={13} />}
                       {t === "agent" ? "Agent" : "MCP"}
@@ -1499,7 +1500,7 @@ export default function Marketplace() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cn" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                  Name <span className="text-destructive">*</span>
+                  Name <span className="text-[#F16C6C]">*</span>
                 </Label>
                 <Input id="cn" required placeholder="e.g. Jira Integration MCP"
                   value={createName} onChange={e => setCreateName(e.target.value)} />
@@ -1508,7 +1509,7 @@ export default function Marketplace() {
 
             <div className="space-y-2">
               <Label htmlFor="cd" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                Description <span className="text-destructive">*</span>
+                Description <span className="text-[#F16C6C]">*</span>
               </Label>
               <Textarea id="cd" required className="min-h-[80px] resize-none"
                 placeholder="What does this entity do? When should someone use it?"
@@ -1531,7 +1532,7 @@ export default function Marketplace() {
             <DialogFooter className="pt-4 border-t border-border/40 gap-2">
               <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); resetCreate(); }}>Cancel</Button>
               <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim()}
-                className="gap-1.5 bg-gradient-primary text-primary-foreground font-bold px-6">
+                className="gap-1.5 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white font-bold px-6">
                 <Plus size={14} />{createLoading ? "Publishing…" : "Publish Agent / MCP Server"}
               </Button>
             </DialogFooter>
