@@ -34,10 +34,6 @@ export default {
 					glow: 'hsl(var(--primary-glow))',
 					hover: 'hsl(var(--primary-hover))'
 				},
-				'marketplace-deployed': 'hsl(var(--marketplace-deployed))',
-				'marketplace-warning': 'hsl(var(--marketplace-warning))',
-				'marketplace-draft': 'hsl(var(--marketplace-draft))',
-				'marketplace-expiring': 'hsl(var(--marketplace-expiring))',
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',
 					foreground: 'hsl(var(--secondary-foreground))',

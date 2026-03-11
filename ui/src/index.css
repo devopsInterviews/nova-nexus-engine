@@ -6,9 +6,9 @@
 
 @layer base {
   :root {
-    /* Base Colors - Default Light Mode */
+    /* Base Colors - Default Light Mode (backgrounds unchanged per design) */
     --background: 210 40% 98%;
-    --foreground: 220 27% 5%;
+    --foreground: 236 32% 17%;  /* Primary text #1D1F38 */
     
     --surface: 210 40% 96%;
     --surface-elevated: 210 40% 94%;
@@ -17,37 +17,38 @@
     --glass: 210 40% 96% / 0.8;
     --glass-border: 220 40% 60% / 0.2;
     
-    /* Primary - Company palette #55C5E2 (solid) → gradient to #5F27CD */
-    --primary: 193 72% 61%;
+    /* Primary - Purple #5F27CD (gradient start, secondary/flat button color) */
+    --primary: 263 68% 48%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 193 72% 65%;
-    --primary-hover: 258 90% 45%;
+    --primary-glow: 193 69% 61%;  /* #55C5E2 */
+    /* Button hover - #55C5E2 */
+    --primary-hover: 193 69% 61%;
     
-    /* Secondary - Company purple for buttons/links #5F27CD */
+    /* Secondary - same as primary for flat/secondary buttons #5F27CD */
     --secondary: 263 68% 48%;
     --secondary-foreground: 0 0% 100%;
-    --secondary-glow: 263 68% 55%;
+    --secondary-glow: 263 68% 58%;
     
-    /* Accent - Align with primary highlight #55C5E2 */
-    --accent: 193 72% 61%;
-    --accent-foreground: 220 27% 5%;
-    --accent-glow: 193 72% 65%;
+    /* Accent - Link/Hover/Info #55C5E2 */
+    --accent: 193 69% 61%;
+    --accent-foreground: 236 32% 17%;
+    --accent-glow: 193 69% 71%;
     
-    /* Success - Company #28B880 */
-    --success: 158 64% 44%;
+    /* Success #20B888 */
+    --success: 162 70% 42%;
     --success-foreground: 0 0% 100%;
     
-    /* Warning - Company #FF924C */
-    --warning: 24 100% 65%;
-    --warning-foreground: 220 27% 5%;
+    /* Warning #EF8D4D */
+    --warning: 24 84% 62%;
+    --warning-foreground: 236 32% 17%;
     
-    /* Destructive / Error - Company #F16E6B */
-    --destructive: 1 83% 68%;
+    /* Destructive / Error #EF7A6E */
+    --destructive: 5 81% 68%;
     --destructive-foreground: 0 0% 100%;
     
     /* Muted */
     --muted: 210 40% 90%;
-    --muted-foreground: 220 15% 35%;
+    --muted-foreground: 236 5% 38%;  /* Secondary text #5D5E67 */
     
     /* Card */
     --card: var(--surface);
@@ -57,25 +58,17 @@
     --popover: var(--surface-elevated);
     --popover-foreground: var(--foreground);
     
-    /* Borders - Company divider #ADACA0, input line #9C9A9D */
-    --border: 220 30% 80%;
-    --divider: 55 6% 65%;
-    --input-line: 270 1% 61%;
+    /* Borders - Divider #D3D8D8 */
+    --border: 180 5% 84%;
     --border-glow: var(--primary) / 0.3;
-    
-    /* Marketplace status - Company palette */
-    --marketplace-deployed: 158 64% 44%;
-    --marketplace-warning: 24 100% 65%;
-    --marketplace-draft: 55 90% 70%;
-    --marketplace-expiring: 1 83% 68%;
     
     /* Inputs */
     --input: var(--surface-elevated);
     --ring: var(--primary);
     
-    /* Gradients - Company primary #55C5E2 to #5F27CD */
-    --gradient-primary: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%);
+    /* Gradients - Button regular: #5F27CD to #55C5E2 */
+    --gradient-primary: linear-gradient(135deg, #5F27CD 0%, #55C5E2 100%);
+    --gradient-accent: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
     --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(220 25% 12% / 0.4) 100%);
     --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.3), transparent 50%), 
                      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--secondary) / 0.2), transparent 50%),
@@ -114,11 +107,11 @@
     --muted: 220 20% 20%;
     --muted-foreground: 220 15% 65%;
     --border: 220 30% 25%;
-    /* Primary foreground must be white in dark mode so active tabs/buttons are legible */
     --primary-foreground: 210 40% 98%;
-    /* Company success in dark */
-    --success: 158 64% 44%;
-    --success-foreground: 0 0% 100%;
+    --secondary-foreground: 210 40% 98%;
+    /* Company palette success #20B888 - slightly brighter for dark bg */
+    --success: 162 70% 48%;
+    --success-foreground: 220 27% 5%;
   }
 
   .light {

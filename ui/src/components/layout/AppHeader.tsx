@@ -147,9 +147,9 @@ export function AppHeader() {
   };
 
   const statusColors: Record<string, string> = {
-    success: "bg-green-100 text-green-800 border-green-300 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20",
-    warning: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
-    error: "bg-red-100 text-red-800 border-red-300 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+    success: "bg-[#20B888]/15 text-[#20B888] border-[#20B888]/30 dark:bg-[#20B888]/10 dark:text-[#20B888] dark:border-[#20B888]/20",
+    warning: "bg-[#EF8D4D]/15 text-[#EF8D4D] border-[#EF8D4D]/30 dark:bg-[#EF8D4D]/10 dark:text-[#EF8D4D] dark:border-[#EF8D4D]/20",
+    error: "bg-[#EF7A6E]/15 text-[#EF7A6E] border-[#EF7A6E]/30 dark:bg-[#EF7A6E]/10 dark:text-[#EF7A6E] dark:border-[#EF7A6E]/20",
   };
 
   return (

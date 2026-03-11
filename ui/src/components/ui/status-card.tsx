@@ -23,7 +23,7 @@ const statusColors = {
   success: "text-success border-success/30 bg-success/10 dark:border-success/20 dark:bg-success/5",
   warning: "text-warning border-warning/20 bg-warning/5",
   error: "text-destructive border-destructive/20 bg-destructive/5",
-  info: "text-primary border-primary/20 bg-primary/5",
+  info: "text-accent border-accent/20 bg-accent/5",
 };
 
 export function StatusCard({

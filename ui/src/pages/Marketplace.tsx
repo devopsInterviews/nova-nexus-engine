@@ -124,57 +124,57 @@ function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> 
   return "deployed";
 }
 
-/* Company palette: Deployed #28B880, Warning #FF924C, Draft #F7E96C, Expiring #F16E6B, primary gradient #55C5E2→#5F27CD */
+/* Company palette: Deployed #20B888, Warning #EF8D4D, Draft #FFD54D, Expiring #EF7A6E, Info/Dev #55C5E2 */
 function getItemStyle(item: MarketplaceItem) {
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
-        topBar: "bg-[#28B880]",
-        leftBar: "bg-[#28B880]",
-        ring: "border-[#28B880]/60 hover:border-[#28B880]/90 dark:border-[#28B880]/40 dark:hover:border-[#28B880]/70",
-        badge: "bg-[#28B880]/15 text-[#166F4D] border-[#28B880]/40 dark:bg-[#28B880]/20 dark:text-[#28B880] dark:border-[#28B880]/40",
-        label: "Release", dot: "bg-[#28B880]", pulse: true,
-        envPill: "bg-primary/10 text-primary border-primary/30 dark:bg-primary/20 dark:text-primary dark:border-primary/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(40,184,128,0.2)]",
+        topBar: "bg-[#20B888]",
+        leftBar: "bg-[#20B888]",
+        ring: "border-[#20B888]/60 hover:border-[#20B888]/90 dark:border-[#20B888]/40 dark:hover:border-[#20B888]/70",
+        badge: "bg-[#20B888]/15 text-[#20B888] border-[#20B888]/40 dark:bg-[#20B888]/20 dark:text-[#20B888] dark:border-[#20B888]/40",
+        label: "Release", dot: "bg-[#20B888]", pulse: true,
+        envPill: "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(32,184,136,0.2)]",
       };
     }
     const r = item.ttl_remaining_days;
     if (r !== null && r <= 7) {
       return {
-        topBar: "bg-[#F16E6B]",
-        leftBar: "bg-[#F16E6B]",
-        ring: "border-[#F16E6B]/60 hover:border-[#F16E6B]/90 dark:border-[#F16E6B]/50 dark:hover:border-[#F16E6B]/80",
-        badge: "bg-[#F16E6B]/15 text-[#C43D3A] border-[#F16E6B]/40 dark:bg-[#F16E6B]/20 dark:text-[#F16E6B] dark:border-[#F16E6B]/40",
-        label: "Expiring", dot: "bg-[#F16E6B] animate-pulse", pulse: true,
-        envPill: "bg-warning/10 text-warning border-warning/30 dark:bg-warning/20 dark:text-warning dark:border-warning/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(241,110,107,0.2)]",
+        topBar: "bg-[#EF7A6E]",
+        leftBar: "bg-[#EF7A6E]",
+        ring: "border-[#EF7A6E]/60 hover:border-[#EF7A6E]/90 dark:border-[#EF7A6E]/50 dark:hover:border-[#EF7A6E]/80",
+        badge: "bg-[#EF7A6E]/15 text-[#EF7A6E] border-[#EF7A6E]/40 dark:bg-[#EF7A6E]/20 dark:text-[#EF7A6E] dark:border-[#EF7A6E]/40",
+        label: "Expiring", dot: "bg-[#EF7A6E] animate-pulse", pulse: true,
+        envPill: "bg-[#EF8D4D]/15 text-[#EF8D4D] border-[#EF8D4D]/40 dark:bg-[#EF8D4D]/20 dark:text-[#EF8D4D] dark:border-[#EF8D4D]/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(239,122,110,0.2)]",
       };
     }
     return {
-      topBar: "bg-gradient-to-r from-[#55C5E2] to-[#5F27CD]",
-      leftBar: "bg-[#5F27CD]",
-      ring: "border-primary/60 hover:border-primary/90 dark:border-primary/40 dark:hover:border-primary/70",
-      badge: "bg-primary/10 text-[#1D0A4d] border-primary/40 dark:bg-primary/20 dark:text-primary dark:border-primary/40",
-      label: "Dev Deployed", dot: "bg-[#5F27CD]", pulse: true,
-      envPill: "bg-primary/10 text-primary border-primary/30 dark:bg-primary/20 dark:text-primary dark:border-primary/35",
-      hoverShadow: "hover:shadow-[0_12px_32px_rgba(95,39,205,0.2)]",
+      topBar: "bg-[#55C5E2]",
+      leftBar: "bg-[#55C5E2]",
+      ring: "border-[#55C5E2]/60 hover:border-[#55C5E2]/90 dark:border-[#55C5E2]/40 dark:hover:border-[#55C5E2]/70",
+      badge: "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/40",
+      label: "Dev Deployed", dot: "bg-[#55C5E2]", pulse: true,
+      envPill: "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/35",
+      hoverShadow: "hover:shadow-[0_12px_32px_rgba(85,197,226,0.2)]",
     };
   }
   return {
-    topBar: "bg-[#F7E96C]",
-    leftBar: "bg-[#F7E96C]",
-    ring: "border-[#F7E96C]/70 hover:border-[#E6D84D]/90 dark:border-[#F7E96C]/40 dark:hover:border-[#F7E96C]/65",
-    badge: "bg-[#F7E96C]/25 text-[#8B7B0F] border-[#F7E96C]/50 dark:bg-[#F7E96C]/20 dark:text-[#F7E96C] dark:border-[#F7E96C]/40",
-    label: "Built", dot: "bg-[#F7E96C]", pulse: false,
-    envPill: "bg-muted text-muted-foreground border-border dark:bg-muted dark:text-muted-foreground dark:border-border",
-    hoverShadow: "hover:shadow-[0_12px_32px_rgba(247,233,108,0.18)]",
+    topBar: "bg-[#FFD54D]",
+    leftBar: "bg-[#FFD54D]",
+    ring: "border-[#FFD54D]/55 hover:border-[#FFD54D]/85 dark:border-[#FFD54D]/35 dark:hover:border-[#FFD54D]/65",
+    badge: "bg-[#FFD54D]/20 text-[#B8860B] border-[#FFD54D]/50 dark:bg-[#FFD54D]/20 dark:text-[#FFD54D] dark:border-[#FFD54D]/40",
+    label: "Built", dot: "bg-[#FFD54D]", pulse: false,
+    envPill: "bg-muted/50 text-muted-foreground border-border dark:bg-muted/30 dark:text-muted-foreground dark:border-border",
+    hoverShadow: "hover:shadow-[0_12px_32px_rgba(255,213,77,0.18)]",
   };
 }
 
 function ttlCls(r: number | null) {
   if (r === null) return "";
-  if (r <= 7) return "bg-[#F16E6B]/15 text-[#C43D3A] border-[#F16E6B]/40 dark:bg-[#F16E6B]/15 dark:text-[#F16E6B] dark:border-[#F16E6B]/30";
-  return "bg-primary/10 text-primary border-primary/30 dark:bg-primary/15 dark:text-primary dark:border-primary/30";
+  if (r <= 7) return "bg-[#EF7A6E]/15 text-[#EF7A6E] border-[#EF7A6E]/40 dark:bg-[#EF7A6E]/15 dark:text-[#EF7A6E] dark:border-[#EF7A6E]/30";
+  return "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/15 dark:text-[#55C5E2] dark:border-[#55C5E2]/30";
 }
 
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
@@ -194,8 +194,8 @@ const EntityIcon = memo(function EntityIcon({
   return (
     <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg
       ${item_type === "agent"
-        ? "bg-gradient-to-br from-[#55C5E2] to-[#5F27CD]"
-        : "bg-gradient-to-br from-[#55C5E2] to-[#5F27CD]"}`}>
+        ? "bg-gradient-to-br from-sky-500 to-blue-600"
+        : "bg-gradient-to-br from-violet-500 to-purple-600"}`}>
       {item_type === "agent"
         ? <Zap size={iconSz} className="text-white" />
         : <Blocks size={iconSz} className="text-white" />}
@@ -212,8 +212,8 @@ const ItemCard = memo(function ItemCard({
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
   const isAgent = item.item_type === "agent";
-  const iconGradient = "from-[#55C5E2] to-[#5F27CD]";
-  const hoverGlow = "hover:shadow-[0_20px_60px_rgba(95,39,205,0.22)]";
+  const iconGradient = isAgent ? "from-[#55C5E2] to-[#5F27CD]" : "from-[#5F27CD] to-[#55C5E2]";
+  const hoverGlow = "hover:shadow-[0_20px_60px_rgba(85,197,226,0.22)]";
 
   return (
     <motion.div
@@ -238,7 +238,7 @@ const ItemCard = memo(function ItemCard({
           <img src={item.icon} alt="icon"
             className="w-10 h-10 rounded-xl object-cover border border-border/30 shadow-lg mb-3 shrink-0" />
         ) : (
-          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${iconGradient} flex items-center justify-center shadow-lg mb-3 shrink-0 text-white`}>
+          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${iconGradient} flex items-center justify-center shadow-lg mb-3 shrink-0`}>
             {isAgent ? <Zap className="w-5 h-5 text-white" /> : <Blocks className="w-5 h-5 text-white" />}
           </div>
         )}
@@ -292,7 +292,7 @@ const ItemCard = memo(function ItemCard({
           </div>
         ) : item.deployment_status === "DEPLOYED" && item.environment === "release" ? (
           <div className="mt-3">
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border bg-[#28B880]/15 text-[#166F4D] border-[#28B880]/40 dark:bg-[#28B880]/15 dark:text-[#28B880] dark:border-[#28B880]/30">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border bg-[#20B888]/15 text-[#20B888] border-[#20B888]/40 dark:bg-[#20B888]/15 dark:text-[#20B888] dark:border-[#20B888]/30">
               <Sparkles size={9} /> Persistent · No expiry
             </span>
           </div>
@@ -310,12 +310,12 @@ const ItemCard = memo(function ItemCard({
       <div className="border-t border-border/40 px-6 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <Activity size={11} className="text-primary/80" />
+            <Activity size={11} className="text-[#55C5E2]" />
             <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
             calls
           </span>
           <span className="flex items-center gap-1.5">
-            <Users size={11} className="text-success/80" />
+            <Users size={11} className="text-[#20B888]" />
             <span className="font-semibold text-foreground">{item.unique_users}</span>
             users
           </span>
@@ -373,11 +373,11 @@ function StatusLegend({
   };
 
   const filters: { key: StatusFilter; dot: string; label: string }[] = [
-    { key: "all",      dot: "bg-muted-foreground/60",  label: "All" },
-    { key: "built",    dot: "bg-[#F7E96C]",            label: "Built" },
-    { key: "deployed", dot: "bg-[#5F27CD]",           label: "Dev Deployed" },
-    { key: "expiring", dot: "bg-[#F16E6B] animate-pulse", label: "Expiring" },
-    { key: "release",  dot: "bg-[#28B880]",            label: "Release" },
+    { key: "all",      dot: "bg-[#A8A3AD]",           label: "All" },
+    { key: "built",    dot: "bg-[#FFD54D]",            label: "Built" },
+    { key: "deployed", dot: "bg-[#55C5E2]",            label: "Dev Deployed" },
+    { key: "expiring", dot: "bg-[#EF7A6E] animate-pulse", label: "Expiring" },
+    { key: "release",  dot: "bg-[#20B888]",            label: "Release" },
   ];
 
   return (
@@ -1366,7 +1366,7 @@ export default function Marketplace() {
               </div>
             )}
             {callError && (
-              <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-500/10 border border-red-300/80 dark:border-red-500/20 rounded-xl p-3">
+              <div className="flex items-start gap-2 text-sm text-[#EF7A6E] bg-[#EF7A6E]/10 border border-[#EF7A6E]/30 dark:bg-[#EF7A6E]/10 dark:text-[#EF7A6E] dark:border-[#EF7A6E]/20 rounded-xl p-3">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>{callError}</span>
               </div>
