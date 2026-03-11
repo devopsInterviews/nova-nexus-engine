@@ -6,96 +6,85 @@
 
 @layer base {
   :root {
-    /* Company UI/UX palette - Primary */
-    /* Main gradient: #55C5E2 → #5F27CD (Button regular); Hover: #36B1D1 → #4B0DC5 */
-    --primary: 192 72% 61%;           /* #55C5E2 - Solid primary / gradient start */
-    --primary-foreground: 0 0% 100%; /* White text on primary buttons */
-    --primary-glow: 192 72% 68%;
-    --primary-end: 263 68% 48%;      /* #5F27CD - Gradient end (purple) */
-    --primary-hover-start: 192 61% 52%;  /* #36B1D1 */
-    --primary-hover-end: 263 88% 41%;    /* #4B0DC5 */
-
-    /* Secondary - purple end of gradient, used for accents */
-    --secondary: 263 68% 48%;        /* #5F27CD */
+    /* Base Colors - Default Light Mode */
+    --background: 210 40% 98%;
+    --foreground: 220 27% 5%;
+    
+    --surface: 210 40% 96%;
+    --surface-elevated: 210 40% 94%;
+    
+    /* Glass Morphism */
+    --glass: 210 40% 96% / 0.8;
+    --glass-border: 220 40% 60% / 0.2;
+    
+    /* Primary - Company palette #55C5E2 (solid) → gradient to #5F27CD */
+    --primary: 193 72% 61%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 193 72% 65%;
+    --primary-hover: 258 90% 45%;
+    
+    /* Secondary - Company purple for buttons/links #5F27CD */
+    --secondary: 263 68% 48%;
     --secondary-foreground: 0 0% 100%;
     --secondary-glow: 263 68% 55%;
-
-    /* Accent - same as primary for consistency */
-    --accent: 192 72% 61%;           /* #55C5E2 */
-    --accent-foreground: 245 37% 16%;
-    --accent-glow: 192 72% 68%;
-
-    /* Status colors (palette) */
-    --success: 160 72% 45%;          /* #20C88B - Deployed */
+    
+    /* Accent - Align with primary highlight #55C5E2 */
+    --accent: 193 72% 61%;
+    --accent-foreground: 220 27% 5%;
+    --accent-glow: 193 72% 65%;
+    
+    /* Success - Company #28B880 */
+    --success: 158 64% 44%;
     --success-foreground: 0 0% 100%;
-    --warning: 32 100% 65%;          /* #FFB04C */
-    --warning-foreground: 245 37% 16%;
-    --destructive: 348 100% 69%;    /* #FF6181 - Error / Expiring */
+    
+    /* Warning - Company #FF924C */
+    --warning: 24 100% 65%;
+    --warning-foreground: 220 27% 5%;
+    
+    /* Destructive / Error - Company #F16E6B */
+    --destructive: 1 83% 68%;
     --destructive-foreground: 0 0% 100%;
-    --marketplace-error: 10 100% 65%; /* #FF704C - Marketplace Error (yellow-orange) */
-    --information: 192 72% 61%;     /* #55C5E2 */
-
-    /* BG colors */
-    --background: 220 33% 98%;       /* #F7F9FC - Full BG */
-    --foreground: 245 37% 16%;       /* #1D1A39 - Text primary */
-    --surface: 220 33% 97%;
-    --surface-elevated: 220 33% 95%;
-    --dialog-bg: 198 44% 92%;       /* #E2F0F5 - Default dialog/modal BG */
-    --top-bg: 0 0% 100%;             /* #FFFFFF - Top BG */
-
-    /* Glass Morphism */
-    --glass: 220 33% 97% / 0.8;
-    --glass-border: 283 10% 66% / 0.2;  /* #ADA1B0 divider */
-
-    /* Text */
-    --text-header: 192 72% 61%;      /* #55C5E2 */
-    --text-secondary: 305 11% 37%;   /* #695567 */
-    --text-link: 192 72% 61%;
-    --text-link-hover: 233 61% 43%;  /* #2B37B1 */
-    --text-disabled: 183 15% 73%;    /* #AEC4C5 */
-
+    
     /* Muted */
-    --muted: 220 33% 92%;
-    --muted-foreground: 305 11% 37%;  /* #695567 - same as text secondary */
-
-    /* Elements */
-    --divider: 283 10% 66%;          /* #ADA1B0 */
-    --input-line: 200 5% 79%;       /* #C5CACO */
-
-    /* Icons on bright BG */
-    --icon-normal: 231 7% 66%;       /* #A2A4AE */
-    --icon-hover: 195 13% 75%;      /* #B5C3C7 */
-    --icon-disabled: 15 6% 67%;      /* #B1A8A6 */
-
+    --muted: 210 40% 90%;
+    --muted-foreground: 220 15% 35%;
+    
     /* Card */
     --card: var(--surface);
     --card-foreground: var(--foreground);
-
+    
     /* Popover */
     --popover: var(--surface-elevated);
     --popover-foreground: var(--foreground);
-
-    /* Borders */
-    --border: 283 10% 66%;           /* #ADA1B0 divider */
+    
+    /* Borders - Company divider #ADACA0, input line #9C9A9D */
+    --border: 220 30% 80%;
+    --divider: 55 6% 65%;
+    --input-line: 270 1% 61%;
     --border-glow: var(--primary) / 0.3;
-
+    
+    /* Marketplace status - Company palette */
+    --marketplace-deployed: 158 64% 44%;
+    --marketplace-warning: 24 100% 65%;
+    --marketplace-draft: 55 90% 70%;
+    --marketplace-expiring: 1 83% 68%;
+    
     /* Inputs */
     --input: var(--surface-elevated);
     --ring: var(--primary);
-
-    /* Gradients - Button regular #55C5E2 → #5F27CD; Hover #36B1D1 → #4B0DC5 */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-end)) 100%);
-    --gradient-primary-hover: linear-gradient(135deg, hsl(var(--primary-hover-start)) 0%, hsl(var(--primary-hover-end)) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary-end)) 100%);
-    --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(245 37% 16% / 0.15) 100%);
-    --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.25), transparent 50%),
-                     radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-end) / 0.15), transparent 50%),
-                     radial-gradient(ellipse 60% 40% at 20% 100%, hsl(var(--primary) / 0.15), transparent 50%);
-
+    
+    /* Gradients - Company primary #55C5E2 to #5F27CD */
+    --gradient-primary: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%);
+    --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(220 25% 12% / 0.4) 100%);
+    --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.3), transparent 50%), 
+                     radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--secondary) / 0.2), transparent 50%),
+                     radial-gradient(ellipse 60% 40% at 20% 100%, hsl(var(--accent) / 0.2), transparent 50%);
+    
     /* Shadows */
-    --shadow-glow: 0 0 20px hsl(var(--primary) / 0.25), 0 0 40px hsl(var(--primary) / 0.08);
-    --shadow-card: 0 8px 32px hsl(245 37% 16% / 0.08), 0 2px 8px hsl(245 37% 16% / 0.06);
-    --shadow-elevated: 0 16px 64px hsl(245 37% 16% / 0.12), 0 4px 16px hsl(245 37% 16% / 0.08);
+    --shadow-glow: 0 0 20px hsl(var(--primary) / 0.3), 0 0 40px hsl(var(--primary) / 0.1);
+    --shadow-card: 0 8px 32px hsl(220 40% 2% / 0.3), 0 2px 8px hsl(220 40% 2% / 0.2);
+    --shadow-elevated: 0 16px 64px hsl(220 40% 2% / 0.4), 0 4px 16px hsl(220 40% 2% / 0.3);
     
     /* Animations */
     --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -115,32 +104,34 @@
   }
 
   .dark {
-    /* Dark Mode - same palette, darker surfaces */
-    --background: 245 37% 8%;
-    --foreground: 220 33% 98%;
-    --surface: 245 37% 10%;
-    --surface-elevated: 245 37% 14%;
-    --glass: 245 37% 10% / 0.6;
-    --glass-border: 283 10% 30% / 0.3;
-    --muted: 245 25% 18%;
-    --muted-foreground: 305 11% 65%;
-    --border: 283 10% 28%;
-    --primary-foreground: 0 0% 100%;
-    --success: 160 72% 50%;
-    --success-foreground: 245 37% 8%;
+    /* Dark Mode - Override for dark theme */
+    --background: 220 27% 5%;
+    --foreground: 210 40% 98%;
+    --surface: 220 25% 8%;
+    --surface-elevated: 220 23% 12%;
+    --glass: 220 25% 8% / 0.6;
+    --glass-border: 220 40% 40% / 0.2;
+    --muted: 220 20% 20%;
+    --muted-foreground: 220 15% 65%;
+    --border: 220 30% 25%;
+    /* Primary foreground must be white in dark mode so active tabs/buttons are legible */
+    --primary-foreground: 210 40% 98%;
+    /* Company success in dark */
+    --success: 158 64% 44%;
+    --success-foreground: 0 0% 100%;
   }
 
   .light {
-    /* Light Mode - company palette (default) */
-    --background: 220 33% 98%;
-    --foreground: 245 37% 16%;
-    --surface: 220 33% 97%;
-    --surface-elevated: 220 33% 95%;
-    --muted: 220 33% 92%;
-    --muted-foreground: 305 11% 37%;
-    --border: 283 10% 66%;
-    --glass: 220 33% 97% / 0.8;
-    --glass-border: 283 10% 66% / 0.2;
+    /* Light Mode - Explicitly ensure light mode (already defaults to this) */
+    --background: 210 40% 98%;
+    --foreground: 220 27% 5%;
+    --surface: 210 40% 96%;
+    --surface-elevated: 210 40% 94%;
+    --muted: 210 40% 90%;
+    --muted-foreground: 220 15% 35%;
+    --border: 220 30% 80%;
+    --glass: 210 40% 96% / 0.8;
+    --glass-border: 220 40% 60% / 0.2;
   }
 }
 

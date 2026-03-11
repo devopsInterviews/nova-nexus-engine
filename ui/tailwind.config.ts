@@ -31,8 +31,13 @@ export default {
 				primary: {
 					DEFAULT: 'hsl(var(--primary))',
 					foreground: 'hsl(var(--primary-foreground))',
-					glow: 'hsl(var(--primary-glow))'
+					glow: 'hsl(var(--primary-glow))',
+					hover: 'hsl(var(--primary-hover))'
 				},
+				'marketplace-deployed': 'hsl(var(--marketplace-deployed))',
+				'marketplace-warning': 'hsl(var(--marketplace-warning))',
+				'marketplace-draft': 'hsl(var(--marketplace-draft))',
+				'marketplace-expiring': 'hsl(var(--marketplace-expiring))',
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',
 					foreground: 'hsl(var(--secondary-foreground))',
@@ -55,8 +60,6 @@ export default {
 					DEFAULT: 'hsl(var(--destructive))',
 					foreground: 'hsl(var(--destructive-foreground))'
 				},
-				'marketplace-error': 'hsl(var(--marketplace-error))',
-				dialog: 'hsl(var(--dialog-bg))',
 				muted: {
 					DEFAULT: 'hsl(var(--muted))',
 					foreground: 'hsl(var(--muted-foreground))'
@@ -82,7 +85,6 @@ export default {
 			},
 			backgroundImage: {
 				'gradient-primary': 'var(--gradient-primary)',
-				'gradient-primary-hover': 'var(--gradient-primary-hover)',
 				'gradient-accent': 'var(--gradient-accent)',
 				'gradient-glass': 'var(--gradient-glass)',
 				'gradient-hero': 'var(--gradient-hero)'

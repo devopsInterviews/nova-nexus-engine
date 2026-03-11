@@ -68,8 +68,8 @@ import { useAuth } from "@/context/auth-context";
  */
 const statusVariants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string; color: string }> = {
   NEW: { variant: "secondary", label: "Not Deployed", color: "" },
-  DEPLOYING: { variant: "default", label: "Deploying...", color: "bg-yellow-500" },
-  DEPLOYED: { variant: "default", label: "Running", color: "bg-green-500" },
+  DEPLOYING: { variant: "default", label: "Deploying...", color: "bg-warning" },
+  DEPLOYED: { variant: "default", label: "Running", color: "bg-success" },
   ERROR: { variant: "destructive", label: "Error", color: "" },
   UNDEPLOYED: { variant: "secondary", label: "Undeployed", color: "" },
   NOT_CONFIGURED: { variant: "outline", label: "Not Configured", color: "" },

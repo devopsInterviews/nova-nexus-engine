@@ -21,9 +21,9 @@ interface StatusCardProps {
 
 const statusColors = {
   success: "text-success border-success/30 bg-success/10 dark:border-success/20 dark:bg-success/5",
-  warning: "text-warning border-warning/30 bg-warning/10",
-  error: "text-destructive border-destructive/30 bg-destructive/10",
-  info: "text-primary border-primary/30 bg-primary/10",
+  warning: "text-warning border-warning/20 bg-warning/5",
+  error: "text-destructive border-destructive/20 bg-destructive/5",
+  info: "text-primary border-primary/20 bg-primary/5",
 };
 
 export function StatusCard({

@@ -763,20 +763,20 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                     {validation.isValid && validation.format && !validation.isDamaged && (
                       <div className={`rounded-lg p-3 border ${
                         validation.format.type === 'manifest' 
-                          ? 'bg-blue-50/30 border-blue-200/50' 
+                          ? 'bg-primary/10 border-primary/30' 
                           : validation.format.type === 'tree' 
-                          ? 'bg-green-50/30 border-green-200/50' 
+                          ? 'bg-success/10 border-success/30' 
                           : 'bg-gray-50/30 border-gray-200/50'
                       }`}>
                         <div className="flex items-center gap-2 mb-2">
                           <div className={`w-2 h-2 rounded-full ${
-                            validation.format.type === 'manifest' ? 'bg-blue-500' 
-                            : validation.format.type === 'tree' ? 'bg-green-500' 
+                            validation.format.type === 'manifest' ? 'bg-primary' 
+                            : validation.format.type === 'tree' ? 'bg-success' 
                             : 'bg-gray-500'
                           }`} />
                           <span className={`text-sm font-medium ${
-                            validation.format.type === 'manifest' ? 'text-blue-700' 
-                            : validation.format.type === 'tree' ? 'text-green-700' 
+                            validation.format.type === 'manifest' ? 'text-primary' 
+                            : validation.format.type === 'tree' ? 'text-success' 
                             : 'text-gray-700'
                           }`}>
                             {validation.format.type === 'manifest' ? 'Raw dbt Manifest' 
@@ -858,10 +858,10 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                     return (
                       <div className="space-y-4">
                         {isProcessedContent && (
-                          <div className="bg-blue-50/30 border border-blue-200/50 rounded-lg p-3">
+                          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-2">
-                              <div className="w-2 h-2 rounded-full bg-blue-500" />
-                              <span className="text-sm font-medium text-blue-700">Preview: Actual Processed Tree Format</span>
+                              <div className="w-2 h-2 rounded-full bg-primary" />
+                              <span className="text-sm font-medium text-primary">Preview: Actual Processed Tree Format</span>
                             </div>
                             <p className="text-sm text-muted-foreground">
                               This shows the actual tree format that will be used for analysis, with relations array, depth calculations, and tree structure.
@@ -944,25 +944,25 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Code2 className="w-5 h-5 text-primary" />
-            <Brain className="w-5 h-5 text-blue-500" />
+            <Brain className="w-5 h-5 text-primary" />
             AI-Powered SQL Builder with dbt Integration
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Feature Description */}
-          <div className="bg-gradient-to-r from-blue-50/20 to-purple-50/20 rounded-lg p-4 border border-blue-200/30">
+          <div className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-lg p-4 border border-primary/20">
             <div className="flex items-start gap-3">
-              <div className="p-2 bg-blue-100/50 rounded-lg">
-                <Brain className="w-5 h-5 text-blue-600" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Brain className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h4 className="font-medium text-blue-900 mb-2">Smart dbt-Aware Analysis</h4>
-                <p className="text-sm text-blue-700 leading-relaxed mb-3">
+                <h4 className="font-medium text-foreground mb-2">Smart dbt-Aware Analysis</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-3">
                   This AI-powered feature intelligently analyzes your dbt file structure and builds optimal SQL queries. 
                   When a dbt file is uploaded, it automatically performs iterative depth-based analysis, starting from the most detailed tables 
                   and working toward higher-level aggregations until the AI finds the perfect scope for your query.
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-blue-600">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-primary">
                   <div className="space-y-1">
                     <div><strong>Without dbt file:</strong></div>
                     <div>• Standard AI SQL generation</div>
@@ -1029,14 +1029,14 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
           {/* dbt File Status and Action Buttons */}
           <div className="space-y-4">
             {selectedFile ? (
-              <div className="text-sm text-green-600 bg-green-50/50 rounded-lg p-3 border border-green-200/50">
+              <div className="text-sm text-success bg-success/10 rounded-lg p-3 border border-success/30">
                 ✅ <strong>dbt file loaded:</strong> {selectedFile.name} - Will use iterative depth-based analysis ({(() => {
                   const validation = validateDbtContent(selectedFile.content);
                   return validation.summary;
                 })()})
               </div>
             ) : (
-              <div className="text-sm text-blue-600 bg-blue-50/50 rounded-lg p-3 border border-blue-200/50">
+              <div className="text-sm text-primary bg-primary/10 rounded-lg p-3 border border-primary/30">
                 ℹ️ <strong>No dbt file:</strong> Will use standard AI SQL generation with database schema analysis
               </div>
             )}
@@ -1049,7 +1049,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                   
                   return (
                     <Button 
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
+                      className="bg-gradient-primary hover:opacity-90 text-primary-foreground flex items-center gap-2"
                       onClick={handleIterativeAnalysis}
                       disabled={isIterativeLoading || isLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim() || !isFileValid}
                       title={!isFileValid ? "Cannot analyze - file is damaged or in unsupported format" : undefined}
@@ -1082,7 +1082,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
               )}
               
               {(isLoading || isIterativeLoading) && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
+                <div className="flex items-center gap-2 text-sm text-primary">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {selectedFile 
                     ? "AI is analyzing dbt depths and building optimal queries..."
@@ -1118,26 +1118,26 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
         <>
           {/* Success Summary */}
           {iterativeResult.status === 'success' && (
-            <Card className="glass border-border/50 bg-gradient-to-br from-green-50/10 to-blue-50/10 border-green-500/20">
+            <Card className="glass border-border/50 bg-gradient-to-br from-success/5 to-primary/5 border-success/20">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-700">
+                <CardTitle className="flex items-center gap-2 text-success">
                   <CheckCircle2 className="w-5 h-5" />
                   Iterative Analysis Complete
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                  <div className="bg-green-50/50 rounded-lg p-3 border border-green-200/50">
-                    <div className="text-sm text-green-600 font-medium">Final Depth</div>
-                    <div className="text-lg font-bold text-green-800">{iterativeResult.final_depth}</div>
+                  <div className="bg-success/10 rounded-lg p-3 border border-success/30">
+                    <div className="text-sm text-success font-medium">Final Depth</div>
+                    <div className="text-lg font-bold text-success">{iterativeResult.final_depth}</div>
                   </div>
-                  <div className="bg-blue-50/50 rounded-lg p-3 border border-blue-200/50">
-                    <div className="text-sm text-blue-600 font-medium">Iterations</div>
-                    <div className="text-lg font-bold text-blue-800">{iterativeResult.iteration_count}</div>
+                  <div className="bg-primary/10 rounded-lg p-3 border border-primary/30">
+                    <div className="text-sm text-primary font-medium">Iterations</div>
+                    <div className="text-lg font-bold text-primary">{iterativeResult.iteration_count}</div>
                   </div>
-                  <div className="bg-purple-50/50 rounded-lg p-3 border border-purple-200/50">
-                    <div className="text-sm text-purple-600 font-medium">Tables Used</div>
-                    <div className="text-lg font-bold text-purple-800">{iterativeResult.tables_used?.length || 0}</div>
+                  <div className="bg-secondary/10 rounded-lg p-3 border border-secondary/30">
+                    <div className="text-sm text-secondary font-medium">Tables Used</div>
+                    <div className="text-lg font-bold text-secondary">{iterativeResult.tables_used?.length || 0}</div>
                   </div>
                   <div className="bg-orange-50/50 rounded-lg p-3 border border-orange-200/50">
                     <div className="text-sm text-orange-600 font-medium">Results</div>
@@ -1146,13 +1146,13 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                 </div>
 
                 {iterativeResult.tables_used && iterativeResult.tables_used.length > 0 && (
-                  <div className="bg-blue-50/30 rounded-lg p-3 border border-blue-200/30">
-                    <div className="text-sm text-blue-700 font-medium mb-2">Tables Selected by AI:</div>
+                  <div className="bg-primary/10 rounded-lg p-3 border border-primary/20">
+                    <div className="text-sm text-primary font-medium mb-2">Tables Selected by AI:</div>
                     <div className="flex flex-wrap gap-1">
                       {iterativeResult.tables_used.map((table, index) => (
                         <span 
                           key={index}
-                          className="px-2 py-1 bg-blue-100/70 text-blue-800 text-xs rounded-md border border-blue-200/50"
+                          className="px-2 py-1 bg-primary/15 text-primary text-xs rounded-md border border-primary/30"
                         >
                           {table}
                         </span>
@@ -1193,7 +1193,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                         key={index}
                         className={`border rounded-lg p-4 ${
                           logEntry.ai_decision === 'yes' 
-                            ? 'bg-green-50/30 border-green-200/50' 
+                            ? 'bg-success/10 border-success/30' 
                             : 'bg-orange-50/30 border-orange-200/50'
                         }`}
                       >
@@ -1201,7 +1201,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                           <div className="flex items-center gap-2">
                             <span className={`px-2 py-1 rounded-md text-xs font-medium ${
                               logEntry.ai_decision === 'yes' 
-                                ? 'bg-green-100 text-green-800' 
+                                ? 'bg-success/15 text-success' 
                                 : 'bg-orange-100 text-orange-800'
                             }`}>
                               Depth {logEntry.depth}
@@ -1211,7 +1211,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                             </span>
                           </div>
                           <div className={`flex items-center gap-1 text-sm font-medium ${
-                            logEntry.ai_decision === 'yes' ? 'text-green-700' : 'text-orange-700'
+                            logEntry.ai_decision === 'yes' ? 'text-success' : 'text-warning'
                           }`}>
                             {logEntry.ai_decision === 'yes' ? '✅ Sufficient' : '❌ Insufficient'}
                           </div>

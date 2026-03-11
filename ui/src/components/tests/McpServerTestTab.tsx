@@ -424,7 +424,7 @@ export const McpServerTestTab = () => {
                 <button
                   onClick={connectToMcpServer}
                   disabled={isConnecting || !customMcpUrl}
-                  className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 disabled:bg-gray-400"
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm font-medium hover:bg-primary-hover disabled:bg-muted disabled:text-muted-foreground"
                 >
                   {isConnecting ? "Connecting..." : "Connect"}
                 </button>
@@ -509,7 +509,7 @@ export const McpServerTestTab = () => {
                       {selectedToolInfo.parameters.map((param) => (
                         <div key={param.name} className="text-xs">
                           <span className={`inline-block px-2 py-1 rounded text-xs mr-2 ${
-                            param.required ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
+                            param.required ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
                           }`}>
                             {param.name}
                           </span>
@@ -534,7 +534,7 @@ export const McpServerTestTab = () => {
             <h4 className="font-medium">3. Configure Parameters</h4>
             <button
               onClick={addParameter}
-              className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+              className="px-3 py-1 bg-primary text-primary-foreground rounded text-sm hover:bg-primary-hover"
             >
               + Add Parameter
             </button>
@@ -577,7 +577,7 @@ export const McpServerTestTab = () => {
               <button 
                 onClick={executeTool} 
                 disabled={loading || !selectedTool}
-                className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-lg shadow-lg hover:from-green-600 hover:to-green-700 hover:shadow-xl disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
+                className="w-full px-6 py-3 bg-gradient-primary text-primary-foreground font-medium rounded-lg shadow-lg hover:opacity-90 disabled:from-muted disabled:to-muted disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
               >
                 {loading ? (
                   <div className="flex items-center justify-center space-x-2">
@@ -608,7 +608,7 @@ export const McpServerTestTab = () => {
             <button 
               onClick={saveTest} 
               disabled={!testName}
-              className="px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg shadow-md hover:from-blue-600 hover:to-blue-700 hover:shadow-lg disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
+              className="px-6 py-2 bg-gradient-primary text-primary-foreground font-medium rounded-lg shadow-md hover:opacity-90 disabled:from-muted disabled:to-muted disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
             >
               <div className="flex items-center space-x-2">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -629,7 +629,7 @@ export const McpServerTestTab = () => {
           <div className="space-y-4">
             <div className="flex items-center space-x-4">
               <span className={`inline-block px-2 py-1 rounded text-xs ${
-                response.status === "success" ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
+                response.status === "success" ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
               }`}>
                 {response.status}
               </span>
@@ -677,7 +677,7 @@ export const McpServerTestTab = () => {
                   </button>
                   <button 
                     onClick={() => deleteTest(test.id)}
-                    className="inline-flex items-center space-x-2 px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium rounded-lg shadow-md hover:bg-destructive/90 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
+                    className="inline-flex items-center space-x-2 px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium rounded-lg shadow-md hover:bg-destructive/90 transform hover:scale-105 transition-all duration-200"
                   >
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd"/>
