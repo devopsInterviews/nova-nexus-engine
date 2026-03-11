@@ -76,11 +76,22 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				}
+				},
+				/* Company palette — text & elements */
+				header: 'hsl(var(--header))',
+				link: 'hsl(var(--link))',
+				divider: 'hsl(var(--divider))',
+				info: 'hsl(var(--info))',
+				/* Marketplace status (use for badges/top bars) */
+				'status-deployed': 'hsl(var(--status-deployed))',
+				'status-warning': 'hsl(var(--status-warning))',
+				'status-error': 'hsl(var(--status-error))',
+				'status-expiring': 'hsl(var(--status-expiring))'
 			},
 			backgroundImage: {
 				'gradient-primary': 'var(--gradient-primary)',
 				'gradient-accent': 'var(--gradient-accent)',
+				'gradient-button-hover': 'var(--gradient-button-hover)',
 				'gradient-glass': 'var(--gradient-glass)',
 				'gradient-hero': 'var(--gradient-hero)'
 			},
