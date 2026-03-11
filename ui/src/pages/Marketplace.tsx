@@ -246,10 +246,9 @@ const ItemCard = memo(function ItemCard({
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
-      {/* Main content — coloring only inside the card per design */}
+      {/* Main content — primary color topping inside card (same as primary button, per index.html) */}
       <div className="p-6 flex-1 flex flex-col">
-        {/* Colored topping inside card only (per design — not on frame) */}
-        <div className={`h-1 w-full ${st.topBar} rounded-md mb-3 shrink-0`} />
+        <div className="h-1 w-full bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] rounded-md mb-3 shrink-0" />
 
         {/* Icon */}
         {item.icon ? (
