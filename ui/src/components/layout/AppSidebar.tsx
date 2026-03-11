@@ -268,7 +268,7 @@ export function AppSidebar() {
         >
           {open ? (
             <div className="flex flex-col items-center gap-1.5 text-center">
-              <CompanyLogo size={40} />
+              <CompanyLogo size={120} />
               <p className="text-xs font-semibold text-foreground/80 leading-tight">AI Portal</p>
               <p className="text-[10px] text-muted-foreground/60">
                 {appConfig.environment.toUpperCase()} · v{appConfig.version}
@@ -278,7 +278,7 @@ export function AppSidebar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="cursor-default">
-                  <CompanyLogo size={28} />
+                  <CompanyLogo size={84} />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs">

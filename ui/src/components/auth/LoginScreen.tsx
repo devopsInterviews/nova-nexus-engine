@@ -327,10 +327,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 </Button>
               </div>
               <p className="text-muted-foreground mb-4">
-                A powerful Model Context Protocol management interface designed for the future of AI interactions.
+                A unified AI ecosystem for building and managing Agents, connecting LLMs, running analytics, automating DevOps workflows, and deploying infrastructure — all from a single platform.
               </p>
               <p className="text-sm text-muted-foreground">
-                Built with modern web technologies and cyberpunk aesthetics.
+                Integrates with your internal tools, MCP servers, BI pipelines, and Kubernetes clusters to bring AI-powered capabilities directly into your engineering and operations workflows.
               </p>
             </motion.div>
           </motion.div>
