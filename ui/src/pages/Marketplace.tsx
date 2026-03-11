@@ -124,26 +124,28 @@ function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> 
   return "deployed";
 }
 
-/* Company palette: Deployed #20A08B, Warning #F79D4C, Error #FFD06C, Expiring #F15C5C, Primary gradient for Dev Deployed */
+/* Company palette: Deployed #20C88B, Warning #FFB04C, Error #FF704C, Expiring #FF6181, Primary gradient #55C5E2 → #5F27CD */
 function getItemStyle(item: MarketplaceItem) {
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
-        topBar: "bg-status-deployed",
-        leftBar: "bg-status-deployed",
-        badge: "bg-success/15 text-success border-success/40 dark:bg-success/20 dark:text-success dark:border-success/40",
-        label: "Release", dot: "bg-status-deployed", pulse: true,
-        envPill: "bg-accent/15 text-accent border-accent/40 dark:bg-accent/20 dark:text-accent dark:border-accent/40",
+        topBar: "bg-success",
+        leftBar: "bg-success",
+        ring: "border-border hover:border-muted-foreground/30",
+        badge: "bg-success/15 text-success border-success/50 dark:bg-success/20 dark:text-success dark:border-success/40",
+        label: "Release", dot: "bg-success", pulse: true,
+        envPill: "bg-primary/10 text-foreground border-primary/30 dark:bg-primary/20 dark:border-primary/40",
         hoverShadow: "hover:shadow-card",
       };
     }
     const r = item.ttl_remaining_days;
     if (r !== null && r <= 7) {
       return {
-        topBar: "bg-status-expiring",
-        leftBar: "bg-status-expiring",
-        badge: "bg-status-expiring/15 text-status-expiring border-status-expiring/40 dark:bg-status-expiring/20 dark:text-status-expiring dark:border-status-expiring/40",
-        label: "Expiring", dot: "bg-status-expiring animate-pulse", pulse: true,
+        topBar: "bg-destructive",
+        leftBar: "bg-destructive",
+        ring: "border-border hover:border-muted-foreground/30",
+        badge: "bg-destructive/15 text-destructive border-destructive/50 dark:bg-destructive/20 dark:text-destructive dark:border-destructive/40",
+        label: "Expiring", dot: "bg-destructive animate-pulse", pulse: true,
         envPill: "bg-warning/15 text-warning border-warning/40 dark:bg-warning/20 dark:text-warning dark:border-warning/40",
         hoverShadow: "hover:shadow-card",
       };
@@ -151,26 +153,28 @@ function getItemStyle(item: MarketplaceItem) {
     return {
       topBar: "bg-gradient-primary",
       leftBar: "bg-primary",
-      badge: "bg-primary/15 text-primary border-primary/40 dark:bg-primary/20 dark:text-primary-foreground dark:border-primary/40",
+      ring: "border-border hover:border-muted-foreground/30",
+      badge: "bg-primary/15 text-foreground border-primary/40 dark:bg-primary/20 dark:text-foreground dark:border-primary/40",
       label: "Dev Deployed", dot: "bg-primary", pulse: true,
-      envPill: "bg-primary/15 text-primary border-primary/40 dark:bg-primary/20 dark:text-primary-foreground dark:border-primary/40",
+      envPill: "bg-primary/10 text-foreground border-primary/30 dark:bg-primary/20 dark:border-primary/40",
       hoverShadow: "hover:shadow-card",
     };
   }
   return {
-    topBar: "bg-status-warning",
-    leftBar: "bg-status-warning",
-    badge: "bg-warning/15 text-warning border-warning/40 dark:bg-warning/20 dark:text-warning dark:border-warning/40",
-    label: "Built", dot: "bg-status-warning", pulse: false,
-    envPill: "bg-muted text-muted-foreground border-border dark:bg-muted dark:text-muted-foreground dark:border-border",
+    topBar: "bg-warning",
+    leftBar: "bg-warning",
+    ring: "border-border hover:border-muted-foreground/30",
+    badge: "bg-warning/15 text-foreground border-warning/40 dark:bg-warning/20 dark:text-foreground dark:border-warning/40",
+    label: "Built", dot: "bg-warning", pulse: false,
+    envPill: "bg-muted text-muted-foreground border-border dark:bg-muted/50 dark:border-border",
     hoverShadow: "hover:shadow-card",
   };
 }
 
 function ttlCls(r: number | null) {
   if (r === null) return "";
-  if (r <= 7) return "bg-status-expiring/15 text-status-expiring border-status-expiring/40 dark:bg-status-expiring/20 dark:text-status-expiring dark:border-status-expiring/40";
-  return "bg-primary/15 text-primary border-primary/40 dark:bg-primary/20 dark:text-primary-foreground dark:border-primary/40";
+  if (r <= 7) return "bg-destructive/15 text-destructive border-destructive/40 dark:bg-destructive/20 dark:text-destructive dark:border-destructive/40";
+  return "bg-primary/15 text-foreground border-primary/40 dark:bg-primary/20 dark:text-foreground dark:border-primary/40";
 }
 
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
@@ -188,13 +192,10 @@ const EntityIcon = memo(function EntityIcon({
     );
   }
   return (
-    <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg
-      ${item_type === "agent"
-        ? "bg-gradient-primary"
-        : "bg-gradient-to-br from-primary to-accent"}`}>
+    <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg bg-gradient-primary`}>
       {item_type === "agent"
-        ? <Zap size={iconSz} className="text-white" />
-        : <Blocks size={iconSz} className="text-white" />}
+        ? <Zap size={iconSz} className="text-primary-foreground" />
+        : <Blocks size={iconSz} className="text-primary-foreground" />}
     </div>
   );
 });
@@ -208,22 +209,22 @@ const ItemCard = memo(function ItemCard({
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
   const isAgent = item.item_type === "agent";
-  const iconGradient = isAgent ? "bg-gradient-primary" : "bg-gradient-to-br from-primary to-accent";
 
   return (
     <motion.div
       role="button" tabIndex={0} onClick={onClick}
       onKeyDown={e => e.key === "Enter" && onClick()}
       className={`
-        relative cursor-pointer rounded-2xl border border-border overflow-hidden flex flex-col bg-card
+        relative cursor-pointer rounded-2xl border ${st.ring} overflow-hidden flex flex-col
         transition-shadow duration-300 ${st.hoverShadow}
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
       `}
+      style={{ background: "hsl(var(--surface) / 0.95)" }}
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
-      {/* Gradient top stripe */}
-      <div className={`h-1 w-full ${st.topBar} rounded-t-2xl`} />
+      {/* Card: only top bar in color (company palette), no full frame */}
+      <div className={`h-2 w-full ${st.topBar} rounded-t-2xl shrink-0`} />
 
       {/* Main content */}
       <div className="p-6 flex-1 flex flex-col">
@@ -232,8 +233,8 @@ const ItemCard = memo(function ItemCard({
           <img src={item.icon} alt="icon"
             className="w-10 h-10 rounded-xl object-cover border border-border/30 shadow-lg mb-3 shrink-0" />
         ) : (
-          <div className={`w-10 h-10 rounded-xl ${iconGradient} flex items-center justify-center shadow-lg mb-3 shrink-0`}>
-            {isAgent ? <Zap className="w-5 h-5 text-white" /> : <Blocks className="w-5 h-5 text-white" />}
+          <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-lg mb-3 shrink-0">
+            {isAgent ? <Zap className="w-5 h-5 text-primary-foreground" /> : <Blocks className="w-5 h-5 text-primary-foreground" />}
           </div>
         )}
 
@@ -304,12 +305,12 @@ const ItemCard = memo(function ItemCard({
       <div className="border-t border-border/40 px-6 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <Activity size={11} className="text-link/80" />
+            <Activity size={11} className="text-primary" />
             <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
             calls
           </span>
           <span className="flex items-center gap-1.5">
-            <Users size={11} className="text-success/80" />
+            <Users size={11} className="text-success" />
             <span className="font-semibold text-foreground">{item.unique_users}</span>
             users
           </span>
@@ -367,11 +368,11 @@ function StatusLegend({
   };
 
   const filters: { key: StatusFilter; dot: string; label: string }[] = [
-    { key: "all",      dot: "bg-divider",                   label: "All" },
-    { key: "built",    dot: "bg-status-warning",             label: "Built" },
-    { key: "deployed", dot: "bg-primary",                    label: "Dev Deployed" },
-    { key: "expiring", dot: "bg-status-expiring animate-pulse", label: "Expiring" },
-    { key: "release",  dot: "bg-status-deployed",            label: "Release" },
+    { key: "all",      dot: "bg-muted-foreground/50",  label: "All" },
+    { key: "built",    dot: "bg-warning",              label: "Built" },
+    { key: "deployed", dot: "bg-primary",              label: "Dev Deployed" },
+    { key: "expiring", dot: "bg-destructive animate-pulse", label: "Expiring" },
+    { key: "release",  dot: "bg-success",               label: "Release" },
   ];
 
   return (
@@ -846,7 +847,7 @@ export default function Marketplace() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="lg" onClick={() => setIsCreateOpen(true)}
-                  className="shrink-0 gap-2 bg-gradient-primary text-primary-foreground border-0 shadow-lg hover:opacity-90 transition-all font-bold">
+                  className="shrink-0 gap-2 bg-gradient-primary text-primary-foreground border-0 shadow-lg shadow-primary/25 hover:bg-gradient-primary-hover hover:opacity-90 transition-all font-bold">
                   <Plus size={17} /> Publish Agent / MCP Server
                 </Button>
               </TooltipTrigger>
@@ -865,7 +866,7 @@ export default function Marketplace() {
             transition={{ duration: 6, repeat: Infinity }}
           />
           <motion.div
-            className="absolute left-1/3 -bottom-8 w-36 h-36 bg-accent/10 rounded-full blur-2xl"
+            className="absolute left-1/3 -bottom-8 w-36 h-36 bg-purple-400/10 rounded-full blur-2xl"
             animate={{ scale: [1.1, 1, 1.1], opacity: [0.2, 0.4, 0.2] }}
             transition={{ duration: 5, repeat: Infinity, delay: 1 }}
           />
@@ -1020,7 +1021,7 @@ export default function Marketplace() {
                         sub={item.chart_version ? `version ${item.chart_version}` : undefined} />
                       <InfoTile label="TTL / Persistence" icon={<Clock size={14} />}
                         value={item.environment === "release" ? "Persistent (no TTL)" : `Dev · ${item.ttl_days ?? config.dev_ttl_days}d TTL`}
-                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-status-expiring" : ""}
+                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-destructive" : ""}
                         sub={item.environment === "release"
                           ? "Release deployments never expire"
                           : item.ttl_remaining_days !== null
@@ -1108,7 +1109,7 @@ export default function Marketplace() {
                           </Button>
                           {item.environment === "dev" && (
                             <Button size="sm" variant="outline"
-                              className="gap-1.5 border-accent/30 text-accent hover:bg-accent hover:text-accent-foreground hover:border-accent"
+                              className="gap-1.5 border-teal-500/30 text-teal-400 hover:bg-teal-600 hover:text-white hover:border-teal-600"
                               onClick={() => handleExtendTTL(item)}>
                               <Clock size={13} /> Extend Life
                             </Button>
@@ -1195,7 +1196,7 @@ export default function Marketplace() {
                     className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
                       deployEnv === env
                         ? env === "dev"
-                          ? "border-primary bg-primary/15 text-primary dark:bg-primary/20 dark:text-primary-foreground"
+                          ? "border-primary bg-primary/15 text-foreground dark:bg-primary/20 dark:text-foreground"
                           : "border-success bg-success/15 text-success dark:bg-success/20 dark:text-success"
                         : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
                     }`}>
@@ -1274,7 +1275,7 @@ export default function Marketplace() {
             {/* Summary */}
             {selectedChart && selectedVersion && (
               <div className={`flex items-start gap-3 p-4 rounded-xl border bg-muted/50 text-sm`}
-                style={{ borderColor: deployEnv === "dev" ? "rgb(139 92 246 / 0.5)" : "rgb(34 197 94 / 0.5)" }}>
+                style={{ borderColor: deployEnv === "dev" ? "hsl(var(--primary) / 0.5)" : "hsl(var(--success) / 0.5)" }}>
                 <div className={`mt-0.5 shrink-0 p-1.5 rounded-lg ${
                   deployEnv === "dev" ? "bg-primary/20 text-primary" : "bg-success/20 text-success"
                 }`}>
@@ -1307,7 +1308,7 @@ export default function Marketplace() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsDeployOpen(false)}>Cancel</Button>
             <Button disabled={!selectedChart || !selectedVersion || deployLoading} onClick={handleDeploy}
-              className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-primary hover:opacity-90 text-primary-foreground" : "bg-success hover:opacity-90 text-success-foreground"}`}>
+              className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-gradient-primary hover:bg-gradient-primary-hover text-primary-foreground" : "bg-success hover:bg-success/90 text-success-foreground"}`}>
               {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
               {deployLoading ? "Working…" : isRedeploy ? "Upgrade" : "Deploy"}
             </Button>
@@ -1336,7 +1337,7 @@ export default function Marketplace() {
                 {callItem.url_to_connect}
               </p>
             ) : (
-              <div className="flex items-center gap-2 text-sm text-warning bg-warning/15 border border-warning/40 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 text-sm text-foreground bg-warning/15 border border-warning/40 rounded-lg px-3 py-2">
                 <AlertTriangle size={14} /> No connection URL — redeploy to assign one.
               </div>
             )}
@@ -1360,7 +1361,7 @@ export default function Marketplace() {
               </div>
             )}
             {callError && (
-              <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/15 border border-destructive/40 rounded-xl p-3">
+              <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/40 rounded-xl p-3">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>{callError}</span>
               </div>
@@ -1419,7 +1420,7 @@ export default function Marketplace() {
                 </span>
               </li>
             </ol>
-            <div className="rounded-lg bg-warning/10 border border-warning/20 px-3 py-2 space-y-1">
+            <div className="rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 space-y-1">
               <p className="text-[11px] font-semibold text-warning">After DevOps responds:</p>
               <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
                 <li>Enter the <strong>Bitbucket repo URL</strong> in the field below and start developing.</li>

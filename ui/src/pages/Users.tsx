@@ -321,8 +321,8 @@ const UsersPage: React.FC = () => {
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs cursor-default ${activeSessionUserIds.has(user.id) ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${activeSessionUserIds.has(user.id) ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs cursor-default ${activeSessionUserIds.has(user.id) ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${activeSessionUserIds.has(user.id) ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
                             {activeSessionUserIds.has(user.id) ? 'Online' : 'Offline'}
                           </span>
                         </TooltipTrigger>

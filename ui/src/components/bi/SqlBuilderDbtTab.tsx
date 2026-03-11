@@ -950,7 +950,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Feature Description */}
-          <div className="bg-primary/5 rounded-lg p-4 border border-primary/20">
+          <div className="bg-gradient-to-r from-blue-50/20 to-purple-50/20 rounded-lg p-4 border border-blue-200/30">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-blue-100/50 rounded-lg">
                 <Brain className="w-5 h-5 text-blue-600" />
@@ -986,7 +986,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
             <div className="space-y-2">
               <label className="text-sm font-medium">
                 Confluence Space
-                {!confluenceSpace.trim() && <span className="text-red-500 ml-1">*</span>}
+                {!confluenceSpace.trim() && <span className="text-destructive ml-1">*</span>}
               </label>
               <Input 
                 placeholder="e.g., DATA, ANALYTICS"
@@ -999,7 +999,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
             <div className="space-y-2">
               <label className="text-sm font-medium">
                 Confluence Title
-                {!confluenceTitle.trim() && <span className="text-red-500 ml-1">*</span>}
+                {!confluenceTitle.trim() && <span className="text-destructive ml-1">*</span>}
               </label>
               <Input 
                 placeholder="e.g., Database Schema Documentation"
@@ -1015,7 +1015,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
           <div className="space-y-2">
             <label className="text-sm font-medium">
               Natural Language Query
-              {!userPrompt.trim() && <span className="text-red-500 ml-1">*</span>}
+              {!userPrompt.trim() && <span className="text-destructive ml-1">*</span>}
             </label>
             <Textarea 
               placeholder="e.g., Show me the top 10 customers by total order value in the last 6 months, including their contact information and number of orders..."
@@ -1049,7 +1049,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                   
                   return (
                     <Button 
-                      className="bg-gradient-primary text-primary-foreground hover:opacity-90 flex items-center gap-2"
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
                       onClick={handleIterativeAnalysis}
                       disabled={isIterativeLoading || isLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim() || !isFileValid}
                       title={!isFileValid ? "Cannot analyze - file is damaged or in unsupported format" : undefined}
@@ -1118,7 +1118,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
         <>
           {/* Success Summary */}
           {iterativeResult.status === 'success' && (
-            <Card className="glass border-border/50 bg-card border-success/20">
+            <Card className="glass border-border/50 bg-gradient-to-br from-green-50/10 to-blue-50/10 border-green-500/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-green-700">
                   <CheckCircle2 className="w-5 h-5" />

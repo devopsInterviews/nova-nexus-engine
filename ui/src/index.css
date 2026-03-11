@@ -6,72 +6,69 @@
 
 @layer base {
   :root {
-    /* Company UI/UX palette — design system tokens */
+    /* Company UI/UX palette - Primary */
+    /* Main gradient: #55C5E2 → #5F27CD (Button regular); Hover: #36B1D1 → #4B0DC5 */
+    --primary: 192 72% 61%;           /* #55C5E2 - Solid primary / gradient start */
+    --primary-foreground: 0 0% 100%; /* White text on primary buttons */
+    --primary-glow: 192 72% 68%;
+    --primary-end: 263 68% 48%;      /* #5F27CD - Gradient end (purple) */
+    --primary-hover-start: 192 61% 52%;  /* #36B1D1 */
+    --primary-hover-end: 263 88% 41%;    /* #4B0DC5 */
 
-    /* Primary — Main gradient #4261B2 → #57C9CD, Accent #79CCED */
-    --primary: 224 46% 48%;
-    --primary-foreground: 189 70% 63%;
-    --primary-glow: 199 77% 70%;
-    --primary-from: 224 46% 48%;
-    --primary-to: 182 54% 57%;
-    --accent-blue: 199 77% 70%;
+    /* Secondary - purple end of gradient, used for accents */
+    --secondary: 263 68% 48%;        /* #5F27CD */
+    --secondary-foreground: 0 0% 100%;
+    --secondary-glow: 263 68% 55%;
 
-    /* Backgrounds */
-    --background: 210 33% 97%;
-    --foreground: 246 39% 17%;
-    --surface: 0 0% 97%;
-    --surface-elevated: 210 33% 96%;
-    --bg-top: 0 0% 97%;
-    --bg-full: 210 33% 97%;
-    --bg-dark-disabled: 210 7% 90%;
+    /* Accent - same as primary for consistency */
+    --accent: 192 72% 61%;           /* #55C5E2 */
+    --accent-foreground: 245 37% 16%;
+    --accent-glow: 192 72% 68%;
+
+    /* Status colors (palette) */
+    --success: 160 72% 45%;          /* #20C88B - Deployed */
+    --success-foreground: 0 0% 100%;
+    --warning: 32 100% 65%;          /* #FFB04C */
+    --warning-foreground: 245 37% 16%;
+    --destructive: 348 100% 69%;    /* #FF6181 - Error / Expiring */
+    --destructive-foreground: 0 0% 100%;
+    --marketplace-error: 10 100% 65%; /* #FF704C - Marketplace Error (yellow-orange) */
+    --information: 192 72% 61%;     /* #55C5E2 */
+
+    /* BG colors */
+    --background: 220 33% 98%;       /* #F7F9FC - Full BG */
+    --foreground: 245 37% 16%;       /* #1D1A39 - Text primary */
+    --surface: 220 33% 97%;
+    --surface-elevated: 220 33% 95%;
+    --dialog-bg: 198 44% 92%;       /* #E2F0F5 - Default dialog/modal BG */
+    --top-bg: 0 0% 100%;             /* #FFFFFF - Top BG */
 
     /* Glass Morphism */
-    --glass: 0 0% 97% / 0.9;
-    --glass-border: 330 2% 67% / 0.25;
+    --glass: 220 33% 97% / 0.8;
+    --glass-border: 283 10% 66% / 0.2;  /* #ADA1B0 divider */
 
-    /* Secondary (from gradient end for compatibility) */
-    --secondary: 182 54% 57%;
-    --secondary-foreground: 246 39% 17%;
-    --secondary-glow: 199 77% 70%;
-
-    /* Accent */
-    --accent: 199 77% 70%;
-    --accent-foreground: 246 39% 17%;
-    --accent-glow: 189 70% 63%;
-
-    /* Text — Headers #5ECEE2, Primary #1F1A3D, Secondary #595567, Link #4DC1E2, Disabled #9C9CAD */
-    --header: 189 70% 63%;
-    --link: 193 68% 59%;
-    --link-hover: 193 68% 59%;
-    --text-disabled: 234 11% 67%;
-
-    /* Status — Success #20A08B, Warning #F79D4C, Error #E14D6E, Info #4DC1E2 */
-    --success: 170 69% 37%;
-    --success-foreground: 0 0% 100%;
-    --warning: 31 91% 63%;
-    --warning-foreground: 246 39% 17%;
-    --destructive: 348 72% 59%;
-    --destructive-foreground: 0 0% 100%;
-    --info: 193 68% 59%;
-
-    /* Marketplace status — Deployed #20A08B, Warning #F79D4C, Error (yellow) #FFD06C, Expiring #F15C5C */
-    --status-deployed: 170 69% 37%;
-    --status-warning: 31 91% 63%;
-    --status-error: 43 100% 71%;
-    --status-expiring: 0 84% 65%;
-
-    /* Elements — Divider #ADAAAC, Input line #A5A5A9 */
-    --divider: 330 2% 67%;
-    --input-line: 240 2% 65%;
-    --button-hover-from: 226 54% 55%;
-    --button-hover-to: 199 52% 62%;
+    /* Text */
+    --text-header: 192 72% 61%;      /* #55C5E2 */
+    --text-secondary: 305 11% 37%;   /* #695567 */
+    --text-link: 192 72% 61%;
+    --text-link-hover: 233 61% 43%;  /* #2B37B1 */
+    --text-disabled: 183 15% 73%;    /* #AEC4C5 */
 
     /* Muted */
-    --muted: 210 7% 90%;
-    --muted-foreground: 252 8% 32%;
+    --muted: 220 33% 92%;
+    --muted-foreground: 305 11% 37%;  /* #695567 - same as text secondary */
 
-    /* Card / Box — white body, colored top only */
-    --card: 0 0% 100%;
+    /* Elements */
+    --divider: 283 10% 66%;          /* #ADA1B0 */
+    --input-line: 200 5% 79%;       /* #C5CACO */
+
+    /* Icons on bright BG */
+    --icon-normal: 231 7% 66%;       /* #A2A4AE */
+    --icon-hover: 195 13% 75%;      /* #B5C3C7 */
+    --icon-disabled: 15 6% 67%;      /* #B1A8A6 */
+
+    /* Card */
+    --card: var(--surface);
     --card-foreground: var(--foreground);
 
     /* Popover */
@@ -79,33 +76,33 @@
     --popover-foreground: var(--foreground);
 
     /* Borders */
-    --border: 330 2% 67%;
+    --border: 283 10% 66%;           /* #ADA1B0 divider */
     --border-glow: var(--primary) / 0.3;
 
     /* Inputs */
     --input: var(--surface-elevated);
     --ring: var(--primary);
 
-    /* Gradients — company main gradient and button hover */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary-from)) 0%, hsl(var(--primary-to)) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%);
-    --gradient-button-hover: linear-gradient(135deg, hsl(var(--button-hover-from)) 0%, hsl(var(--button-hover-to)) 100%);
-    --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(246 39% 12% / 0.4) 100%);
-    --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.2), transparent 50%),
-                     radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-to) / 0.15), transparent 50%),
-                     radial-gradient(ellipse 60% 40% at 20% 100%, hsl(var(--accent) / 0.15), transparent 50%);
+    /* Gradients - Button regular #55C5E2 → #5F27CD; Hover #36B1D1 → #4B0DC5 */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-end)) 100%);
+    --gradient-primary-hover: linear-gradient(135deg, hsl(var(--primary-hover-start)) 0%, hsl(var(--primary-hover-end)) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary-end)) 100%);
+    --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(245 37% 16% / 0.15) 100%);
+    --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.25), transparent 50%),
+                     radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-end) / 0.15), transparent 50%),
+                     radial-gradient(ellipse 60% 40% at 20% 100%, hsl(var(--primary) / 0.15), transparent 50%);
 
     /* Shadows */
     --shadow-glow: 0 0 20px hsl(var(--primary) / 0.25), 0 0 40px hsl(var(--primary) / 0.08);
-    --shadow-card: 0 8px 32px hsl(246 39% 2% / 0.08), 0 2px 8px hsl(246 39% 2% / 0.06);
-    --shadow-elevated: 0 16px 64px hsl(246 39% 2% / 0.12), 0 4px 16px hsl(246 39% 2% / 0.08);
-
+    --shadow-card: 0 8px 32px hsl(245 37% 16% / 0.08), 0 2px 8px hsl(245 37% 16% / 0.06);
+    --shadow-elevated: 0 16px 64px hsl(245 37% 16% / 0.12), 0 4px 16px hsl(245 37% 16% / 0.08);
+    
     /* Animations */
     --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-bounce: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-
+    
     --radius: 0.75rem;
-
+    
     /* Sidebar */
     --sidebar-background: var(--surface);
     --sidebar-foreground: var(--foreground);
@@ -118,33 +115,32 @@
   }
 
   .dark {
-    /* Dark Mode - Override for dark theme (company palette semantics) */
-    --background: 246 39% 8%;
-    --foreground: 210 33% 98%;
-    --surface: 246 39% 10%;
-    --surface-elevated: 246 39% 14%;
-    --glass: 246 39% 10% / 0.7;
-    --glass-border: 330 2% 30% / 0.3;
-    --muted: 246 20% 18%;
-    --muted-foreground: 252 8% 65%;
-    --border: 330 2% 28%;
-    --card: 246 39% 10%;
-    --primary-foreground: 189 70% 63%;
-    --success: 170 69% 45%;
-    --success-foreground: 246 39% 8%;
+    /* Dark Mode - same palette, darker surfaces */
+    --background: 245 37% 8%;
+    --foreground: 220 33% 98%;
+    --surface: 245 37% 10%;
+    --surface-elevated: 245 37% 14%;
+    --glass: 245 37% 10% / 0.6;
+    --glass-border: 283 10% 30% / 0.3;
+    --muted: 245 25% 18%;
+    --muted-foreground: 305 11% 65%;
+    --border: 283 10% 28%;
+    --primary-foreground: 0 0% 100%;
+    --success: 160 72% 50%;
+    --success-foreground: 245 37% 8%;
   }
 
   .light {
-    /* Light Mode - Company palette */
-    --background: 210 33% 97%;
-    --foreground: 246 39% 17%;
-    --surface: 0 0% 97%;
-    --surface-elevated: 210 33% 96%;
-    --muted: 210 7% 90%;
-    --muted-foreground: 252 8% 32%;
-    --border: 330 2% 67%;
-    --glass: 0 0% 97% / 0.9;
-    --glass-border: 330 2% 67% / 0.25;
+    /* Light Mode - company palette (default) */
+    --background: 220 33% 98%;
+    --foreground: 245 37% 16%;
+    --surface: 220 33% 97%;
+    --surface-elevated: 220 33% 95%;
+    --muted: 220 33% 92%;
+    --muted-foreground: 305 11% 37%;
+    --border: 283 10% 66%;
+    --glass: 220 33% 97% / 0.8;
+    --glass-border: 283 10% 66% / 0.2;
   }
 }
 

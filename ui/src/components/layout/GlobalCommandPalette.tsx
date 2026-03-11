@@ -203,7 +203,7 @@ export function GlobalCommandPalette({ open, onOpenChange }: Props) {
                   onSelect={() => go(`/marketplace?itemId=${item.id}`)}
                   className="cursor-pointer"
                 >
-                  <Bot className="mr-2 h-4 w-4 text-primary shrink-0" />
+                  <Bot className="mr-2 h-4 w-4 text-violet-500 shrink-0" />
                   <div className="flex flex-col min-w-0">
                     <span className="truncate">{item.name}</span>
                     {item.description && (
@@ -212,7 +212,7 @@ export function GlobalCommandPalette({ open, onOpenChange }: Props) {
                       </span>
                     )}
                   </div>
-                  <CommandShortcut className="text-primary shrink-0">Agent</CommandShortcut>
+                  <CommandShortcut className="text-violet-400 shrink-0">Agent</CommandShortcut>
                 </CommandItem>
               ))}
             </CommandGroup>

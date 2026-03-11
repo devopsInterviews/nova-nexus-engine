@@ -125,8 +125,8 @@ function CompanyLogo({ size = 32 }: { size?: number }) {
       <circle cx="24" cy="16" r="3" fill="white" opacity="0.85" />
       <defs>
         <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#6366f1" />
-          <stop offset="1" stopColor="#8b5cf6" />
+          <stop stopColor="#55C5E2" />
+          <stop offset="1" stopColor="#5F27CD" />
         </linearGradient>
       </defs>
     </svg>

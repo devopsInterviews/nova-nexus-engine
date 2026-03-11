@@ -443,7 +443,7 @@ export function PermissionsManager() {
 
       {/* ── Admin Role Management ── */}
       <div>
-        <div className="flex items-center justify-between bg-warning/10 border border-warning/20 p-4 rounded-xl">
+        <div className="flex items-center justify-between bg-warning/10 border border-warning/30 p-4 rounded-xl">
           <div>
             <h3 className="font-semibold flex items-center gap-2 text-lg">
               <ShieldCheck className="w-5 h-5 text-warning" />
@@ -456,7 +456,7 @@ export function PermissionsManager() {
         </div>
 
         <div className="mt-4 max-w-sm">
-          <Card className="border-warning/20 bg-warning/5 hover:border-warning/40 transition-all duration-300">
+          <Card className="border-warning/30 bg-warning/5 hover:border-warning/50 transition-all duration-300">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Crown className="w-5 h-5 text-warning" />
@@ -465,11 +465,11 @@ export function PermissionsManager() {
             </CardHeader>
             <CardContent>
               <div className="flex gap-3 mb-6">
-                <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-warning/10 text-warning hover:bg-warning/20">
+                <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-warning/10 text-foreground hover:bg-warning/20">
                   <Users className="w-3.5 h-3.5" />
                   {adminUsers.length} {adminUsers.length === 1 ? 'User' : 'Users'}
                 </Badge>
-                <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-warning/10 text-warning hover:bg-warning/20">
+                <Badge variant="secondary" className="flex items-center gap-1.5 py-1.5 px-3 bg-warning/10 text-foreground hover:bg-warning/20">
                   <UsersRound className="w-3.5 h-3.5" />
                   {adminGroupIds.length} {adminGroupIds.length === 1 ? 'Group' : 'Groups'}
                 </Badge>
@@ -477,7 +477,7 @@ export function PermissionsManager() {
               <div className="flex gap-2 w-full">
                 <Button
                   variant="outline"
-                  className="flex-1 border-warning/30 hover:bg-warning/10 hover:border-warning/50"
+                  className="flex-1 border-warning/40 hover:bg-warning/10 hover:border-amber-500/50"
                   onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('view'); setAdminSearchQuery(''); }}
                 >
                   <Eye className="w-4 h-4 mr-2" />
@@ -485,7 +485,7 @@ export function PermissionsManager() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="flex-1 border-warning/30 hover:bg-warning/10 hover:text-warning hover:border-warning/50"
+                  className="flex-1 border-warning/40 hover:bg-warning/10 hover:text-foreground hover:border-amber-500/50"
                   onClick={() => { setAdminDialogOpen(true); setAdminDialogMode('add'); setAdminSearchQuery(''); }}
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -551,7 +551,7 @@ export function PermissionsManager() {
                       filteredAuthUsers.map(u => (
                         <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
                           <span className="font-medium">{u.username}</span>
-                          <Button variant="ghost" size="sm" onClick={() => handleRemoveUser(u.id)} className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveUser(u.id)} className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -588,7 +588,7 @@ export function PermissionsManager() {
                       filteredAuthGroups.map(g => (
                         <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
                           <span className="font-medium">{g.name}</span>
-                          <Button variant="ghost" size="sm" onClick={() => handleRemoveGroup(g.id)} className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveGroup(g.id)} className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -625,7 +625,7 @@ export function PermissionsManager() {
       {/* ── Admin Role Dialog ── */}
       <Dialog open={adminDialogOpen} onOpenChange={(open) => !open && setAdminDialogOpen(false)}>
         <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-background">
-          <div className="p-6 border-b border-warning/20 bg-warning/5">
+          <div className="p-6 border-b border-warning/30 bg-warning/5">
             <DialogTitle className="text-2xl flex items-center gap-2 mb-2">
               <ShieldCheck className="w-6 h-6 text-warning" />
               Admin Role Management
@@ -639,13 +639,13 @@ export function PermissionsManager() {
 
           <div className="flex border-b border-border/50">
             <button
-              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'view' ? 'border-warning text-warning bg-warning/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'view' ? 'border-amber-500 text-warning bg-warning/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
               onClick={() => { setAdminDialogMode('view'); setAdminSearchQuery(''); }}
             >
               Current Admins
             </button>
             <button
-              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'add' ? 'border-warning text-warning bg-warning/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${adminDialogMode === 'add' ? 'border-amber-500 text-warning bg-warning/5' : 'border-transparent text-muted-foreground hover:bg-surface/50'}`}
               onClick={() => { setAdminDialogMode('add'); setAdminSearchQuery(''); }}
             >
               Add Admin Access
@@ -674,13 +674,13 @@ export function PermissionsManager() {
                   {adminDialogMode === 'view' ? (
                     filteredAdminUsers.length > 0 ? (
                       filteredAdminUsers.map(u => (
-                        <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-warning/20 bg-warning/5 hover:bg-warning/10 transition-colors">
+                        <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-warning/30 bg-warning/5 hover:bg-warning/10 transition-colors">
                           <div className="flex items-center gap-2">
                             <ShieldCheck className="w-4 h-4 text-warning" />
                             <span className="font-medium">{u.username}</span>
                           </div>
                           <Button variant="ghost" size="sm" onClick={() => handleRevokeAdmin(u.id)} disabled={adminSaving}
-                            className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                            className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -694,7 +694,7 @@ export function PermissionsManager() {
                         <div key={u.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30 hover:bg-surface/50 transition-colors">
                           <span className="font-medium">{u.username}</span>
                           <Button variant="outline" size="sm" onClick={() => handleGrantAdmin(u.id)} disabled={adminSaving}
-                            className="h-8 px-3 text-warning border-warning/30 hover:bg-warning/10 hover:border-warning/50">
+                            className="h-8 px-3 text-amber-600 border-warning/40 hover:bg-warning/10 hover:border-amber-500/50">
                             <Plus className="w-4 h-4 mr-1" /> Add
                           </Button>
                         </div>
@@ -718,13 +718,13 @@ export function PermissionsManager() {
                   ) : adminDialogMode === 'view' ? (
                     filteredAdminGroups.length > 0 ? (
                       filteredAdminGroups.map(g => (
-                        <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-warning/20 bg-warning/5 hover:bg-warning/10 transition-colors">
+                        <div key={g.id} className="flex items-center justify-between p-3 rounded-lg border border-warning/30 bg-warning/5 hover:bg-warning/10 transition-colors">
                           <div className="flex items-center gap-2">
                             <ShieldCheck className="w-4 h-4 text-warning" />
                             <span className="font-medium">{g.name}</span>
                           </div>
                           <Button variant="ghost" size="sm" onClick={() => handleRevokeAdminGroup(g.id)} disabled={adminSaving}
-                            className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10">
+                            className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -741,7 +741,7 @@ export function PermissionsManager() {
                             <span className="font-medium">{g.name}</span>
                           </div>
                           <Button variant="outline" size="sm" onClick={() => handleGrantAdminGroup(g.id)} disabled={adminSaving}
-                            className="h-8 px-3 text-warning border-warning/30 hover:bg-warning/10 hover:border-warning/50">
+                            className="h-8 px-3 text-amber-600 border-warning/40 hover:bg-warning/10 hover:border-amber-500/50">
                             <Plus className="w-4 h-4 mr-1" /> Add
                           </Button>
                         </div>

@@ -20,10 +20,10 @@ interface StatusCardProps {
 }
 
 const statusColors = {
-  success: "text-success border-success/30 bg-success/10 dark:bg-success/15 dark:border-success/25",
-  warning: "text-warning border-warning/30 bg-warning/10 dark:bg-warning/15 dark:border-warning/25",
-  error: "text-destructive border-destructive/30 bg-destructive/10 dark:bg-destructive/15 dark:border-destructive/25",
-  info: "text-primary border-primary/30 bg-primary/10 dark:bg-primary/15 dark:border-primary/25",
+  success: "text-success border-success/30 bg-success/10 dark:border-success/20 dark:bg-success/5",
+  warning: "text-warning border-warning/30 bg-warning/10",
+  error: "text-destructive border-destructive/30 bg-destructive/10",
+  info: "text-primary border-primary/30 bg-primary/10",
 };
 
 export function StatusCard({
