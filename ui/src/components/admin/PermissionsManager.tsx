@@ -53,6 +53,7 @@ export function PermissionsManager() {
   const [adminGroupIds, setAdminGroupIds] = useState<number[]>([]);
 
   const TABS = navigationItems.map(item => item.title);
+  const getTabDisplayName = (title: string) => navigationItems.find(n => n.title === title)?.displayLabel ?? title;
 
   // Non-admin users eligible for tab permission grants
   const users = useMemo(() => allUsers.filter(u => !u.is_admin), [allUsers]);
@@ -324,7 +325,10 @@ export function PermissionsManager() {
   const filteredNonAdminGroups = nonAdminGroups.filter(g => g.name.toLowerCase().includes(adminSearchQuery.toLowerCase()));
 
   // Tabs filtered by search
-  const filteredTabs = TABS.filter(tab => tab.toLowerCase().includes(tabFilter.toLowerCase()));
+  const filteredTabs = TABS.filter(tab => {
+    const q = tabFilter.toLowerCase();
+    return tab.toLowerCase().includes(q) || getTabDisplayName(tab).toLowerCase().includes(q);
+  });
 
   if (loading) {
     return (
@@ -397,7 +401,7 @@ export function PermissionsManager() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <LayoutDashboard className="w-5 h-5 text-muted-foreground" />
-                    {tab}
+                    {getTabDisplayName(tab)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -499,7 +503,7 @@ export function PermissionsManager() {
           <div className="p-6 border-b border-border/50 bg-surface/30">
             <DialogTitle className="text-2xl flex items-center gap-2 mb-2">
               <Shield className="w-6 h-6 text-primary" />
-              Manage Access: <span className="text-primary">{selectedTab}</span>
+              Manage Access: <span className="text-primary">{selectedTab ? getTabDisplayName(selectedTab) : ""}</span>
             </DialogTitle>
             <DialogDescription>
               {dialogMode === 'view'
