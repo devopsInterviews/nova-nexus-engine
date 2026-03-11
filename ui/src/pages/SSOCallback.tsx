@@ -89,7 +89,7 @@ export default function SSOCallback() {
           </>
         ) : (
           <>
-            <div className="mx-auto w-12 h-12 flex items-center justify-center rounded-full bg-[#F16C6C]/10 text-[#F16C6C] text-2xl">
+            <div className="mx-auto w-12 h-12 flex items-center justify-center rounded-full bg-red-500/10 text-red-500 text-2xl">
               !
             </div>
             <h2 className="text-xl font-semibold text-foreground">

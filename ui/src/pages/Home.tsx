@@ -41,9 +41,9 @@ const rowCls = "flex items-center justify-between rounded-md border border-borde
 
 function MarketplacePreview() {
   const items = [
-    { name: "code-review-agent", kind: "Agent", accent: "text-[#5F27CD] bg-[#5F27CD]/10 border-[#5F27CD]/20" },
-    { name: "jenkins-mcp", kind: "MCP Server", accent: "text-[#55C5E2] bg-[#55C5E2]/10 border-[#55C5E2]/20" },
-    { name: "sql-analyst", kind: "Agent", accent: "text-[#00C986] bg-[#00C986]/10 border-[#00C986]/20" },
+    { name: "code-review-agent", kind: "Agent", accent: "text-violet-500 bg-violet-500/10 border-violet-500/20" },
+    { name: "jenkins-mcp", kind: "MCP Server", accent: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+    { name: "sql-analyst", kind: "Agent", accent: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
   ];
   return (
     <div className="space-y-1.5">
@@ -57,11 +57,11 @@ function MarketplacePreview() {
         </div>
       ))}
       <div className="flex gap-2 pt-1">
-        <div className="h-6 flex-1 rounded border border-[#5F27CD]/30 bg-[#5F27CD]/10 flex items-center justify-center">
-          <span className="text-[10px] text-[#5F27CD] font-medium">+ Deploy Agent</span>
+        <div className="h-6 flex-1 rounded border border-violet-500/30 bg-violet-500/10 flex items-center justify-center">
+          <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium">+ Deploy Agent</span>
         </div>
-        <div className="h-6 flex-1 rounded border border-[#55C5E2]/30 bg-[#55C5E2]/10 flex items-center justify-center">
-          <span className="text-[10px] text-[#55C5E2] font-medium">+ New MCP</span>
+        <div className="h-6 flex-1 rounded border border-blue-500/30 bg-blue-500/10 flex items-center justify-center">
+          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">+ New MCP</span>
         </div>
       </div>
     </div>
@@ -73,7 +73,7 @@ function ResearchPreview() {
     <div className="space-y-1.5">
       <div className={rowCls}>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-[#55C5E2] animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
           <span className="text-xs font-mono text-foreground">firmware_v2.bin</span>
         </div>
         <span className="text-[10px] text-muted-foreground">Analyzing…</span>
@@ -82,7 +82,7 @@ function ResearchPreview() {
         <span className="text-muted-foreground">LLM›</span>{" "}
         <span className="text-foreground">Found 3 suspicious</span><br />
         <span className="pl-6 text-foreground">function patterns in</span><br />
-        <span className="pl-6 text-[#55C5E2]">sub_0x4012A0…</span>
+        <span className="pl-6 text-cyan-600 dark:text-cyan-400">sub_0x4012A0…</span>
       </div>
       <div className="flex items-center gap-1.5">
         <Cpu className="w-3 h-3 text-muted-foreground" />
@@ -99,7 +99,7 @@ function BIPreview() {
       <div className="rounded-md border border-border/40 bg-muted/50 px-3 py-2 text-[10px] font-mono leading-relaxed">
         <span className="text-muted-foreground">You: </span>
         <span className="text-foreground">Show top 5 revenue regions</span><br />
-        <span className="text-[#00C986]">SQL: </span>
+        <span className="text-emerald-600 dark:text-emerald-400">SQL: </span>
         <span className="text-foreground">SELECT region, SUM(…)…</span>
       </div>
       <div className={rowCls}>
@@ -109,7 +109,7 @@ function BIPreview() {
       {rows.map(([r, v]) => (
         <div key={r} className={rowCls}>
           <span className="text-xs text-foreground">{r}</span>
-          <span className="text-xs font-semibold text-[#00C986]">{v}</span>
+          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{v}</span>
         </div>
       ))}
     </div>
@@ -171,9 +171,9 @@ function FeatureTeaserCard({
                 <ArrowRight className="ml-1 w-3 h-3 group-hover:translate-x-1 transition-transform" />
               </Button>
             ) : (
-              <div className="flex items-start gap-2 rounded-lg border border-[#FFB24C]/50 bg-[#FFB24C]/10 p-3">
-                <Lock className="w-4 h-4 text-[#FFB24C] shrink-0 mt-0.5" />
-                <p className="text-sm font-medium text-[#B87A2E] dark:text-[#FFB24C] leading-snug">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+                <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-amber-600 dark:text-amber-400 leading-snug">
                   You don't have access yet.{" "}
                   <span className="font-semibold">Contact DevOps</span> to request permission.
                 </p>
@@ -229,8 +229,8 @@ export default function Home() {
       icon: Store,
       tab: "Marketplace",
       route: "/marketplace",
-      gradient: "from-[#55C5E2] to-[#5F27CD]",
-      borderColor: "border-[#5F27CD]/20",
+      gradient: "from-violet-500 to-purple-600",
+      borderColor: "border-violet-500/20",
       preview: <MarketplacePreview />,
     },
     {
@@ -242,8 +242,8 @@ export default function Home() {
       icon: Search,
       tab: "Research",
       route: "/research",
-      gradient: "from-[#55C5E2] to-[#5F27CD]",
-      borderColor: "border-[#55C5E2]/20",
+      gradient: "from-cyan-500 to-blue-600",
+      borderColor: "border-cyan-500/20",
       preview: <ResearchPreview />,
     },
     {
@@ -255,8 +255,8 @@ export default function Home() {
       icon: Database,
       tab: "BI",
       route: "/bi",
-      gradient: "from-[#55C5E2] to-[#5F27CD]",
-      borderColor: "border-[#55C5E2]/20",
+      gradient: "from-emerald-500 to-green-600",
+      borderColor: "border-emerald-500/20",
       preview: <BIPreview />,
     },
   ];
@@ -353,7 +353,7 @@ export default function Home() {
           <Card className="glass border-border/50 h-full">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#55C5E2] to-[#5F27CD] flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
                   <BookOpen className="w-4 h-4 text-white" />
                 </div>
                 Don't know where to start?
@@ -365,7 +365,7 @@ export default function Home() {
                 for everything the AI Portal has to offer.
               </p>
               <Button
-                className="w-full bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white border-0 hover:opacity-90 group"
+                className="w-full bg-gradient-to-r from-orange-400 to-pink-500 text-white border-0 hover:opacity-90 group"
                 onClick={() => {
                   const url = appConfig?.confluence_url;
                   if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -384,7 +384,7 @@ export default function Home() {
                   and configure them in your client or agent settings.
                 </p>
                 <Button
-                  className="w-full bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white border-0 hover:opacity-90 transition-colors group"
+                  className="w-full bg-violet-600 hover:bg-violet-700 text-white border-0 transition-colors group"
                   onClick={() => {
                     const url = appConfig?.developer_portal_url;
                     if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -409,7 +409,7 @@ export default function Home() {
           <Card className="glass border-border/50 h-full">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#55C5E2] to-[#5F27CD] flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center">
                   <MessageSquare className="w-4 h-4 text-white" />
                 </div>
                 Chat &amp; Code with AI
@@ -425,14 +425,14 @@ export default function Home() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full border-[#55C5E2]/30 hover:bg-[#55C5E2]/10 hover:text-[#55C5E2] group"
+                  className="w-full border-sky-500/30 hover:bg-sky-500/10 hover:text-sky-300 group"
                   onClick={() => {
                     const url = appConfig?.openwebui_url;
                     if (url) window.open(url, "_blank", "noopener,noreferrer");
                   }}
                   disabled={!appConfig?.openwebui_url}
                 >
-                  <MessageSquare className="mr-2 w-4 h-4 text-[#55C5E2]" />
+                  <MessageSquare className="mr-2 w-4 h-4 text-sky-400" />
                   Open OpenWebUI
                   <ExternalLink className="ml-auto w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </Button>
@@ -450,20 +450,20 @@ export default function Home() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-[#5F27CD]/30 hover:bg-[#5F27CD]/10 hover:text-[#5F27CD] group"
+                  className="border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-300 group"
                   onClick={() => window.open("https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev", "_blank", "noopener,noreferrer")}
                 >
-                  <Terminal className="mr-1.5 w-3.5 h-3.5 text-[#5F27CD]" />
+                  <Terminal className="mr-1.5 w-3.5 h-3.5 text-indigo-400" />
                   Download Cline
                   <ExternalLink className="ml-auto w-2.5 h-2.5 opacity-60" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-[#5F27CD]/30 hover:bg-[#5F27CD]/10 hover:text-[#5F27CD] group"
+                  className="border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300 group"
                   onClick={() => window.open("https://opencode.ai", "_blank", "noopener,noreferrer")}
                 >
-                  <Layers className="mr-1.5 w-3.5 h-3.5 text-[#5F27CD]" />
+                  <Layers className="mr-1.5 w-3.5 h-3.5 text-violet-400" />
                   Download OpenCode
                   <ExternalLink className="ml-auto w-2.5 h-2.5 opacity-60" />
                 </Button>

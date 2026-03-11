@@ -148,8 +148,8 @@ export function AppHeader() {
 
   const statusColors: Record<string, string> = {
     success: "bg-green-100 text-green-800 border-green-300 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20",
-    warning: "bg-[#FFB24C]/15 text-[#B87A2E] border-[#FFB24C]/40 dark:bg-[#FFB24C]/10 dark:text-[#FFB24C] dark:border-[#FFB24C]/20",
-    error: "bg-[#F16C6C]/15 text-[#F16C6C] border-[#F16C6C]/40 dark:bg-[#F16C6C]/10 dark:text-[#F28583] dark:border-[#F16C6C]/20",
+    warning: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+    error: "bg-red-100 text-red-800 border-red-300 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
   };
 
   return (
@@ -254,7 +254,7 @@ export function AppHeader() {
                 <DropdownMenuSeparator className="dark:bg-gray-700" />
 
                 <DropdownMenuItem
-                  className="cursor-pointer text-[#F16C6C] dark:hover:bg-gray-700"
+                  className="cursor-pointer text-red-600 dark:text-red-400 dark:hover:bg-gray-700"
                   onClick={handleLogout}
                 >
                   🚪 Sign out
@@ -294,7 +294,7 @@ export function AppHeader() {
                   <p className="text-sm text-muted-foreground">@{user.username}</p>
                   <div className="flex items-center gap-2 mt-1">
                     {user.is_admin && (
-                      <Badge className="bg-[#F16C6C]/10 text-[#F16C6C] border-[#F16C6C]/30 flex items-center gap-1">
+                      <Badge className="bg-red-500/10 text-red-500 border-red-500/30 flex items-center gap-1">
                         <Shield className="w-3 h-3" /> Admin
                       </Badge>
                     )}
@@ -335,10 +335,10 @@ export function AppHeader() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="w-full justify-start gap-2 border-[#5F27CD]/30 hover:bg-[#5F27CD]/10 hover:text-[#5F27CD]"
+                    className="w-full justify-start gap-2 border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
                     onClick={() => window.open(appConfig.developer_portal_url, "_blank", "noopener,noreferrer")}
                   >
-                    <KeyRound className="w-4 h-4 text-[#5F27CD]" />
+                    <KeyRound className="w-4 h-4 text-violet-400" />
                     Create API Keys &amp; Token List
                     <ExternalLink className="w-3 h-3 ml-auto opacity-60" />
                   </Button>
@@ -380,7 +380,7 @@ export function AppHeader() {
                             <div className="flex items-center gap-2 min-w-0">
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                 activity.status_type === "success" ? "bg-green-500" :
-                                activity.status_type === "error" ? "bg-[#F16C6C]" : "bg-[#FFB24C]"
+                                activity.status_type === "error" ? "bg-red-500" : "bg-amber-500"
                               }`} />
                               <span className="text-foreground truncate">{activity.action}</span>
                             </div>

@@ -17,32 +17,32 @@
     --glass: 210 40% 96% / 0.8;
     --glass-border: 220 40% 60% / 0.2;
     
-    /* Primary - Company Cyan #55C5E2 */
-    --primary: 194 70% 61%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 194 70% 71%;
+    /* Primary - Electric Blue */
+    --primary: 195 100% 50%;
+    --primary-foreground: 220 27% 5%;
+    --primary-glow: 195 100% 60%;
     
-    /* Secondary - Company Purple #5F27CD */
-    --secondary: 263 68% 48%;
-    --secondary-foreground: 0 0% 100%;
-    --secondary-glow: 263 68% 58%;
+    /* Secondary - Cyber Purple */
+    --secondary: 270 90% 60%;
+    --secondary-foreground: 210 40% 98%;
+    --secondary-glow: 270 90% 70%;
     
-    /* Accent - align with primary for consistency */
-    --accent: 194 70% 61%;
+    /* Accent - Neon Cyan */
+    --accent: 180 100% 50%;
     --accent-foreground: 220 27% 5%;
-    --accent-glow: 194 70% 71%;
+    --accent-glow: 180 100% 60%;
     
-    /* Success - Company Green #00C986 */
-    --success: 160 100% 39%;
-    --success-foreground: 0 0% 100%;
+    /* Success - Dark green for readable contrast on light backgrounds */
+    --success: 140 65% 32%;
+    --success-foreground: 210 40% 98%;
     
-    /* Warning - Company Orange #FFB24C */
-    --warning: 34 100% 65%;
+    /* Warning - Electric Orange */
+    --warning: 30 100% 50%;
     --warning-foreground: 220 27% 5%;
     
-    /* Destructive - Company Red #F16C6C */
-    --destructive: 0 82% 68%;
-    --destructive-foreground: 0 0% 100%;
+    /* Destructive - Hot Pink */
+    --destructive: 330 100% 60%;
+    --destructive-foreground: 210 40% 98%;
     
     /* Muted */
     --muted: 210 40% 90%;
@@ -64,9 +64,9 @@
     --input: var(--surface-elevated);
     --ring: var(--primary);
     
-    /* Gradients - Company: Primary #55C5E2 → Secondary #5F27CD */
-    --gradient-primary: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
-    --gradient-accent: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%);
     --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(220 25% 12% / 0.4) 100%);
     --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.3), transparent 50%), 
                      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--secondary) / 0.2), transparent 50%),
@@ -107,9 +107,9 @@
     --border: 220 30% 25%;
     /* Primary foreground must be white in dark mode so active tabs/buttons are legible */
     --primary-foreground: 210 40% 98%;
-    /* Company success #00C986 - slightly brighter for dark mode */
-    --success: 160 100% 45%;
-    --success-foreground: 0 0% 100%;
+    /* Bright green is fine for dark backgrounds */
+    --success: 140 80% 50%;
+    --success-foreground: 220 27% 5%;
   }
 
   .light {

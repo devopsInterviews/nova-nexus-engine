@@ -124,77 +124,57 @@ function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> 
   return "deployed";
 }
 
-/* Status colors from index.html (Status colors / Marketplace Status colors):
-   Success/Release: #00C986 | Warning/Built: #FFB24C (#FFE64C light) | Error/Expiring: #F16C6C (#F28583 light) | Dev: #5F27CD | Primary: #55C5E2. Card: color bar inside only. */
 function getItemStyle(item: MarketplaceItem) {
-  const neutralRing =
-    "border-border/60 hover:border-border dark:border-border/50 dark:hover:border-border/80";
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
-        topBar: "bg-[#00C986]",
-        leftBar: "bg-[#00C986]",
-        ring: neutralRing,
-        badge:
-          "bg-[#00C986]/15 text-[#00C986] border-[#00C986]/40 dark:bg-[#00C986]/20 dark:text-[#06D6A0] dark:border-[#00C986]/40",
-        label: "Release",
-        dot: "bg-[#00C986]",
-        pulse: true,
-        envPill:
-          "bg-[#55C5E2]/15 text-[#465D88] border-[#55C5E2]/30 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(0,201,134,0.2)]",
+        topBar: "bg-gradient-to-r from-emerald-400 to-green-500",
+        leftBar: "bg-emerald-500",
+        ring: "border-emerald-500/60 hover:border-emerald-500/90 dark:border-emerald-500/40 dark:hover:border-emerald-400/70",
+        badge: "bg-emerald-100 text-emerald-800 border-emerald-300/80 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40",
+        label: "Release", dot: "bg-emerald-500", pulse: true,
+        envPill: "bg-sky-100 text-sky-800 border-sky-300/80 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(16,185,129,0.2)]",
       };
     }
     const r = item.ttl_remaining_days;
+    // ≤7 days: "Expiring" in red (combines old Critical ≤3d and Expiring ≤7d)
     if (r !== null && r <= 7) {
       return {
-        topBar: "bg-[#F16C6C]",
-        leftBar: "bg-[#F16C6C]",
-        ring: neutralRing,
-        badge:
-          "bg-[#F16C6C]/15 text-[#F16C6C] border-[#F16C6C]/40 dark:bg-[#F16C6C]/20 dark:text-[#F28583] dark:border-[#F16C6C]/40",
-        label: "Expiring",
-        dot: "bg-[#F16C6C] animate-pulse",
-        pulse: true,
-        envPill:
-          "bg-[#FFB24C]/15 text-[#465D88] border-[#FFB24C]/30 dark:bg-[#FFB24C]/20 dark:text-[#FFB24C] dark:border-[#FFB24C]/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(241,108,108,0.2)]",
+        topBar: "bg-gradient-to-r from-red-500 to-rose-600",
+        leftBar: "bg-red-500",
+        ring: "border-red-500/60 hover:border-red-500/90 dark:border-red-500/50 dark:hover:border-red-400/80",
+        badge: "bg-red-100 text-red-800 border-red-300/80 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/40",
+        label: "Expiring", dot: "bg-red-500 animate-pulse", pulse: true,
+        envPill: "bg-orange-100 text-orange-800 border-orange-300/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(239,68,68,0.2)]",
       };
     }
     return {
-      topBar: "bg-[#5F27CD]",
-      leftBar: "bg-[#5F27CD]",
-      ring: neutralRing,
-      badge:
-        "bg-[#5F27CD]/15 text-[#5F27CD] border-[#5F27CD]/40 dark:bg-[#5F27CD]/20 dark:text-[#9D4FDE] dark:border-[#5F27CD]/40",
-      label: "Dev Deployed",
-      dot: "bg-[#5F27CD]",
-      pulse: true,
-      envPill:
-        "bg-[#5F27CD]/15 text-[#465D88] border-[#5F27CD]/30 dark:bg-[#5F27CD]/20 dark:text-[#9D4FDE] dark:border-[#5F27CD]/35",
-      hoverShadow: "hover:shadow-[0_12px_32px_rgba(95,39,205,0.2)]",
+      topBar: "bg-gradient-to-r from-violet-500 to-purple-600",
+      leftBar: "bg-violet-500",
+      ring: "border-violet-500/60 hover:border-violet-500/90 dark:border-violet-500/40 dark:hover:border-violet-400/70",
+      badge: "bg-violet-100 text-violet-800 border-violet-300/80 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/40",
+      label: "Dev Deployed", dot: "bg-violet-500", pulse: true,
+      envPill: "bg-violet-100 text-violet-800 border-violet-300/80 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/35",
+      hoverShadow: "hover:shadow-[0_12px_32px_rgba(139,92,246,0.2)]",
     };
   }
   return {
-    topBar: "bg-[#FFB24C]",
-    leftBar: "bg-[#FFB24C]",
-    ring: neutralRing,
-    badge:
-      "bg-[#FFB24C]/15 text-[#B87A2E] border-[#FFB24C]/40 dark:bg-[#FFB24C]/20 dark:text-[#FFE64C] dark:border-[#FFB24C]/40",
-    label: "Built",
-    dot: "bg-[#FFB24C]",
-    pulse: false,
-    envPill:
-      "bg-muted/50 text-muted-foreground border-border/50 dark:bg-muted/30 dark:text-muted-foreground dark:border-border/40",
-    hoverShadow: "hover:shadow-[0_12px_32px_rgba(255,178,76,0.2)]",
+    topBar: "bg-gradient-to-r from-amber-400 to-yellow-500",
+    leftBar: "bg-amber-500",
+    ring: "border-amber-500/55 hover:border-amber-500/85 dark:border-amber-500/35 dark:hover:border-amber-400/65",
+    badge: "bg-amber-100 text-amber-800 border-amber-300/80 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40",
+    label: "Built", dot: "bg-amber-500", pulse: false,
+    envPill: "bg-slate-100 text-slate-700 border-slate-300/80 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/35",
+    hoverShadow: "hover:shadow-[0_12px_32px_rgba(245,158,11,0.18)]",
   };
 }
 
 function ttlCls(r: number | null) {
   if (r === null) return "";
-  if (r <= 7)
-    return "bg-[#F16C6C]/15 text-[#F16C6C] border-[#F16C6C]/40 dark:bg-[#F16C6C]/20 dark:text-[#F28583] dark:border-[#F16C6C]/30";
-  return "bg-[#5F27CD]/15 text-[#5F27CD] border-[#5F27CD]/40 dark:bg-[#5F27CD]/20 dark:text-[#9D4FDE] dark:border-[#5F27CD]/30";
+  if (r <= 7) return "bg-red-100 text-red-700 border-red-300/80 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/30";
+  return "bg-violet-100 text-violet-700 border-violet-300/80 dark:bg-violet-500/15 dark:text-violet-400 dark:border-violet-500/30";
 }
 
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
@@ -212,7 +192,10 @@ const EntityIcon = memo(function EntityIcon({
     );
   }
   return (
-    <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg bg-gradient-to-br from-[#55C5E2] to-[#5F27CD]`}>
+    <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg
+      ${item_type === "agent"
+        ? "bg-gradient-to-br from-sky-500 to-blue-600"
+        : "bg-gradient-to-br from-violet-500 to-purple-600"}`}>
       {item_type === "agent"
         ? <Zap size={iconSz} className="text-white" />
         : <Blocks size={iconSz} className="text-white" />}
@@ -229,9 +212,10 @@ const ItemCard = memo(function ItemCard({
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
   const isAgent = item.item_type === "agent";
-  /* Company palette: primary #55C5E2 → secondary #5F27CD */
-  const iconGradient = "from-[#55C5E2] to-[#5F27CD]";
-  const hoverGlow = "hover:shadow-[0_20px_60px_rgba(85,197,226,0.22)]";
+  const iconGradient = isAgent ? "from-sky-500 to-blue-600" : "from-violet-500 to-purple-600";
+  const hoverGlow = isAgent
+    ? "hover:shadow-[0_20px_60px_rgba(14,165,233,0.22)]"
+    : "hover:shadow-[0_20px_60px_rgba(139,92,246,0.22)]";
 
   return (
     <motion.div
@@ -240,16 +224,17 @@ const ItemCard = memo(function ItemCard({
       className={`
         relative cursor-pointer rounded-2xl border ${st.ring} overflow-hidden flex flex-col
         transition-shadow duration-300 ${hoverGlow}
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55C5E2]/60
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
       `}
       style={{ background: "hsl(var(--surface) / 0.8)" }}
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
-      {/* Main content — primary color topping inside card (same as primary button, per index.html) */}
-      <div className="p-6 flex-1 flex flex-col">
-        <div className="h-1 w-full bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] rounded-md mb-3 shrink-0" />
+      {/* Gradient top stripe */}
+      <div className={`h-1 w-full ${st.topBar} rounded-t-2xl`} />
 
+      {/* Main content */}
+      <div className="p-6 flex-1 flex flex-col">
         {/* Icon */}
         {item.icon ? (
           <img src={item.icon} alt="icon"
@@ -309,7 +294,7 @@ const ItemCard = memo(function ItemCard({
           </div>
         ) : item.deployment_status === "DEPLOYED" && item.environment === "release" ? (
           <div className="mt-3">
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border bg-[#00C986]/15 text-[#00C986] border-[#00C986]/40 dark:bg-[#00C986]/20 dark:text-[#06D6A0] dark:border-[#00C986]/30">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border bg-emerald-100 text-emerald-700 border-emerald-300/80 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30">
               <Sparkles size={9} /> Persistent · No expiry
             </span>
           </div>
@@ -327,12 +312,12 @@ const ItemCard = memo(function ItemCard({
       <div className="border-t border-border/40 px-6 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <Activity size={11} className="text-[#55C5E2]" />
+            <Activity size={11} className={isAgent ? "text-sky-400/80" : "text-violet-400/80"} />
             <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
             calls
           </span>
           <span className="flex items-center gap-1.5">
-            <Users size={11} className="text-[#00C986]" />
+            <Users size={11} className="text-emerald-400/80" />
             <span className="font-semibold text-foreground">{item.unique_users}</span>
             users
           </span>
@@ -355,14 +340,14 @@ function StatusFilterButton({
       onClick={onClick}
       className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
         active
-          ? "border-[#55C5E2]/50 bg-[#55C5E2]/10 text-foreground font-semibold"
+          ? "border-primary/50 bg-primary/10 text-foreground font-semibold"
           : "border-border/50 text-muted-foreground/70 hover:border-border hover:text-foreground"
       }`}
     >
       <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />
       <span>{label}</span>
       {count !== undefined && (
-        <span className={`text-[9px] font-black px-1 py-0 rounded ${active ? "bg-[#55C5E2]/20" : "bg-muted/40"}`}>
+        <span className={`text-[9px] font-black px-1 py-0 rounded ${active ? "bg-primary/20" : "bg-muted/40"}`}>
           {count}
         </span>
       )}
@@ -390,11 +375,11 @@ function StatusLegend({
   };
 
   const filters: { key: StatusFilter; dot: string; label: string }[] = [
-    { key: "all",      dot: "bg-[#9CA4B0]",              label: "All" },
-    { key: "built",    dot: "bg-[#FFB24C]",              label: "Built" },
-    { key: "deployed", dot: "bg-[#5F27CD]",              label: "Dev Deployed" },
-    { key: "expiring", dot: "bg-[#F16C6C] animate-pulse", label: "Expiring" },
-    { key: "release",  dot: "bg-[#00C986]",              label: "Release" },
+    { key: "all",      dot: "bg-gray-400",            label: "All" },
+    { key: "built",    dot: "bg-amber-500",            label: "Built" },
+    { key: "deployed", dot: "bg-violet-500",           label: "Dev Deployed" },
+    { key: "expiring", dot: "bg-red-500 animate-pulse", label: "Expiring" },
+    { key: "release",  dot: "bg-emerald-500",          label: "Release" },
   ];
 
   return (
@@ -852,7 +837,7 @@ export default function Marketplace() {
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#55C5E2] to-[#5F27CD] flex items-center justify-center shadow-lg shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shrink-0">
                 <Store className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -869,7 +854,7 @@ export default function Marketplace() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="lg" onClick={() => setIsCreateOpen(true)}
-                  className="shrink-0 gap-2 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white border-0 shadow-lg shadow-[#5F27CD]/25 hover:shadow-[#5F27CD]/40 hover:opacity-90 transition-all font-bold">
+                  className="shrink-0 gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:opacity-90 transition-all font-bold">
                   <Plus size={17} /> Publish Agent / MCP Server
                 </Button>
               </TooltipTrigger>
@@ -883,7 +868,7 @@ export default function Marketplace() {
         {/* Background ambient orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <motion.div
-            className="absolute -right-12 -top-12 w-48 h-48 bg-[#5F27CD]/10 rounded-full blur-3xl"
+            className="absolute -right-12 -top-12 w-48 h-48 bg-violet-500/10 rounded-full blur-3xl"
             animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 6, repeat: Infinity }}
           />
@@ -926,7 +911,7 @@ export default function Marketplace() {
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
             <Input
-              className="pl-8 h-9 text-sm border border-border/60 ring-1 ring-border/20 focus:border-[#55C5E2]/50 focus:ring-[#55C5E2]/20 bg-white/[0.03]"
+              className="pl-8 h-9 text-sm border border-border/60 ring-1 ring-border/20 focus:border-primary/50 focus:ring-primary/20 bg-white/[0.03]"
               placeholder="Search by name, owner, chart…"
               value={search} onChange={e => setSearch(e.target.value)}
             />
@@ -938,14 +923,14 @@ export default function Marketplace() {
           <ThemedTabsContent value="mcp-servers">{renderGrid(mcpServers, "No MCP servers yet.", Blocks)}</ThemedTabsContent>
           <ThemedTabsContent value="skills">
             <div className="flex flex-col items-center justify-center min-h-[420px] border border-dashed border-white/[0.07] rounded-2xl bg-gradient-to-b from-surface/20 to-background">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#55C5E2]/20 to-[#5F27CD]/20 flex items-center justify-center mb-5">
-                <Sparkles size={34} className="text-[#55C5E2]" />
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-5">
+                <Sparkles size={34} className="text-primary/60" />
               </div>
               <h3 className="text-2xl font-black mb-3">Coming Soon</h3>
               <p className="text-muted-foreground/50 text-sm max-w-md text-center leading-relaxed">
                 Skills will let you compose Agents and MCP Servers into autonomous multi-step pipelines — without any glue code.
               </p>
-              <div className="flex items-center gap-2 mt-5 text-xs text-[#55C5E2]/70">
+              <div className="flex items-center gap-2 mt-5 text-xs text-primary/40">
                 <ChevronRight size={12} /> Coming in the next release
               </div>
             </div>
@@ -981,12 +966,12 @@ export default function Marketplace() {
                         <span className={`font-bold px-2 py-0.5 rounded-full border ${st.badge}`}>{st.label}</span>
                         <span className={`font-bold px-2 py-0.5 rounded-full border text-[10px] ${st.envPill}`}>{item.environment.toUpperCase()}</span>
                         {item.deployment_status === "DEPLOYED" && (
-                          <span className="flex items-center gap-1 text-[#00C986] text-[10px] font-bold">
+                          <span className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold">
                             <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} /> RUNNING
                           </span>
                         )}
                         {item.deployment_status === "DEPLOYED" && item.environment === "release" && (
-                          <span className="flex items-center gap-1 text-[#00C986] text-[10px] font-bold">
+                          <span className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold">
                             <Sparkles size={9} /> Persistent · No expiry
                           </span>
                         )}
@@ -1024,7 +1009,7 @@ export default function Marketplace() {
                           className="min-h-[72px] resize-none"
                           placeholder="Example prompts, prerequisites…" />
                       : item.how_to_use
-                        ? <p className="text-sm text-muted-foreground bg-[#55C5E2]/5 border border-[#55C5E2]/20 rounded-xl p-4 leading-relaxed">{item.how_to_use}</p>
+                        ? <p className="text-sm text-muted-foreground bg-primary/5 border border-primary/20 rounded-xl p-4 leading-relaxed">{item.how_to_use}</p>
                         : <p className="text-sm text-muted-foreground/50 italic">Not provided.</p>}
                   </div>
 
@@ -1043,7 +1028,7 @@ export default function Marketplace() {
                         sub={item.chart_version ? `version ${item.chart_version}` : undefined} />
                       <InfoTile label="TTL / Persistence" icon={<Clock size={14} />}
                         value={item.environment === "release" ? "Persistent (no TTL)" : `Dev · ${item.ttl_days ?? config.dev_ttl_days}d TTL`}
-                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-[#F16C6C]" : ""}
+                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-red-600 dark:text-red-400" : ""}
                         sub={item.environment === "release"
                           ? "Release deployments never expire"
                           : item.ttl_remaining_days !== null
@@ -1055,7 +1040,7 @@ export default function Marketplace() {
                           <div className="min-w-0">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Repository</p>
                             <a href={item.bitbucket_repo} target="_blank" rel="noreferrer"
-                              className="text-sm text-[#55C5E2] hover:underline truncate block">View Source ↗</a>
+                              className="text-sm text-primary hover:underline truncate block">View Source ↗</a>
                           </div>
                         </div>
                       )}
@@ -1065,7 +1050,7 @@ export default function Marketplace() {
                           <div className="min-w-0">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Connection URL</p>
                             <a href={item.url_to_connect} target="_blank" rel="noreferrer"
-                              className="text-sm text-[#55C5E2] hover:underline truncate block">{item.url_to_connect}</a>
+                              className="text-sm text-primary hover:underline truncate block">{item.url_to_connect}</a>
                           </div>
                         </div>
                       )}
@@ -1080,10 +1065,10 @@ export default function Marketplace() {
 
                   {!editMode && (
                     <div className="flex gap-10 pt-4 border-t border-border/40">
-                      <StatBig value={item.usage_count} label="Total Calls" color="text-[#55C5E2]" />
-                      <StatBig value={item.unique_users} label="Unique Users" color="text-[#00C986]" />
+                      <StatBig value={item.usage_count} label="Total Calls" color="text-primary" />
+                      <StatBig value={item.unique_users} label="Unique Users" color="text-emerald-600 dark:text-emerald-400" />
                       {(item.tools_exposed?.length ?? 0) > 0 && (
-                        <StatBig value={item.tools_exposed.length} label="Tools" color="text-[#5F27CD]" />
+                        <StatBig value={item.tools_exposed.length} label="Tools" color="text-violet-600 dark:text-violet-400" />
                       )}
                     </div>
                   )}
@@ -1095,7 +1080,7 @@ export default function Marketplace() {
                     <div className="flex gap-2 w-full justify-end">
                       <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>Cancel</Button>
                       <Button size="sm" disabled={editLoading}
-                        className="bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white gap-1.5"
+                        className="bg-primary text-primary-foreground gap-1.5"
                         onClick={() => handleSaveEdit(item)}>
                         {editLoading ? "Saving…" : "Save Changes"}
                       </Button>
@@ -1113,19 +1098,19 @@ export default function Marketplace() {
                       <div className="flex flex-wrap gap-2 justify-end">
                         {canManage && item.deployment_status === "BUILT" && (<>
                           <Button size="sm" variant="outline"
-                            className="gap-1.5 border-[#5F27CD]/30 text-[#5F27CD] hover:bg-[#5F27CD] hover:text-white hover:border-[#5F27CD]"
+                            className="gap-1.5 border-violet-500/30 text-violet-400 hover:bg-violet-600 hover:text-white hover:border-violet-600"
                             onClick={() => { setDetailItem(null); openDeploy(item, false, "dev"); }}>
                             <Cloud size={13} /> Deploy Dev
                           </Button>
                           <Button size="sm" variant="outline"
-                            className="gap-1.5 border-[#00C986]/30 text-[#00C986] hover:bg-[#00C986] hover:text-white hover:border-[#00C986]"
+                            className="gap-1.5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600"
                             onClick={() => { setDetailItem(null); openDeploy(item, false, "release"); }}>
                             <Rocket size={13} /> Deploy Release
                           </Button>
                         </>)}
                         {canManage && item.deployment_status === "DEPLOYED" && (<>
                           <Button size="sm" variant="outline"
-                            className="gap-1.5 border-[#FFB24C]/30 text-[#FFB24C] hover:bg-[#FFB24C] hover:text-white hover:border-[#FFB24C]"
+                            className="gap-1.5 border-amber-500/30 text-amber-400 hover:bg-amber-600 hover:text-white hover:border-amber-600"
                             onClick={() => { setDetailItem(null); openDeploy(item, true, item.environment as "dev" | "release"); }}>
                             <RefreshCw size={13} /> Upgrade
                           </Button>
@@ -1144,7 +1129,7 @@ export default function Marketplace() {
                           </Button>
                         )}
                         {item.deployment_status === "DEPLOYED" && (
-                          <Button size="sm" className="gap-1.5 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white"
+                          <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground"
                             onClick={() => { setDetailItem(null); setCallItem(item); setCallPrompt(""); setCallResponse(null); setCallError(null); }}>
                             <Zap size={13} /> Run / Call
                           </Button>
@@ -1165,7 +1150,7 @@ export default function Marketplace() {
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-[#F16C6C]">
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle size={18} /> Delete "{deleteTarget?.name}"?
             </DialogTitle>
             <DialogDescription>
@@ -1202,7 +1187,7 @@ export default function Marketplace() {
         <DialogContent className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-black text-lg">
-              {isRedeploy ? <RefreshCw size={17} className="text-[#FFB24C]" /> : <Rocket size={17} className="text-[#5F27CD]" />}
+              {isRedeploy ? <RefreshCw size={17} className="text-amber-400" /> : <Rocket size={17} className="text-violet-400" />}
               {isRedeploy ? "Upgrade" : "Deploy"} — {deployItem?.name}
             </DialogTitle>
             <DialogDescription>Select environment, chart, and version from your Artifactory registry.</DialogDescription>
@@ -1218,8 +1203,8 @@ export default function Marketplace() {
                     className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
                       deployEnv === env
                         ? env === "dev"
-                          ? "border-[#5F27CD] bg-[#5F27CD]/15 text-[#5F27CD] dark:bg-[#5F27CD]/15 dark:text-[#9D4FDE]"
-                          : "border-[#00C986] bg-[#00C986]/15 text-[#00C986] dark:bg-[#00C986]/15 dark:text-[#06D6A0]"
+                          ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+                          : "border-emerald-500 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
                         : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
                     }`}>
                     {env === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
@@ -1228,12 +1213,12 @@ export default function Marketplace() {
                 ))}
               </div>
               {deployEnv === "dev" && (
-                <p className="text-xs text-[#5F27CD] mt-2 flex items-center gap-1.5">
+                <p className="text-xs text-violet-600 dark:text-violet-400 mt-2 flex items-center gap-1.5">
                   <Clock size={10} /> Auto-expires after {config.dev_ttl_days} days
                 </p>
               )}
               {deployEnv === "release" && (
-                <p className="text-xs text-[#00C986] mt-2 flex items-center gap-1.5">
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1.5">
                   <Sparkles size={10} /> Release deployments are persistent and never expire automatically
                 </p>
               )}
@@ -1257,11 +1242,11 @@ export default function Marketplace() {
                     : filteredCharts.map(chart => (
                       <button key={chart} type="button" onClick={() => handleChartSelect(chart)}
                         className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
-                          selectedChart === chart ? "bg-[#55C5E2]/15 text-[#55C5E2] font-semibold" : "hover:bg-muted/50 text-foreground/80"
+                          selectedChart === chart ? "bg-primary/15 text-primary font-semibold" : "hover:bg-muted/50 text-foreground/80"
                         }`}>
                         <PackageSearch size={12} className="text-muted-foreground/60 shrink-0" />
                         <span className="font-mono truncate">{chart}</span>
-                        {selectedChart === chart && <span className="ml-auto text-[#55C5E2] text-xs">✓</span>}
+                        {selectedChart === chart && <span className="ml-auto text-primary text-xs">✓</span>}
                       </button>
                     ))}
               </div>
@@ -1271,7 +1256,7 @@ export default function Marketplace() {
             {selectedChart && (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-2">
-                  Version — <span className="text-[#55C5E2] normal-case font-semibold">{selectedChart}</span>
+                  Version — <span className="text-primary normal-case font-semibold">{selectedChart}</span>
                 </p>
                 <div className="relative mb-2">
                   <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
@@ -1286,7 +1271,7 @@ export default function Marketplace() {
                         {filteredVersions.map(v => (
                           <button key={v} type="button" onClick={() => setSelectedVersion(v)}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-semibold transition-all ${
-                              selectedVersion === v ? "border-[#55C5E2] bg-[#55C5E2]/15 text-[#55C5E2]" : "border-border/60 text-foreground/70 hover:border-border"
+                              selectedVersion === v ? "border-primary bg-primary/15 text-primary" : "border-border/60 text-foreground/70 hover:border-border"
                             }`}>{v}
                           </button>
                         ))}
@@ -1299,7 +1284,7 @@ export default function Marketplace() {
               <div className={`flex items-start gap-3 p-4 rounded-xl border bg-muted/50 text-sm`}
                 style={{ borderColor: deployEnv === "dev" ? "rgb(139 92 246 / 0.5)" : "rgb(34 197 94 / 0.5)" }}>
                 <div className={`mt-0.5 shrink-0 p-1.5 rounded-lg ${
-                  deployEnv === "dev" ? "bg-[#5F27CD]/20 text-[#5F27CD]" : "bg-[#00C986]/20 text-[#00C986]"
+                  deployEnv === "dev" ? "bg-violet-500/20 text-violet-400" : "bg-emerald-500/20 text-emerald-400"
                 }`}>
                   {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
                 </div>
@@ -1309,7 +1294,7 @@ export default function Marketplace() {
                     {selectedChart}@{selectedVersion}
                   </code>{" "}
                   to{" "}
-                  <span className={`font-bold ${deployEnv === "dev" ? "text-[#5F27CD]" : "text-[#00C986]"}`}>
+                  <span className={`font-bold ${deployEnv === "dev" ? "text-violet-400" : "text-emerald-400"}`}>
                     {deployEnv.toUpperCase()}
                   </span>.
                   {deployEnv === "dev" && (
@@ -1318,7 +1303,7 @@ export default function Marketplace() {
                     </span>
                   )}
                   {deployEnv === "release" && (
-                    <span className="text-xs block mt-1 text-[#00C986]">
+                    <span className="text-xs block mt-1 text-emerald-600 dark:text-emerald-400">
                       Persistent deployment — will not expire automatically.
                     </span>
                   )}
@@ -1330,7 +1315,7 @@ export default function Marketplace() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsDeployOpen(false)}>Cancel</Button>
             <Button disabled={!selectedChart || !selectedVersion || deployLoading} onClick={handleDeploy}
-              className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-[#5F27CD] hover:opacity-90 text-white" : "bg-[#00C986] hover:opacity-90 text-white"}`}>
+              className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-violet-600 hover:bg-violet-500 text-white" : "bg-emerald-600 hover:bg-emerald-500 text-white"}`}>
               {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
               {deployLoading ? "Working…" : isRedeploy ? "Upgrade" : "Deploy"}
             </Button>
@@ -1345,7 +1330,7 @@ export default function Marketplace() {
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-black">
-              <Zap size={17} className="text-[#55C5E2]" /> Test — {callItem?.name}
+              <Zap size={17} className="text-primary" /> Test — {callItem?.name}
             </DialogTitle>
             <DialogDescription>
               Send a prompt to this {callItem?.item_type === "agent" ? "agent" : "MCP server"}.
@@ -1359,7 +1344,7 @@ export default function Marketplace() {
                 {callItem.url_to_connect}
               </p>
             ) : (
-              <div className="flex items-center gap-2 text-sm text-[#B87A2E] dark:text-[#FFB24C] bg-[#FFB24C]/15 dark:bg-[#FFB24C]/10 border border-[#FFB24C]/40 dark:border-[#FFB24C]/20 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/10 border border-amber-300/80 dark:border-amber-500/20 rounded-lg px-3 py-2">
                 <AlertTriangle size={14} /> No connection URL — redeploy to assign one.
               </div>
             )}
@@ -1376,14 +1361,14 @@ export default function Marketplace() {
 
             {callResponse !== null && (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#00C986] mb-1.5">Response</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400/80 mb-1.5">Response</p>
                 <pre className="text-xs text-foreground bg-muted/50 border border-border/50 rounded-xl p-4 overflow-auto max-h-60 whitespace-pre-wrap font-mono leading-relaxed">
                   {callResponse}
                 </pre>
               </div>
             )}
             {callError && (
-              <div className="flex items-start gap-2 text-sm text-[#F16C6C] bg-[#F16C6C]/10 border border-[#F16C6C]/40 dark:border-[#F16C6C]/20 rounded-xl p-3">
+              <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-500/10 border border-red-300/80 dark:border-red-500/20 rounded-xl p-3">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>{callError}</span>
               </div>
@@ -1395,7 +1380,7 @@ export default function Marketplace() {
               Close
             </Button>
             <Button disabled={callLoading || !callPrompt.trim() || !callItem?.url_to_connect}
-              onClick={handleCall} className="gap-1.5 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white font-bold">
+              onClick={handleCall} className="gap-1.5 bg-primary text-primary-foreground font-bold">
               <Send size={13} /> {callLoading ? "Sending…" : "Send Prompt"}
             </Button>
           </DialogFooter>
@@ -1409,7 +1394,7 @@ export default function Marketplace() {
         <DialogContent className="sm:max-w-[740px] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-black">
-              <Sparkles size={19} className="text-[#55C5E2]" /> Publish New Agent / MCP Server
+              <Sparkles size={19} className="text-primary" /> Publish New Agent / MCP Server
             </DialogTitle>
             <DialogDescription>
               Register an Agent or MCP Server. It will immediately be <strong>BUILT</strong> and ready to deploy.
@@ -1417,12 +1402,12 @@ export default function Marketplace() {
           </DialogHeader>
 
           {/* Prerequisites notice */}
-          <div className="mt-4 rounded-xl border border-[#FFB24C]/30 bg-[#FFB24C]/10 p-4 space-y-3">
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-[#FFB24C]/20 flex items-center justify-center shrink-0">
-                <Info size={13} className="text-[#FFB24C]" />
+              <div className="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
+                <Info size={13} className="text-amber-500" />
               </div>
-              <p className="text-sm font-bold text-[#FFB24C]">Prerequisites — This Release Only</p>
+              <p className="text-sm font-bold text-amber-500">Prerequisites — This Release Only</p>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
               In this release, repository provisioning and pipeline setup are <strong>manual</strong>. Before you can
@@ -1430,23 +1415,23 @@ export default function Marketplace() {
             </p>
             <ol className="text-xs text-muted-foreground space-y-1.5 pl-1">
               <li className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-[#FFB24C]/20 text-[#FFB24C] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
                 <span>
                   <strong>Fork the templates repository</strong> for your Agent or MCP Server — DevOps will create the repo and return the Bitbucket URL.
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-[#FFB24C]/20 text-[#FFB24C] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
                 <span>
                   <strong>Create a multibranch pipeline in Jenkins</strong> for the new repo — DevOps will return the Jenkins job URL.
                 </span>
               </li>
             </ol>
-            <div className="rounded-lg bg-[#FFB24C]/10 border border-[#FFB24C]/20 px-3 py-2 space-y-1">
-              <p className="text-[11px] font-semibold text-[#FFB24C]">After DevOps responds:</p>
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
+              <p className="text-[11px] font-semibold text-amber-400">After DevOps responds:</p>
               <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
                 <li>Enter the <strong>Bitbucket repo URL</strong> in the field below and start developing.</li>
-                <li>In the repository, replace every occurrence of <code className="bg-muted/60 px-1 rounded text-[#FFB24C] font-mono">__appname__</code> with your Agent / MCP name.</li>
+                <li>In the repository, replace every occurrence of <code className="bg-muted/60 px-1 rounded text-amber-400 font-mono">__appname__</code> with your Agent / MCP name.</li>
                 <li>Use the Jenkins URL to monitor builds and deployments.</li>
               </ul>
             </div>
@@ -1459,7 +1444,7 @@ export default function Marketplace() {
             {/* Icon upload */}
             <div className="flex items-start gap-5 p-4 rounded-2xl border border-border/50 bg-muted/20">
               <div onClick={() => iconInputRef.current?.click()}
-                className="w-20 h-20 rounded-2xl border-2 border-dashed border-border/60 bg-muted/30 flex items-center justify-center cursor-pointer hover:border-[#55C5E2]/60 hover:bg-[#55C5E2]/5 transition-all shrink-0 overflow-hidden group">
+                className="w-20 h-20 rounded-2xl border-2 border-dashed border-border/60 bg-muted/30 flex items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-all shrink-0 overflow-hidden group">
                 {createIcon
                   ? <img src={createIcon} alt="preview" className="w-full h-full object-cover" />
                   : <div className="flex flex-col items-center gap-1 text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors">
@@ -1483,13 +1468,13 @@ export default function Marketplace() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                  Type <span className="text-[#F16C6C]">*</span>
+                  Type <span className="text-destructive">*</span>
                 </Label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["agent", "mcp_server"] as const).map(t => (
                     <button key={t} type="button" onClick={() => setCreateType(t)}
                       className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
-                        createType === t ? "border-[#55C5E2] bg-[#55C5E2]/10 text-[#55C5E2]" : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
+                        createType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
                       }`}>
                       {t === "agent" ? <Zap size={13} /> : <Blocks size={13} />}
                       {t === "agent" ? "Agent" : "MCP"}
@@ -1499,7 +1484,7 @@ export default function Marketplace() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cn" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                  Name <span className="text-[#F16C6C]">*</span>
+                  Name <span className="text-destructive">*</span>
                 </Label>
                 <Input id="cn" required placeholder="e.g. Jira Integration MCP"
                   value={createName} onChange={e => setCreateName(e.target.value)} />
@@ -1508,7 +1493,7 @@ export default function Marketplace() {
 
             <div className="space-y-2">
               <Label htmlFor="cd" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                Description <span className="text-[#F16C6C]">*</span>
+                Description <span className="text-destructive">*</span>
               </Label>
               <Textarea id="cd" required className="min-h-[80px] resize-none"
                 placeholder="What does this entity do? When should someone use it?"
@@ -1531,7 +1516,7 @@ export default function Marketplace() {
             <DialogFooter className="pt-4 border-t border-border/40 gap-2">
               <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); resetCreate(); }}>Cancel</Button>
               <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim()}
-                className="gap-1.5 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white font-bold px-6">
+                className="gap-1.5 bg-gradient-primary text-primary-foreground font-bold px-6">
                 <Plus size={14} />{createLoading ? "Publishing…" : "Publish Agent / MCP Server"}
               </Button>
             </DialogFooter>
