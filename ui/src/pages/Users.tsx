@@ -321,8 +321,8 @@ const UsersPage: React.FC = () => {
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs cursor-default ${activeSessionUserIds.has(user.id) ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${activeSessionUserIds.has(user.id) ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs cursor-default ${activeSessionUserIds.has(user.id) ? 'bg-[#00C986]/15 text-[#00C986]' : 'bg-gray-100 text-gray-500'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${activeSessionUserIds.has(user.id) ? 'bg-[#00C986] animate-pulse' : 'bg-gray-400'}`} />
                             {activeSessionUserIds.has(user.id) ? 'Online' : 'Offline'}
                           </span>
                         </TooltipTrigger>
@@ -356,7 +356,7 @@ const UsersPage: React.FC = () => {
                     </TooltipProvider>
                   </TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${user.is_admin ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${user.is_admin ? 'bg-[#F16C6C]/15 text-[#F16C6C]' : 'bg-[#55C5E2]/15 text-[#465D88]'}`}>
                       {user.is_admin ? 'Admin' : 'User'}
                     </span>
                   </TableCell>
@@ -382,7 +382,7 @@ const UsersPage: React.FC = () => {
                           variant="outline"
                           size="sm"
                           onClick={() => openDialog('delete', user)}
-                          className="h-8 px-2 text-red-600 hover:text-red-700"
+                          className="h-8 px-2 text-[#F16C6C] hover:text-[#F16C6C]/90"
                         >
                           🗑️ Delete
                         </Button>

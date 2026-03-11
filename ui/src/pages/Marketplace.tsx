@@ -124,57 +124,76 @@ function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> 
   return "deployed";
 }
 
-/* Company palette: Deployed #20B888, Warning #EF8D4D, Draft #FFD54D, Expiring #EF7A6E, Info/Dev #55C5E2 */
+/* Company palette: Release #00C986, Expiring #F16C6C, Dev #5F27CD, Built #FFB24C. Card: color on top bar only, neutral border. */
 function getItemStyle(item: MarketplaceItem) {
+  const neutralRing =
+    "border-border/60 hover:border-border dark:border-border/50 dark:hover:border-border/80";
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
-        topBar: "bg-[#20B888]",
-        leftBar: "bg-[#20B888]",
-        ring: "border-[#20B888]/60 hover:border-[#20B888]/90 dark:border-[#20B888]/40 dark:hover:border-[#20B888]/70",
-        badge: "bg-[#20B888]/15 text-[#20B888] border-[#20B888]/40 dark:bg-[#20B888]/20 dark:text-[#20B888] dark:border-[#20B888]/40",
-        label: "Release", dot: "bg-[#20B888]", pulse: true,
-        envPill: "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(32,184,136,0.2)]",
+        topBar: "bg-[#00C986]",
+        leftBar: "bg-[#00C986]",
+        ring: neutralRing,
+        badge:
+          "bg-[#00C986]/15 text-[#00C986] border-[#00C986]/40 dark:bg-[#00C986]/20 dark:text-[#06D6A0] dark:border-[#00C986]/40",
+        label: "Release",
+        dot: "bg-[#00C986]",
+        pulse: true,
+        envPill:
+          "bg-[#55C5E2]/15 text-[#465D88] border-[#55C5E2]/30 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(0,201,134,0.2)]",
       };
     }
     const r = item.ttl_remaining_days;
     if (r !== null && r <= 7) {
       return {
-        topBar: "bg-[#EF7A6E]",
-        leftBar: "bg-[#EF7A6E]",
-        ring: "border-[#EF7A6E]/60 hover:border-[#EF7A6E]/90 dark:border-[#EF7A6E]/50 dark:hover:border-[#EF7A6E]/80",
-        badge: "bg-[#EF7A6E]/15 text-[#EF7A6E] border-[#EF7A6E]/40 dark:bg-[#EF7A6E]/20 dark:text-[#EF7A6E] dark:border-[#EF7A6E]/40",
-        label: "Expiring", dot: "bg-[#EF7A6E] animate-pulse", pulse: true,
-        envPill: "bg-[#EF8D4D]/15 text-[#EF8D4D] border-[#EF8D4D]/40 dark:bg-[#EF8D4D]/20 dark:text-[#EF8D4D] dark:border-[#EF8D4D]/35",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(239,122,110,0.2)]",
+        topBar: "bg-[#F16C6C]",
+        leftBar: "bg-[#F16C6C]",
+        ring: neutralRing,
+        badge:
+          "bg-[#F16C6C]/15 text-[#F16C6C] border-[#F16C6C]/40 dark:bg-[#F16C6C]/20 dark:text-[#F28583] dark:border-[#F16C6C]/40",
+        label: "Expiring",
+        dot: "bg-[#F16C6C] animate-pulse",
+        pulse: true,
+        envPill:
+          "bg-[#FFB24C]/15 text-[#465D88] border-[#FFB24C]/30 dark:bg-[#FFB24C]/20 dark:text-[#FFB24C] dark:border-[#FFB24C]/35",
+        hoverShadow: "hover:shadow-[0_12px_32px_rgba(241,108,108,0.2)]",
       };
     }
     return {
-      topBar: "bg-[#55C5E2]",
-      leftBar: "bg-[#55C5E2]",
-      ring: "border-[#55C5E2]/60 hover:border-[#55C5E2]/90 dark:border-[#55C5E2]/40 dark:hover:border-[#55C5E2]/70",
-      badge: "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/40",
-      label: "Dev Deployed", dot: "bg-[#55C5E2]", pulse: true,
-      envPill: "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/35",
-      hoverShadow: "hover:shadow-[0_12px_32px_rgba(85,197,226,0.2)]",
+      topBar: "bg-[#5F27CD]",
+      leftBar: "bg-[#5F27CD]",
+      ring: neutralRing,
+      badge:
+        "bg-[#5F27CD]/15 text-[#5F27CD] border-[#5F27CD]/40 dark:bg-[#5F27CD]/20 dark:text-[#9D4FDE] dark:border-[#5F27CD]/40",
+      label: "Dev Deployed",
+      dot: "bg-[#5F27CD]",
+      pulse: true,
+      envPill:
+        "bg-[#5F27CD]/15 text-[#465D88] border-[#5F27CD]/30 dark:bg-[#5F27CD]/20 dark:text-[#9D4FDE] dark:border-[#5F27CD]/35",
+      hoverShadow: "hover:shadow-[0_12px_32px_rgba(95,39,205,0.2)]",
     };
   }
   return {
-    topBar: "bg-[#FFD54D]",
-    leftBar: "bg-[#FFD54D]",
-    ring: "border-[#FFD54D]/55 hover:border-[#FFD54D]/85 dark:border-[#FFD54D]/35 dark:hover:border-[#FFD54D]/65",
-    badge: "bg-[#FFD54D]/20 text-[#B8860B] border-[#FFD54D]/50 dark:bg-[#FFD54D]/20 dark:text-[#FFD54D] dark:border-[#FFD54D]/40",
-    label: "Built", dot: "bg-[#FFD54D]", pulse: false,
-    envPill: "bg-muted/50 text-muted-foreground border-border dark:bg-muted/30 dark:text-muted-foreground dark:border-border",
-    hoverShadow: "hover:shadow-[0_12px_32px_rgba(255,213,77,0.18)]",
+    topBar: "bg-[#FFB24C]",
+    leftBar: "bg-[#FFB24C]",
+    ring: neutralRing,
+    badge:
+      "bg-[#FFB24C]/15 text-[#B87A2E] border-[#FFB24C]/40 dark:bg-[#FFB24C]/20 dark:text-[#FFE64C] dark:border-[#FFB24C]/40",
+    label: "Built",
+    dot: "bg-[#FFB24C]",
+    pulse: false,
+    envPill:
+      "bg-muted/50 text-muted-foreground border-border/50 dark:bg-muted/30 dark:text-muted-foreground dark:border-border/40",
+    hoverShadow: "hover:shadow-[0_12px_32px_rgba(255,178,76,0.2)]",
   };
 }
 
 function ttlCls(r: number | null) {
   if (r === null) return "";
-  if (r <= 7) return "bg-[#EF7A6E]/15 text-[#EF7A6E] border-[#EF7A6E]/40 dark:bg-[#EF7A6E]/15 dark:text-[#EF7A6E] dark:border-[#EF7A6E]/30";
-  return "bg-[#55C5E2]/15 text-[#55C5E2] border-[#55C5E2]/40 dark:bg-[#55C5E2]/15 dark:text-[#55C5E2] dark:border-[#55C5E2]/30";
+  if (r <= 7)
+    return "bg-[#F16C6C]/15 text-[#F16C6C] border-[#F16C6C]/40 dark:bg-[#F16C6C]/20 dark:text-[#F28583] dark:border-[#F16C6C]/30";
+  return "bg-[#5F27CD]/15 text-[#5F27CD] border-[#5F27CD]/40 dark:bg-[#5F27CD]/20 dark:text-[#9D4FDE] dark:border-[#5F27CD]/30";
 }
 
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
@@ -192,10 +211,7 @@ const EntityIcon = memo(function EntityIcon({
     );
   }
   return (
-    <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg
-      ${item_type === "agent"
-        ? "bg-gradient-to-br from-sky-500 to-blue-600"
-        : "bg-gradient-to-br from-violet-500 to-purple-600"}`}>
+    <div className={`${dim} rounded-xl shrink-0 flex items-center justify-center shadow-lg bg-gradient-to-br from-[#55C5E2] to-[#5F27CD]`}>
       {item_type === "agent"
         ? <Zap size={iconSz} className="text-white" />
         : <Blocks size={iconSz} className="text-white" />}
@@ -212,7 +228,8 @@ const ItemCard = memo(function ItemCard({
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
   const isAgent = item.item_type === "agent";
-  const iconGradient = isAgent ? "from-[#55C5E2] to-[#5F27CD]" : "from-[#5F27CD] to-[#55C5E2]";
+  /* Company palette: primary #55C5E2 → secondary #5F27CD */
+  const iconGradient = "from-[#55C5E2] to-[#5F27CD]";
   const hoverGlow = "hover:shadow-[0_20px_60px_rgba(85,197,226,0.22)]";
 
   return (
@@ -292,7 +309,7 @@ const ItemCard = memo(function ItemCard({
           </div>
         ) : item.deployment_status === "DEPLOYED" && item.environment === "release" ? (
           <div className="mt-3">
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border bg-[#20B888]/15 text-[#20B888] border-[#20B888]/40 dark:bg-[#20B888]/15 dark:text-[#20B888] dark:border-[#20B888]/30">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border bg-[#00C986]/15 text-[#00C986] border-[#00C986]/40 dark:bg-[#00C986]/20 dark:text-[#06D6A0] dark:border-[#00C986]/30">
               <Sparkles size={9} /> Persistent · No expiry
             </span>
           </div>
@@ -315,7 +332,7 @@ const ItemCard = memo(function ItemCard({
             calls
           </span>
           <span className="flex items-center gap-1.5">
-            <Users size={11} className="text-[#20B888]" />
+            <Users size={11} className="text-[#00C986]" />
             <span className="font-semibold text-foreground">{item.unique_users}</span>
             users
           </span>
@@ -373,11 +390,11 @@ function StatusLegend({
   };
 
   const filters: { key: StatusFilter; dot: string; label: string }[] = [
-    { key: "all",      dot: "bg-[#A8A3AD]",           label: "All" },
-    { key: "built",    dot: "bg-[#FFD54D]",            label: "Built" },
-    { key: "deployed", dot: "bg-[#55C5E2]",            label: "Dev Deployed" },
-    { key: "expiring", dot: "bg-[#EF7A6E] animate-pulse", label: "Expiring" },
-    { key: "release",  dot: "bg-[#20B888]",            label: "Release" },
+    { key: "all",      dot: "bg-[#9CA4B0]",              label: "All" },
+    { key: "built",    dot: "bg-[#FFB24C]",              label: "Built" },
+    { key: "deployed", dot: "bg-[#5F27CD]",              label: "Dev Deployed" },
+    { key: "expiring", dot: "bg-[#F16C6C] animate-pulse", label: "Expiring" },
+    { key: "release",  dot: "bg-[#00C986]",              label: "Release" },
   ];
 
   return (
@@ -835,7 +852,7 @@ export default function Marketplace() {
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#55C5E2] to-[#5F27CD] flex items-center justify-center shadow-lg shrink-0">
                 <Store className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -852,7 +869,7 @@ export default function Marketplace() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="lg" onClick={() => setIsCreateOpen(true)}
-                  className="shrink-0 gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:opacity-90 transition-all font-bold">
+                  className="shrink-0 gap-2 bg-gradient-to-r from-[#55C5E2] to-[#5F27CD] text-white border-0 shadow-lg shadow-[#5F27CD]/25 hover:shadow-[#5F27CD]/40 hover:opacity-90 transition-all font-bold">
                   <Plus size={17} /> Publish Agent / MCP Server
                 </Button>
               </TooltipTrigger>
@@ -866,7 +883,7 @@ export default function Marketplace() {
         {/* Background ambient orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <motion.div
-            className="absolute -right-12 -top-12 w-48 h-48 bg-violet-500/10 rounded-full blur-3xl"
+            className="absolute -right-12 -top-12 w-48 h-48 bg-[#5F27CD]/10 rounded-full blur-3xl"
             animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 6, repeat: Infinity }}
           />
@@ -964,12 +981,12 @@ export default function Marketplace() {
                         <span className={`font-bold px-2 py-0.5 rounded-full border ${st.badge}`}>{st.label}</span>
                         <span className={`font-bold px-2 py-0.5 rounded-full border text-[10px] ${st.envPill}`}>{item.environment.toUpperCase()}</span>
                         {item.deployment_status === "DEPLOYED" && (
-                          <span className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold">
+                          <span className="flex items-center gap-1 text-[#00C986] text-[10px] font-bold">
                             <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} /> RUNNING
                           </span>
                         )}
                         {item.deployment_status === "DEPLOYED" && item.environment === "release" && (
-                          <span className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold">
+                          <span className="flex items-center gap-1 text-[#00C986] text-[10px] font-bold">
                             <Sparkles size={9} /> Persistent · No expiry
                           </span>
                         )}
@@ -1026,7 +1043,7 @@ export default function Marketplace() {
                         sub={item.chart_version ? `version ${item.chart_version}` : undefined} />
                       <InfoTile label="TTL / Persistence" icon={<Clock size={14} />}
                         value={item.environment === "release" ? "Persistent (no TTL)" : `Dev · ${item.ttl_days ?? config.dev_ttl_days}d TTL`}
-                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-red-600 dark:text-red-400" : ""}
+                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-[#F16C6C]" : ""}
                         sub={item.environment === "release"
                           ? "Release deployments never expire"
                           : item.ttl_remaining_days !== null
@@ -1064,9 +1081,9 @@ export default function Marketplace() {
                   {!editMode && (
                     <div className="flex gap-10 pt-4 border-t border-border/40">
                       <StatBig value={item.usage_count} label="Total Calls" color="text-primary" />
-                      <StatBig value={item.unique_users} label="Unique Users" color="text-emerald-600 dark:text-emerald-400" />
+                      <StatBig value={item.unique_users} label="Unique Users" color="text-[#00C986]" />
                       {(item.tools_exposed?.length ?? 0) > 0 && (
-                        <StatBig value={item.tools_exposed.length} label="Tools" color="text-violet-600 dark:text-violet-400" />
+                        <StatBig value={item.tools_exposed.length} label="Tools" color="text-[#5F27CD]" />
                       )}
                     </div>
                   )}
@@ -1096,19 +1113,19 @@ export default function Marketplace() {
                       <div className="flex flex-wrap gap-2 justify-end">
                         {canManage && item.deployment_status === "BUILT" && (<>
                           <Button size="sm" variant="outline"
-                            className="gap-1.5 border-violet-500/30 text-violet-400 hover:bg-violet-600 hover:text-white hover:border-violet-600"
+                            className="gap-1.5 border-[#5F27CD]/30 text-[#5F27CD] hover:bg-[#5F27CD] hover:text-white hover:border-[#5F27CD]"
                             onClick={() => { setDetailItem(null); openDeploy(item, false, "dev"); }}>
                             <Cloud size={13} /> Deploy Dev
                           </Button>
                           <Button size="sm" variant="outline"
-                            className="gap-1.5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600"
+                            className="gap-1.5 border-[#00C986]/30 text-[#00C986] hover:bg-[#00C986] hover:text-white hover:border-[#00C986]"
                             onClick={() => { setDetailItem(null); openDeploy(item, false, "release"); }}>
                             <Rocket size={13} /> Deploy Release
                           </Button>
                         </>)}
                         {canManage && item.deployment_status === "DEPLOYED" && (<>
                           <Button size="sm" variant="outline"
-                            className="gap-1.5 border-amber-500/30 text-amber-400 hover:bg-amber-600 hover:text-white hover:border-amber-600"
+                            className="gap-1.5 border-[#FFB24C]/30 text-[#FFB24C] hover:bg-[#FFB24C] hover:text-white hover:border-[#FFB24C]"
                             onClick={() => { setDetailItem(null); openDeploy(item, true, item.environment as "dev" | "release"); }}>
                             <RefreshCw size={13} /> Upgrade
                           </Button>
@@ -1185,7 +1202,7 @@ export default function Marketplace() {
         <DialogContent className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-black text-lg">
-              {isRedeploy ? <RefreshCw size={17} className="text-amber-400" /> : <Rocket size={17} className="text-violet-400" />}
+              {isRedeploy ? <RefreshCw size={17} className="text-[#FFB24C]" /> : <Rocket size={17} className="text-[#5F27CD]" />}
               {isRedeploy ? "Upgrade" : "Deploy"} — {deployItem?.name}
             </DialogTitle>
             <DialogDescription>Select environment, chart, and version from your Artifactory registry.</DialogDescription>
@@ -1201,8 +1218,8 @@ export default function Marketplace() {
                     className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
                       deployEnv === env
                         ? env === "dev"
-                          ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
-                          : "border-emerald-500 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                          ? "border-[#5F27CD] bg-[#5F27CD]/15 text-[#5F27CD] dark:bg-[#5F27CD]/15 dark:text-[#9D4FDE]"
+                          : "border-[#00C986] bg-[#00C986]/15 text-[#00C986] dark:bg-[#00C986]/15 dark:text-[#06D6A0]"
                         : "border-border text-muted-foreground/70 hover:border-border/80 hover:bg-muted/30"
                     }`}>
                     {env === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
@@ -1211,12 +1228,12 @@ export default function Marketplace() {
                 ))}
               </div>
               {deployEnv === "dev" && (
-                <p className="text-xs text-violet-600 dark:text-violet-400 mt-2 flex items-center gap-1.5">
+                <p className="text-xs text-[#5F27CD] mt-2 flex items-center gap-1.5">
                   <Clock size={10} /> Auto-expires after {config.dev_ttl_days} days
                 </p>
               )}
               {deployEnv === "release" && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1.5">
+                <p className="text-xs text-[#00C986] mt-2 flex items-center gap-1.5">
                   <Sparkles size={10} /> Release deployments are persistent and never expire automatically
                 </p>
               )}
@@ -1282,7 +1299,7 @@ export default function Marketplace() {
               <div className={`flex items-start gap-3 p-4 rounded-xl border bg-muted/50 text-sm`}
                 style={{ borderColor: deployEnv === "dev" ? "rgb(139 92 246 / 0.5)" : "rgb(34 197 94 / 0.5)" }}>
                 <div className={`mt-0.5 shrink-0 p-1.5 rounded-lg ${
-                  deployEnv === "dev" ? "bg-violet-500/20 text-violet-400" : "bg-emerald-500/20 text-emerald-400"
+                  deployEnv === "dev" ? "bg-[#5F27CD]/20 text-[#5F27CD]" : "bg-[#00C986]/20 text-[#00C986]"
                 }`}>
                   {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
                 </div>
@@ -1292,7 +1309,7 @@ export default function Marketplace() {
                     {selectedChart}@{selectedVersion}
                   </code>{" "}
                   to{" "}
-                  <span className={`font-bold ${deployEnv === "dev" ? "text-violet-400" : "text-emerald-400"}`}>
+                  <span className={`font-bold ${deployEnv === "dev" ? "text-[#5F27CD]" : "text-[#00C986]"}`}>
                     {deployEnv.toUpperCase()}
                   </span>.
                   {deployEnv === "dev" && (
@@ -1301,7 +1318,7 @@ export default function Marketplace() {
                     </span>
                   )}
                   {deployEnv === "release" && (
-                    <span className="text-xs block mt-1 text-emerald-600 dark:text-emerald-400">
+                    <span className="text-xs block mt-1 text-[#00C986]">
                       Persistent deployment — will not expire automatically.
                     </span>
                   )}
@@ -1313,7 +1330,7 @@ export default function Marketplace() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsDeployOpen(false)}>Cancel</Button>
             <Button disabled={!selectedChart || !selectedVersion || deployLoading} onClick={handleDeploy}
-              className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-violet-600 hover:bg-violet-500 text-white" : "bg-emerald-600 hover:bg-emerald-500 text-white"}`}>
+              className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-[#5F27CD] hover:opacity-90 text-white" : "bg-[#00C986] hover:opacity-90 text-white"}`}>
               {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
               {deployLoading ? "Working…" : isRedeploy ? "Upgrade" : "Deploy"}
             </Button>
@@ -1342,7 +1359,7 @@ export default function Marketplace() {
                 {callItem.url_to_connect}
               </p>
             ) : (
-              <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/10 border border-amber-300/80 dark:border-amber-500/20 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 text-sm text-[#B87A2E] dark:text-[#FFB24C] bg-[#FFB24C]/15 dark:bg-[#FFB24C]/10 border border-[#FFB24C]/40 dark:border-[#FFB24C]/20 rounded-lg px-3 py-2">
                 <AlertTriangle size={14} /> No connection URL — redeploy to assign one.
               </div>
             )}
@@ -1359,14 +1376,14 @@ export default function Marketplace() {
 
             {callResponse !== null && (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400/80 mb-1.5">Response</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#00C986] mb-1.5">Response</p>
                 <pre className="text-xs text-foreground bg-muted/50 border border-border/50 rounded-xl p-4 overflow-auto max-h-60 whitespace-pre-wrap font-mono leading-relaxed">
                   {callResponse}
                 </pre>
               </div>
             )}
             {callError && (
-              <div className="flex items-start gap-2 text-sm text-[#EF7A6E] bg-[#EF7A6E]/10 border border-[#EF7A6E]/30 dark:bg-[#EF7A6E]/10 dark:text-[#EF7A6E] dark:border-[#EF7A6E]/20 rounded-xl p-3">
+              <div className="flex items-start gap-2 text-sm text-[#F16C6C] bg-[#F16C6C]/10 border border-[#F16C6C]/40 dark:border-[#F16C6C]/20 rounded-xl p-3">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>{callError}</span>
               </div>
@@ -1400,12 +1417,12 @@ export default function Marketplace() {
           </DialogHeader>
 
           {/* Prerequisites notice */}
-          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 space-y-3">
+          <div className="mt-4 rounded-xl border border-[#FFB24C]/30 bg-[#FFB24C]/10 p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
-                <Info size={13} className="text-amber-500" />
+              <div className="w-6 h-6 rounded-md bg-[#FFB24C]/20 flex items-center justify-center shrink-0">
+                <Info size={13} className="text-[#FFB24C]" />
               </div>
-              <p className="text-sm font-bold text-amber-500">Prerequisites — This Release Only</p>
+              <p className="text-sm font-bold text-[#FFB24C]">Prerequisites — This Release Only</p>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
               In this release, repository provisioning and pipeline setup are <strong>manual</strong>. Before you can
@@ -1413,23 +1430,23 @@ export default function Marketplace() {
             </p>
             <ol className="text-xs text-muted-foreground space-y-1.5 pl-1">
               <li className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                <span className="w-4 h-4 rounded-full bg-[#FFB24C]/20 text-[#FFB24C] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
                 <span>
                   <strong>Fork the templates repository</strong> for your Agent or MCP Server — DevOps will create the repo and return the Bitbucket URL.
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                <span className="w-4 h-4 rounded-full bg-[#FFB24C]/20 text-[#FFB24C] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
                 <span>
                   <strong>Create a multibranch pipeline in Jenkins</strong> for the new repo — DevOps will return the Jenkins job URL.
                 </span>
               </li>
             </ol>
-            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
-              <p className="text-[11px] font-semibold text-amber-400">After DevOps responds:</p>
+            <div className="rounded-lg bg-[#FFB24C]/10 border border-[#FFB24C]/20 px-3 py-2 space-y-1">
+              <p className="text-[11px] font-semibold text-[#FFB24C]">After DevOps responds:</p>
               <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
                 <li>Enter the <strong>Bitbucket repo URL</strong> in the field below and start developing.</li>
-                <li>In the repository, replace every occurrence of <code className="bg-muted/60 px-1 rounded text-amber-400 font-mono">__appname__</code> with your Agent / MCP name.</li>
+                <li>In the repository, replace every occurrence of <code className="bg-muted/60 px-1 rounded text-[#FFB24C] font-mono">__appname__</code> with your Agent / MCP name.</li>
                 <li>Use the Jenkins URL to monitor builds and deployments.</li>
               </ul>
             </div>

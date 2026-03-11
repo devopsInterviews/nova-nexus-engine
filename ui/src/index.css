@@ -6,9 +6,9 @@
 
 @layer base {
   :root {
-    /* Base Colors - Default Light Mode (backgrounds unchanged per design) */
+    /* Base Colors - Default Light Mode */
     --background: 210 40% 98%;
-    --foreground: 236 32% 17%;  /* Primary text #1D1F38 */
+    --foreground: 220 27% 5%;
     
     --surface: 210 40% 96%;
     --surface-elevated: 210 40% 94%;
@@ -17,38 +17,36 @@
     --glass: 210 40% 96% / 0.8;
     --glass-border: 220 40% 60% / 0.2;
     
-    /* Primary - Purple #5F27CD (gradient start, secondary/flat button color) */
-    --primary: 263 68% 48%;
+    /* Primary - Company Cyan #55C5E2 */
+    --primary: 194 70% 61%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 193 69% 61%;  /* #55C5E2 */
-    /* Button hover - #55C5E2 */
-    --primary-hover: 193 69% 61%;
+    --primary-glow: 194 70% 71%;
     
-    /* Secondary - same as primary for flat/secondary buttons #5F27CD */
+    /* Secondary - Company Purple #5F27CD */
     --secondary: 263 68% 48%;
     --secondary-foreground: 0 0% 100%;
     --secondary-glow: 263 68% 58%;
     
-    /* Accent - Link/Hover/Info #55C5E2 */
-    --accent: 193 69% 61%;
-    --accent-foreground: 236 32% 17%;
-    --accent-glow: 193 69% 71%;
+    /* Accent - align with primary for consistency */
+    --accent: 194 70% 61%;
+    --accent-foreground: 220 27% 5%;
+    --accent-glow: 194 70% 71%;
     
-    /* Success #20B888 */
-    --success: 162 70% 42%;
+    /* Success - Company Green #00C986 */
+    --success: 160 100% 39%;
     --success-foreground: 0 0% 100%;
     
-    /* Warning #EF8D4D */
-    --warning: 24 84% 62%;
-    --warning-foreground: 236 32% 17%;
+    /* Warning - Company Orange #FFB24C */
+    --warning: 34 100% 65%;
+    --warning-foreground: 220 27% 5%;
     
-    /* Destructive / Error #EF7A6E */
-    --destructive: 5 81% 68%;
+    /* Destructive - Company Red #F16C6C */
+    --destructive: 0 82% 68%;
     --destructive-foreground: 0 0% 100%;
     
     /* Muted */
     --muted: 210 40% 90%;
-    --muted-foreground: 236 5% 38%;  /* Secondary text #5D5E67 */
+    --muted-foreground: 220 15% 35%;
     
     /* Card */
     --card: var(--surface);
@@ -58,16 +56,16 @@
     --popover: var(--surface-elevated);
     --popover-foreground: var(--foreground);
     
-    /* Borders - Divider #D3D8D8 */
-    --border: 180 5% 84%;
+    /* Borders */
+    --border: 220 30% 80%;
     --border-glow: var(--primary) / 0.3;
     
     /* Inputs */
     --input: var(--surface-elevated);
     --ring: var(--primary);
     
-    /* Gradients - Button regular: #5F27CD to #55C5E2 */
-    --gradient-primary: linear-gradient(135deg, #5F27CD 0%, #55C5E2 100%);
+    /* Gradients - Company: Primary #55C5E2 → Secondary #5F27CD */
+    --gradient-primary: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
     --gradient-accent: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
     --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(220 25% 12% / 0.4) 100%);
     --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.3), transparent 50%), 
@@ -107,11 +105,11 @@
     --muted: 220 20% 20%;
     --muted-foreground: 220 15% 65%;
     --border: 220 30% 25%;
+    /* Primary foreground must be white in dark mode so active tabs/buttons are legible */
     --primary-foreground: 210 40% 98%;
-    --secondary-foreground: 210 40% 98%;
-    /* Company palette success #20B888 - slightly brighter for dark bg */
-    --success: 162 70% 48%;
-    --success-foreground: 220 27% 5%;
+    /* Company success #00C986 - slightly brighter for dark mode */
+    --success: 160 100% 45%;
+    --success-foreground: 0 0% 100%;
   }
 
   .light {

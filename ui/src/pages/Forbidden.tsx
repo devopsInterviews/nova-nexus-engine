@@ -17,8 +17,8 @@ const Forbidden = () => {
     <div className="min-h-[80vh] flex flex-col items-center justify-center p-4">
       <div className="text-center space-y-6 max-w-md">
         <div className="flex justify-center">
-          <div className="p-4 bg-red-500/10 rounded-full">
-            <ShieldAlert className="w-16 h-16 text-red-500" />
+          <div className="p-4 bg-[#F16C6C]/10 rounded-full">
+            <ShieldAlert className="w-16 h-16 text-[#F16C6C]" />
           </div>
         </div>
         

@@ -40,7 +40,7 @@ const RobotEye: React.FC<RobotEyeProps> = ({ isWatching, isBlinking, eyesClosedF
   return (
     <div className="relative w-20 h-20 bg-gradient-to-b from-slate-700 to-slate-800 rounded-full border-2 border-slate-600 overflow-hidden shadow-lg">
       {/* Eye outer ring */}
-      <div className="absolute inset-2 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full">
+      <div className="absolute inset-2 bg-gradient-to-b from-[#55C5E2] to-[#5F27CD] rounded-full">
         {/* Eye pupil */}
         <motion.div
           className="absolute top-1/2 left-1/2 bg-gradient-to-b from-slate-900 to-black rounded-full"
