@@ -363,7 +363,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
             {/* Robot Head */}
             <motion.div
               className="mx-auto relative"
-              style={{ transform: "scale(0.8)", transformOrigin: "top center", marginBottom: "-32px" }}
+              style={{ transform: "scale(0.84)", transformOrigin: "top center", marginBottom: "-14px" }}
             >
               {/* Robot Head Container */}
               <div className="relative w-48 h-40 bg-gradient-to-b from-slate-600 to-slate-800 rounded-3xl border-2 border-slate-500 shadow-xl">
@@ -422,11 +422,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5 }}
             >
-              <CardTitle className="text-3xl font-bold gradient-text mb-2 flex items-center justify-center gap-2">
+              <CardTitle className="text-3xl font-bold gradient-text mb-2 flex items-center justify-center gap-2 mt-4">
                 <Zap className="w-8 h-8 text-primary" />
                 AI Portal
               </CardTitle>
-              <CardDescription className="text-muted-foreground">
+              <CardDescription className="text-muted-foreground mt-3">
                 Your unified platform for AI engagement and intelligent workflows
               </CardDescription>
             </motion.div>

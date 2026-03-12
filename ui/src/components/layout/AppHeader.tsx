@@ -197,15 +197,18 @@ export function AppHeader() {
 
           {/* Right — theme toggle + user menu */}
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
+            {/* Dark mode toggle */}
+            <button
               onClick={toggleTheme}
-              aria-label="Toggle theme"
-              className="dark:text-gray-200 dark:hover:bg-gray-800"
+              aria-label="Toggle dark mode"
+              className="flex items-center gap-1.5 focus:outline-none group"
             >
-              {themeMode === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-            </Button>
+              <Sun className={`h-4 w-4 transition-colors ${themeMode === "light" ? "text-amber-500" : "text-gray-400 dark:text-gray-500"}`} />
+              <div className={`relative w-9 h-5 rounded-full transition-colors duration-300 ${themeMode === "dark" ? "bg-primary" : "bg-gray-300 dark:bg-gray-600"}`}>
+                <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-300 ${themeMode === "dark" ? "translate-x-4" : "translate-x-0.5"}`} />
+              </div>
+              <Moon className={`h-4 w-4 transition-colors ${themeMode === "dark" ? "text-primary" : "text-gray-400"}`} />
+            </button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

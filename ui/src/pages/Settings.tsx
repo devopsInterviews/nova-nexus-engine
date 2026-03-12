@@ -74,6 +74,7 @@ export default function Settings() {
               {(["light", "dark"] as const).map((t) => {
                 const Icon = t === "light" ? Sun : Moon;
                 const active = theme === t;
+                const label = t === "light" ? "Off" : "On";
                 return (
                   <motion.button
                     key={t}
@@ -87,7 +88,7 @@ export default function Settings() {
                     whileTap={{ scale: 0.97 }}
                   >
                     <Icon className={`w-6 h-6 ${active ? "text-primary" : "text-muted-foreground"}`} />
-                    <span className={`text-sm font-medium capitalize ${active ? "text-primary" : ""}`}>{t}</span>
+                    <span className={`text-sm font-medium ${active ? "text-primary" : ""}`}>{label}</span>
                   </motion.button>
                 );
               })}
