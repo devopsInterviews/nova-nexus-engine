@@ -349,11 +349,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
           className="mb-6"
+          style={{ marginTop: "-100px" }}
         >
           <img
             src={COMPANY_LOGO_SRC}
             alt="Company Logo"
-            className="h-16 object-contain"
+            className="h-[45px] object-contain"
           />
         </motion.div>
 

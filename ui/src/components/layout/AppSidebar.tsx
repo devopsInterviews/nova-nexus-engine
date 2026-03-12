@@ -268,7 +268,7 @@ export function AppSidebar() {
         >
           {open ? (
             <div className="flex flex-col items-center gap-1 text-center">
-              <CompanyLogo size={148} />
+              <CompanyLogo size={118} />
               <p className="text-xs font-semibold text-foreground/80 leading-tight">AI Portal</p>
               <p className="text-[10px] text-muted-foreground/60">
                 {appConfig.environment.toUpperCase()} · v{appConfig.version}
