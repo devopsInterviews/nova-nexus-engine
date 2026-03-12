@@ -2,51 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Futuristic AI Portal Center Design System */
+/* Nova Nexus Design System — aligned to company color palette */
 
 @layer base {
   :root {
     /* Base Colors - Default Light Mode */
-    --background: 210 40% 98%;
-    --foreground: 220 27% 5%;
+    --background: 210 40% 98%;      /* #F8FAFC — Full BG */
+    --foreground: 265 70% 13%;      /* #1D0A38 — Primary text (dark purple) */
     
-    --surface: 210 40% 96%;
-    --surface-elevated: 210 40% 94%;
+    --surface: 210 38% 96%;         /* #F2F6F9 — Boxes + Side Navigation */
+    --surface-elevated: 210 35% 94%;
     
     /* Glass Morphism */
-    --glass: 210 40% 96% / 0.8;
-    --glass-border: 220 40% 60% / 0.2;
+    --glass: 210 38% 96% / 0.85;
+    --glass-border: 216 11% 78% / 0.35;
     
-    /* Primary - Electric Blue */
-    --primary: 195 100% 50%;
-    --primary-foreground: 220 27% 5%;
-    --primary-glow: 195 100% 60%;
+    /* Primary — #55C5E2 cyan */
+    --primary: 192 71% 61%;
+    --primary-foreground: 0 0% 100%;  /* white text on primary bg */
+    --primary-glow: 192 71% 70%;
     
-    /* Secondary - Cyber Purple */
-    --secondary: 270 90% 60%;
-    --secondary-foreground: 210 40% 98%;
-    --secondary-glow: 270 90% 70%;
+    /* Secondary — #5F27CD purple */
+    --secondary: 260 68% 48%;
+    --secondary-foreground: 0 0% 100%;
+    --secondary-glow: 260 68% 58%;
     
-    /* Accent - Neon Cyan */
-    --accent: 180 100% 50%;
-    --accent-foreground: 220 27% 5%;
-    --accent-glow: 180 100% 60%;
+    /* Accent — #36B1D1 (link hover / darker cyan) */
+    --accent: 192 63% 52%;
+    --accent-foreground: 0 0% 100%;
+    --accent-glow: 192 63% 62%;
     
-    /* Success - Dark green for readable contrast on light backgrounds */
-    --success: 140 65% 32%;
-    --success-foreground: 210 40% 98%;
+    /* Success — #00C986 */
+    --success: 160 100% 39%;
+    --success-foreground: 0 0% 100%;
     
-    /* Warning - Electric Orange */
-    --warning: 30 100% 50%;
-    --warning-foreground: 220 27% 5%;
+    /* Warning — #FFB24C */
+    --warning: 34 100% 65%;
+    --warning-foreground: 265 70% 13%;
     
-    /* Destructive - Hot Pink */
-    --destructive: 330 100% 60%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive / Error — #F16C6C */
+    --destructive: 0 83% 68%;
+    --destructive-foreground: 0 0% 100%;
     
     /* Muted */
-    --muted: 210 40% 90%;
-    --muted-foreground: 220 15% 35%;
+    --muted: 210 35% 91%;
+    --muted-foreground: 221 14% 35%;  /* #4D5567 — Secondary text */
     
     /* Card */
     --card: var(--surface);
@@ -56,26 +56,27 @@
     --popover: var(--surface-elevated);
     --popover-foreground: var(--foreground);
     
-    /* Borders */
-    --border: 220 30% 80%;
+    /* Borders — lighter version of #9CA4B0 divider color */
+    --border: 216 11% 78%;
     --border-glow: var(--primary) / 0.3;
     
-    /* Inputs */
-    --input: var(--surface-elevated);
+    /* Inputs — #9CA4B0 */
+    --input: 216 11% 65%;
     --ring: var(--primary);
     
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%);
+    /* Gradients — primary gradient #55C5E2 → #5F27CD */
+    --gradient-primary: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
+    --gradient-primary-hover: linear-gradient(135deg, #36B1D1 0%, #4B0DC5 100%);
+    --gradient-accent: linear-gradient(135deg, #36B1D1 0%, #55C5E2 100%);
     --gradient-glass: linear-gradient(135deg, hsl(var(--glass)) 0%, hsl(220 25% 12% / 0.4) 100%);
-    --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.3), transparent 50%), 
-                     radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--secondary) / 0.2), transparent 50%),
-                     radial-gradient(ellipse 60% 40% at 20% 100%, hsl(var(--accent) / 0.2), transparent 50%);
+    --gradient-hero: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.25), transparent 50%), 
+                     radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--secondary) / 0.15), transparent 50%),
+                     radial-gradient(ellipse 60% 40% at 20% 100%, hsl(var(--accent) / 0.15), transparent 50%);
     
     /* Shadows */
-    --shadow-glow: 0 0 20px hsl(var(--primary) / 0.3), 0 0 40px hsl(var(--primary) / 0.1);
-    --shadow-card: 0 8px 32px hsl(220 40% 2% / 0.3), 0 2px 8px hsl(220 40% 2% / 0.2);
-    --shadow-elevated: 0 16px 64px hsl(220 40% 2% / 0.4), 0 4px 16px hsl(220 40% 2% / 0.3);
+    --shadow-glow: 0 0 20px hsl(var(--primary) / 0.25), 0 0 40px hsl(var(--primary) / 0.1);
+    --shadow-card: 0 4px 16px hsl(216 11% 65% / 0.15), 0 1px 4px hsl(216 11% 65% / 0.1);
+    --shadow-elevated: 0 8px 32px hsl(216 11% 65% / 0.2), 0 2px 8px hsl(216 11% 65% / 0.12);
     
     /* Animations */
     --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -95,34 +96,34 @@
   }
 
   .dark {
-    /* Dark Mode - Override for dark theme */
+    /* Dark Mode */
     --background: 220 27% 5%;
     --foreground: 210 40% 98%;
     --surface: 220 25% 8%;
     --surface-elevated: 220 23% 12%;
     --glass: 220 25% 8% / 0.6;
-    --glass-border: 220 40% 40% / 0.2;
+    --glass-border: 216 11% 40% / 0.25;
     --muted: 220 20% 20%;
     --muted-foreground: 220 15% 65%;
-    --border: 220 30% 25%;
-    /* Primary foreground must be white in dark mode so active tabs/buttons are legible */
-    --primary-foreground: 210 40% 98%;
-    /* Bright green is fine for dark backgrounds */
-    --success: 140 80% 50%;
-    --success-foreground: 220 27% 5%;
+    --border: 216 11% 28%;
+    --primary-foreground: 0 0% 100%;
+    --success: 160 80% 45%;
+    --success-foreground: 0 0% 100%;
+    --destructive: 0 75% 62%;
+    --destructive-foreground: 0 0% 100%;
   }
 
   .light {
-    /* Light Mode - Explicitly ensure light mode (already defaults to this) */
+    /* Light Mode — explicit override (mirrors :root defaults) */
     --background: 210 40% 98%;
-    --foreground: 220 27% 5%;
-    --surface: 210 40% 96%;
-    --surface-elevated: 210 40% 94%;
-    --muted: 210 40% 90%;
-    --muted-foreground: 220 15% 35%;
-    --border: 220 30% 80%;
-    --glass: 210 40% 96% / 0.8;
-    --glass-border: 220 40% 60% / 0.2;
+    --foreground: 265 70% 13%;
+    --surface: 210 38% 96%;
+    --surface-elevated: 210 35% 94%;
+    --muted: 210 35% 91%;
+    --muted-foreground: 221 14% 35%;
+    --border: 216 11% 78%;
+    --glass: 210 38% 96% / 0.85;
+    --glass-border: 216 11% 78% / 0.35;
   }
 }
 

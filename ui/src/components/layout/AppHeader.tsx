@@ -147,9 +147,9 @@ export function AppHeader() {
   };
 
   const statusColors: Record<string, string> = {
-    success: "bg-green-100 text-green-800 border-green-300 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20",
-    warning: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
-    error: "bg-red-100 text-red-800 border-red-300 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+    success: "bg-[#00C986]/10 text-[#007a52] border-[#00C986]/30 dark:bg-[#00C986]/15 dark:text-[#00C986] dark:border-[#00C986]/25",
+    warning: "bg-[#FFB24C]/10 text-[#935900] border-[#FFB24C]/30 dark:bg-[#FFB24C]/15 dark:text-[#FFB24C] dark:border-[#FFB24C]/25",
+    error: "bg-[#F16C6C]/10 text-[#c03232] border-[#F16C6C]/30 dark:bg-[#F16C6C]/15 dark:text-[#F16C6C] dark:border-[#F16C6C]/25",
   };
 
   return (
@@ -254,7 +254,7 @@ export function AppHeader() {
                 <DropdownMenuSeparator className="dark:bg-gray-700" />
 
                 <DropdownMenuItem
-                  className="cursor-pointer text-red-600 dark:text-red-400 dark:hover:bg-gray-700"
+                  className="cursor-pointer text-[#F16C6C] dark:hover:bg-gray-700"
                   onClick={handleLogout}
                 >
                   🚪 Sign out
@@ -283,7 +283,7 @@ export function AppHeader() {
               {/* Avatar + name row */}
               <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16">
-                  <AvatarFallback className="bg-blue-600 text-white text-xl font-bold">
+                  <AvatarFallback className="bg-gradient-primary text-white text-xl font-bold">
                     {getUserInitials()}
                   </AvatarFallback>
                 </Avatar>
@@ -294,7 +294,7 @@ export function AppHeader() {
                   <p className="text-sm text-muted-foreground">@{user.username}</p>
                   <div className="flex items-center gap-2 mt-1">
                     {user.is_admin && (
-                      <Badge className="bg-red-500/10 text-red-500 border-red-500/30 flex items-center gap-1">
+                      <Badge className="bg-[#F16C6C]/10 text-[#c03232] dark:text-[#F16C6C] border-[#F16C6C]/30 flex items-center gap-1">
                         <Shield className="w-3 h-3" /> Admin
                       </Badge>
                     )}
@@ -335,10 +335,10 @@ export function AppHeader() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="w-full justify-start gap-2 border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+                    className="w-full justify-start gap-2 border-secondary/30 hover:bg-secondary/10 hover:text-secondary"
                     onClick={() => window.open(appConfig.developer_portal_url, "_blank", "noopener,noreferrer")}
                   >
-                    <KeyRound className="w-4 h-4 text-violet-400" />
+                    <KeyRound className="w-4 h-4 text-secondary" />
                     Create API Keys &amp; Token List
                     <ExternalLink className="w-3 h-3 ml-auto opacity-60" />
                   </Button>
@@ -379,8 +379,8 @@ export function AppHeader() {
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                activity.status_type === "success" ? "bg-green-500" :
-                                activity.status_type === "error" ? "bg-red-500" : "bg-amber-500"
+                                activity.status_type === "success" ? "bg-[#00C986]" :
+                                activity.status_type === "error" ? "bg-[#F16C6C]" : "bg-[#FFB24C]"
                               }`} />
                               <span className="text-foreground truncate">{activity.action}</span>
                             </div>

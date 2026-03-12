@@ -20,10 +20,10 @@ interface StatusCardProps {
 }
 
 const statusColors = {
-  success: "text-green-700 dark:text-success border-green-400/30 dark:border-success/20 bg-green-50 dark:bg-success/5",
-  warning: "text-warning border-warning/20 bg-warning/5",
-  error: "text-destructive border-destructive/20 bg-destructive/5",
-  info: "text-primary border-primary/20 bg-primary/5",
+  success: "text-success border-success/25 bg-success/5",
+  warning: "text-warning border-warning/25 bg-warning/5",
+  error: "text-destructive border-destructive/25 bg-destructive/5",
+  info: "text-primary border-primary/25 bg-primary/5",
 };
 
 export function StatusCard({
@@ -39,8 +39,8 @@ export function StatusCard({
   delay = 0,
 }: StatusCardProps) {
   const trendColors = {
-    up: invertTrendColor ? "text-destructive" : "text-green-700 dark:text-success",
-    down: invertTrendColor ? "text-green-700 dark:text-success" : "text-destructive",
+    up: invertTrendColor ? "text-destructive" : "text-success",
+    down: invertTrendColor ? "text-success" : "text-destructive",
     stable: "text-muted-foreground",
   };
 

@@ -81,18 +81,18 @@ interface ActivityMeta {
 }
 
 const ACTIVITY_META: Record<string, ActivityMeta> = {
-  auth:            { label: "Authentication",       description: "Login, logout, token refresh",              color: "#6366f1" },
-  database:        { label: "Database (BI)",         description: "SQL queries and DB connections via BI tab", color: "#10b981" },
-  mcp:             { label: "MCP / AI Tools",        description: "AI agent calls and MCP tool invocations",   color: "#06b6d4" },
-  analytics:       { label: "Analytics",             description: "Dashboard and metric page views",           color: "#f59e0b" },
-  bi:              { label: "Business Intelligence", description: "BI queries and natural-language analysis",  color: "#8b5cf6" },
-  testing:         { label: "Testing",               description: "Test runs and saved test configurations",   color: "#f97316" },
-  user_management: { label: "User Management",       description: "Admin operations on users and permissions", color: "#ec4899" },
-  marketplace:     { label: "Marketplace",           description: "Agent and MCP server deployments",         color: "#14b8a6" },
+  auth:            { label: "Authentication",       description: "Login, logout, token refresh",              color: "#414FA2" },
+  database:        { label: "Database (BI)",         description: "SQL queries and DB connections via BI tab", color: "#00C986" },
+  mcp:             { label: "MCP / AI Tools",        description: "AI agent calls and MCP tool invocations",   color: "#55C5E2" },
+  analytics:       { label: "Analytics",             description: "Dashboard and metric page views",           color: "#FFBE0A" },
+  bi:              { label: "Business Intelligence", description: "BI queries and natural-language analysis",  color: "#9D4FDE" },
+  testing:         { label: "Testing",               description: "Test runs and saved test configurations",   color: "#FB5606" },
+  user_management: { label: "User Management",       description: "Admin operations on users and permissions", color: "#F72586" },
+  marketplace:     { label: "Marketplace",           description: "Agent and MCP server deployments",         color: "#06D6A0" },
 };
 
 function activityMeta(type: string): ActivityMeta {
-  return ACTIVITY_META[type] ?? { label: type, description: "Other system activity", color: "#64748b" };
+  return ACTIVITY_META[type] ?? { label: type, description: "Other system activity", color: "#9CA4B0" };
 }
 
 // ─── KPI metric descriptions (frontend overrides) ─────────────────────────────
@@ -260,16 +260,16 @@ export default function Analytics() {
                 <AreaChart data={traffic} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradTotal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#55C5E2" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#55C5E2" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradSuccess" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#00C986" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#00C986" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradErrors" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#F16C6C" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#F16C6C" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
@@ -292,7 +292,7 @@ export default function Analytics() {
                     type="monotone"
                     dataKey="total"
                     name="Total"
-                    stroke="#6366f1"
+                    stroke="#55C5E2"
                     strokeWidth={2}
                     fill="url(#gradTotal)"
                   />
@@ -300,7 +300,7 @@ export default function Analytics() {
                     type="monotone"
                     dataKey="success"
                     name="Success"
-                    stroke="#10b981"
+                    stroke="#00C986"
                     strokeWidth={1.5}
                     fill="url(#gradSuccess)"
                   />
@@ -308,7 +308,7 @@ export default function Analytics() {
                     type="monotone"
                     dataKey="errors"
                     name="Errors"
-                    stroke="#ef4444"
+                    stroke="#F16C6C"
                     strokeWidth={1.5}
                     fill="url(#gradErrors)"
                   />

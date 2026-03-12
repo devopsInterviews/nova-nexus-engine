@@ -950,7 +950,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Feature Description */}
-          <div className="bg-gradient-to-r from-blue-50/20 to-purple-50/20 rounded-lg p-4 border border-blue-200/30">
+          <div className="bg-primary/5 rounded-lg p-4 border border-primary/15">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-blue-100/50 rounded-lg">
                 <Brain className="w-5 h-5 text-blue-600" />
@@ -1049,7 +1049,7 @@ and aggregates any measures. Consider dbt model patterns and naming conventions.
                   
                   return (
                     <Button 
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
+                      className="bg-gradient-primary hover:opacity-90 text-white flex items-center gap-2 border-0"
                       onClick={handleIterativeAnalysis}
                       disabled={isIterativeLoading || isLoading || !currentConnection || !userPrompt.trim() || !confluenceSpace.trim() || !confluenceTitle.trim() || !isFileValid}
                       title={!isFileValid ? "Cannot analyze - file is damaged or in unsupported format" : undefined}
