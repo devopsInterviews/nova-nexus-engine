@@ -382,6 +382,20 @@
     background: hsl(var(--primary) / 0.06);
     color: hsl(var(--primary));
   }
+
+  /* Dark mode overrides — stroke #6FDCF8 → #9A6CF5, white label */
+  .dark .btn-outline-gradient {
+    color: #FFFFFF;
+  }
+
+  .dark .btn-outline-gradient::before {
+    background: linear-gradient(135deg, #6FDCF8 0%, #9A6CF5 100%);
+  }
+
+  .dark .btn-outline-gradient:hover:not(:disabled) {
+    background: rgb(111 220 248 / 0.08);
+    color: #FFFFFF;
+  }
 }
 
 @layer base {
