@@ -354,7 +354,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
           <img
             src={COMPANY_LOGO_SRC}
             alt="Company Logo"
-            className="h-[45px] object-contain"
+            className="h-[36px] object-contain"
           />
         </motion.div>
 
