@@ -17,8 +17,8 @@ const buttonVariants = cva(
         outline: "btn-outline-gradient",
         /* Secondary — same gradient stroke (alias) */
         secondary: "btn-outline-gradient",
-        /* Flat — no background, primary cyan text */
-        ghost: "text-primary hover:text-accent hover:bg-primary/5",
+        /* Flat — no background, primary cyan text; #6FDCF8 in dark mode */
+        ghost: "text-primary dark:text-[#6FDCF8] hover:text-accent dark:hover:text-[#6FDCF8] hover:bg-primary/5",
         link: "text-primary underline-offset-4 hover:underline hover:text-accent",
       },
       size: {
