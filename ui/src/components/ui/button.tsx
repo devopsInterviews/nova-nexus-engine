@@ -13,12 +13,10 @@ const buttonVariants = cva(
         default: "bg-gradient-primary text-white shadow-sm hover:opacity-90 border-0",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        /* Secondary — outlined, #5F27CD border + text */
-        outline:
-          "border border-secondary text-secondary bg-transparent hover:bg-secondary/10",
-        /* Secondary (filled variant kept for backward compat) */
-        secondary:
-          "border border-secondary text-secondary bg-transparent hover:bg-secondary/10",
+        /* Outline — gradient stroke #55C5E2 → #5F27CD */
+        outline: "btn-outline-gradient",
+        /* Secondary — same gradient stroke (alias) */
+        secondary: "btn-outline-gradient",
         /* Flat — no background, primary cyan text */
         ghost: "text-primary hover:text-accent hover:bg-primary/5",
         link: "text-primary underline-offset-4 hover:underline hover:text-accent",

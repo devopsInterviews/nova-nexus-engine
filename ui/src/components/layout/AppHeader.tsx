@@ -335,10 +335,10 @@ export function AppHeader() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="w-full justify-start gap-2 border-secondary/30 hover:bg-secondary/10 hover:text-secondary"
+                    className="w-full justify-start gap-2"
                     onClick={() => window.open(appConfig.developer_portal_url, "_blank", "noopener,noreferrer")}
                   >
-                    <KeyRound className="w-4 h-4 text-secondary" />
+                    <KeyRound className="w-4 h-4" />
                     Create API Keys &amp; Token List
                     <ExternalLink className="w-3 h-3 ml-auto opacity-60" />
                   </Button>

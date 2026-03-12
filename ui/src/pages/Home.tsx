@@ -30,7 +30,6 @@ interface FeatureCard {
   icon: ComponentType<{ className?: string }>;
   tab: string;
   route: string;
-  gradient: string;
   borderColor: string;
   preview: ReactNode;
 }
@@ -141,8 +140,8 @@ function FeatureTeaserCard({
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
       onClick={() => hasAccess && onNavigate(feature.route)}
     >
-      {/* Gradient top stripe */}
-      <div className={`h-1 w-full bg-gradient-to-r ${feature.gradient} rounded-t-2xl`} />
+      {/* Primary gradient top stripe */}
+      <div className="h-1.5 w-full bg-gradient-primary rounded-t-2xl" />
 
       {/* Fixed-height inner area so both panels share the same space */}
       <div className="relative p-6" style={{ minHeight: 260 }}>
@@ -153,7 +152,7 @@ function FeatureTeaserCard({
           transition={{ duration: 0.18 }}
           style={{ pointerEvents: hovered ? "none" : "auto" }}
         >
-          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg mb-3`}>
+          <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-lg mb-3">
             <feature.icon className="w-5 h-5 text-white" />
           </div>
           <p className="text-xs text-muted-foreground mb-1">{feature.tagline}</p>
@@ -164,7 +163,7 @@ function FeatureTeaserCard({
             {hasAccess ? (
               <Button
                 size="sm"
-                className={`bg-gradient-to-r ${feature.gradient} text-white border-0 hover:opacity-90 transition-opacity group`}
+                className="bg-gradient-primary text-white border-0 hover:opacity-90 transition-opacity group"
                 onClick={(e) => { e.stopPropagation(); onNavigate(feature.route); }}
               >
                 Go to {feature.title}
@@ -229,8 +228,7 @@ export default function Home() {
       icon: Store,
       tab: "Marketplace",
       route: "/marketplace",
-      gradient: "from-[#55C5E2] to-[#5F27CD]",
-      borderColor: "border-border/40",
+      borderColor: "border-border/50",
       preview: <MarketplacePreview />,
     },
     {
@@ -242,8 +240,7 @@ export default function Home() {
       icon: Search,
       tab: "Research",
       route: "/research",
-      gradient: "from-[#4D96FF] to-[#414FA2]",
-      borderColor: "border-border/40",
+      borderColor: "border-border/50",
       preview: <ResearchPreview />,
     },
     {
@@ -255,8 +252,7 @@ export default function Home() {
       icon: Database,
       tab: "BI",
       route: "/bi",
-      gradient: "from-[#00C986] to-[#43AB8B]",
-      borderColor: "border-border/40",
+      borderColor: "border-border/50",
       preview: <BIPreview />,
     },
   ];
@@ -384,7 +380,8 @@ export default function Home() {
                   and configure them in your client or agent settings.
                 </p>
                 <Button
-                  className="w-full border border-secondary text-secondary bg-transparent hover:bg-secondary/10 transition-colors group"
+                  variant="outline"
+                  className="w-full group"
                   onClick={() => {
                     const url = appConfig?.developer_portal_url;
                     if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -425,14 +422,14 @@ export default function Home() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full border-primary/30 hover:bg-primary/10 hover:text-primary group"
+                  className="w-full group"
                   onClick={() => {
                     const url = appConfig?.openwebui_url;
                     if (url) window.open(url, "_blank", "noopener,noreferrer");
                   }}
                   disabled={!appConfig?.openwebui_url}
                 >
-                  <MessageSquare className="mr-2 w-4 h-4 text-primary" />
+                  <MessageSquare className="mr-2 w-4 h-4" />
                   Open OpenWebUI
                   <ExternalLink className="ml-auto w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </Button>
@@ -450,20 +447,20 @@ export default function Home() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-secondary/30 hover:bg-secondary/10 hover:text-secondary group"
+                  className="group"
                   onClick={() => window.open("https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev", "_blank", "noopener,noreferrer")}
                 >
-                  <Terminal className="mr-1.5 w-3.5 h-3.5 text-secondary" />
+                  <Terminal className="mr-1.5 w-3.5 h-3.5" />
                   Download Cline
                   <ExternalLink className="ml-auto w-2.5 h-2.5 opacity-60" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-primary/30 hover:bg-primary/10 hover:text-primary group"
+                  className="group"
                   onClick={() => window.open("https://opencode.ai", "_blank", "noopener,noreferrer")}
                 >
-                  <Layers className="mr-1.5 w-3.5 h-3.5 text-primary" />
+                  <Layers className="mr-1.5 w-3.5 h-3.5" />
                   Download OpenCode
                   <ExternalLink className="ml-auto w-2.5 h-2.5 opacity-60" />
                 </Button>

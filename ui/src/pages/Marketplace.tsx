@@ -125,54 +125,42 @@ function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> 
 }
 
 function getItemStyle(item: MarketplaceItem) {
-  /* Neutral card border — no per-status frame coloring */
+  /* All cards share the same primary gradient top stripe.
+   * Status is communicated only through the badge inside the card. */
   const ring = "border-border/50 hover:border-border/80";
+  const topBar = "bg-gradient-primary";
+  const hoverShadow = "hover:shadow-[0_12px_32px_rgba(85,197,226,0.15)]";
 
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
-        topBar: "bg-[#00C986]",          /* Deployed — palette success green */
-        leftBar: "bg-[#00C986]",
-        ring,
+        topBar, ring, hoverShadow,
         badge: "bg-[#00C986]/10 text-[#007a52] border-[#00C986]/35 dark:bg-[#00C986]/20 dark:text-[#00C986] dark:border-[#00C986]/40",
         label: "Release", dot: "bg-[#00C986]", pulse: true,
         envPill: "bg-[#55C5E2]/10 text-[#1a7a96] border-[#55C5E2]/35 dark:bg-[#55C5E2]/20 dark:text-[#55C5E2] dark:border-[#55C5E2]/40",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(0,201,134,0.18)]",
       };
     }
     const r = item.ttl_remaining_days;
-    /* ≤7 days: Expiring — palette error/expiring color */
     if (r !== null && r <= 7) {
       return {
-        topBar: "bg-[#F16C6C]",
-        leftBar: "bg-[#F16C6C]",
-        ring,
+        topBar, ring, hoverShadow,
         badge: "bg-[#F16C6C]/10 text-[#c03232] border-[#F16C6C]/35 dark:bg-[#F16C6C]/20 dark:text-[#F16C6C] dark:border-[#F16C6C]/40",
         label: "Expiring", dot: "bg-[#F16C6C] animate-pulse", pulse: true,
         envPill: "bg-[#FFB24C]/10 text-[#935900] border-[#FFB24C]/35 dark:bg-[#FFB24C]/20 dark:text-[#FFB24C] dark:border-[#FFB24C]/40",
-        hoverShadow: "hover:shadow-[0_12px_32px_rgba(241,108,108,0.18)]",
       };
     }
-    /* Dev deployed (healthy) — palette warning orange */
     return {
-      topBar: "bg-[#FFB24C]",
-      leftBar: "bg-[#FFB24C]",
-      ring,
+      topBar, ring, hoverShadow,
       badge: "bg-[#FFB24C]/10 text-[#935900] border-[#FFB24C]/35 dark:bg-[#FFB24C]/20 dark:text-[#FFB24C] dark:border-[#FFB24C]/40",
       label: "Dev Deployed", dot: "bg-[#FFB24C]", pulse: true,
       envPill: "bg-[#FFB24C]/10 text-[#935900] border-[#FFB24C]/35 dark:bg-[#FFB24C]/20 dark:text-[#FFB24C] dark:border-[#FFB24C]/40",
-      hoverShadow: "hover:shadow-[0_12px_32px_rgba(255,178,76,0.18)]",
     };
   }
-  /* Built — palette built/yellow */
   return {
-    topBar: "bg-[#FFE64C]",
-    leftBar: "bg-[#FFE64C]",
-    ring,
+    topBar, ring, hoverShadow,
     badge: "bg-[#FFE64C]/20 text-[#7a6200] border-[#FFE64C]/50 dark:bg-[#FFE64C]/15 dark:text-[#FFE64C] dark:border-[#FFE64C]/40",
     label: "Built", dot: "bg-[#FFE64C]", pulse: false,
     envPill: "bg-border/30 text-muted-foreground border-border/50 dark:bg-muted/20 dark:text-muted-foreground dark:border-border/40",
-    hoverShadow: "hover:shadow-[0_12px_32px_rgba(255,230,76,0.18)]",
   };
 }
 

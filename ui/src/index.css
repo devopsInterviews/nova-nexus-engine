@@ -334,6 +334,29 @@
   .shadow-glow {
     box-shadow: var(--shadow-glow);
   }
+
+  /* Gradient-border (outline) button — stroke: #55C5E2 → #5F27CD
+     Works on any background: transparent inner, gradient fills only the border */
+  .btn-outline-gradient {
+    background:
+      transparent padding-box,
+      var(--gradient-primary) border-box;
+    border: 2px solid transparent;
+    color: hsl(var(--secondary));
+    transition: var(--transition-smooth);
+  }
+
+  .btn-outline-gradient:hover:not(:disabled) {
+    background:
+      hsl(var(--primary) / 0.07) padding-box,
+      var(--gradient-primary) border-box;
+    color: hsl(var(--primary));
+  }
+
+  .btn-outline-gradient:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 }
 
 @layer base {
