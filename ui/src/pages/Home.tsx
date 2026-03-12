@@ -452,7 +452,7 @@ export default function Home() {
                 >
                   <Terminal className="mr-1.5 w-3.5 h-3.5" />
                   Download Cline
-                  <ExternalLink className="ml-auto w-2.5 h-2.5 opacity-60" />
+                  <ExternalLink className="ml-auto w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </Button>
                 <Button
                   variant="outline"
@@ -462,7 +462,7 @@ export default function Home() {
                 >
                   <Layers className="mr-1.5 w-3.5 h-3.5" />
                   Download OpenCode
-                  <ExternalLink className="ml-auto w-2.5 h-2.5 opacity-60" />
+                  <ExternalLink className="ml-auto w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </Button>
               </div>
             </CardContent>

@@ -297,12 +297,12 @@ const ItemCard = memo(function ItemCard({
       <div className="border-t border-border/40 px-6 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <Activity size={11} className="text-primary/70" />
+            <Activity size={11} className="text-icon" />
             <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
             calls
           </span>
           <span className="flex items-center gap-1.5">
-            <Users size={11} className="text-[#00C986]/80" />
+            <Users size={11} className="text-icon" />
             <span className="font-semibold text-foreground">{item.unique_users}</span>
             users
           </span>

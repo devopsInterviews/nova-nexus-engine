@@ -64,6 +64,11 @@
     --input: 216 11% 65%;
     --ring: var(--primary);
     
+    /* Icon colors — bright BG (light mode) */
+    --icon-normal: 221 14% 35%;    /* #4D5567 */
+    --icon-hover: 192 71% 61%;     /* #55C5E2 */
+    --icon-disabled: 216 11% 65%;  /* #9CA4B0 */
+    
     /* Gradients — primary gradient #55C5E2 → #5F27CD */
     --gradient-primary: linear-gradient(135deg, #55C5E2 0%, #5F27CD 100%);
     --gradient-primary-hover: linear-gradient(135deg, #36B1D1 0%, #4B0DC5 100%);
@@ -111,6 +116,11 @@
     --success-foreground: 0 0% 100%;
     --destructive: 0 75% 62%;
     --destructive-foreground: 0 0% 100%;
+
+    /* Icon colors — dark BG */
+    --icon-normal: 216 11% 65%;    /* #9CA4B0 */
+    --icon-hover: 192 71% 61%;     /* #55C5E2 */
+    --icon-disabled: 221 7% 45%;   /* #6C727B */
   }
 
   .light {
@@ -233,6 +243,11 @@
 }
 
 @layer utilities {
+  /* Icon color tokens */
+  .text-icon { color: hsl(var(--icon-normal)); }
+  .text-icon-hover { color: hsl(var(--icon-hover)); }
+  .text-icon-disabled { color: hsl(var(--icon-disabled)); }
+
   /* Keyframe Animations */
   @keyframes gradient-shift {
     0%, 100% {
