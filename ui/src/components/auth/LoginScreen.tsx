@@ -161,6 +161,8 @@ interface SSOConfig {
   provider_name: string;
 }
 
+const COMPANY_LOGO_SRC = `${import.meta.env.BASE_URL}logo.png`;
+
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = false, error = null }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -278,7 +280,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
   const eyesClosedForPassword = activeField === 'password' && !showPassword && password.length > 0; // unchanged logic reaffirmed
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-background via-surface to-surface-elevated">
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: "#F8FAFC" }}>
       {/* Background Effects */}
       <ParticleBackground />
       
@@ -326,11 +328,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-muted-foreground mb-4">
-                A unified AI ecosystem for building and managing Agents, connecting LLMs, running analytics, automating DevOps workflows, and deploying infrastructure — all from a single platform.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Integrates with your internal tools, MCP servers, BI pipelines, and Kubernetes clusters to bring AI-powered capabilities directly into your engineering and operations workflows.
+              <p className="text-muted-foreground">
+                A unified AI ecosystem for building and managing Agents, connecting LLMs, running analytics, automating DevOps workflows, and deploying infrastructure — all from a single platform designed to bring intelligent capabilities to every part of your organisation.
               </p>
             </motion.div>
           </motion.div>
@@ -342,13 +341,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
         initial={{ opacity: 0, y: 50, scale: 0.9 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="w-full max-w-2xl z-10"
+        className="w-full max-w-2xl z-10 flex flex-col items-center"
       >
-        <Card className="glass border-border/50 shadow-2xl">
+        {/* Company logo above the card */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.5 }}
+          className="mb-6"
+        >
+          <img
+            src={COMPANY_LOGO_SRC}
+            alt="Company Logo"
+            className="h-16 object-contain"
+          />
+        </motion.div>
+
+        <Card className="glass border-border/50 shadow-2xl w-full">
           <CardHeader className="text-center pb-8 pt-8">
             {/* Robot Head */}
             <motion.div
-              className="mx-auto mb-8 relative"
+              className="mx-auto relative"
+              style={{ transform: "scale(0.8)", transformOrigin: "top center", marginBottom: "-32px" }}
             >
               {/* Robot Head Container */}
               <div className="relative w-48 h-40 bg-gradient-to-b from-slate-600 to-slate-800 rounded-3xl border-2 border-slate-500 shadow-xl">

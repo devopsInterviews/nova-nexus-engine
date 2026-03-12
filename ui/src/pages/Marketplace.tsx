@@ -220,15 +220,20 @@ const ItemCard = memo(function ItemCard({
 
       {/* Main content */}
       <div className="p-6 flex-1 flex flex-col">
-        {/* Icon */}
-        {item.icon ? (
-          <img src={item.icon} alt="icon"
-            className="w-10 h-10 rounded-xl object-cover border border-border/30 shadow-lg mb-3 shrink-0" />
-        ) : (
-          <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-lg mb-3 shrink-0">
-            {item.item_type === "agent" ? <Zap className="w-5 h-5 text-white" /> : <Blocks className="w-5 h-5 text-white" />}
-          </div>
-        )}
+        {/* Icon + Status badge row */}
+        <div className="flex items-start justify-between mb-3">
+          {item.icon ? (
+            <img src={item.icon} alt="icon"
+              className="w-10 h-10 rounded-xl object-cover border border-border/30 shadow-lg shrink-0" />
+          ) : (
+            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-lg shrink-0">
+              {item.item_type === "agent" ? <Zap className="w-5 h-5 text-white" /> : <Blocks className="w-5 h-5 text-white" />}
+            </div>
+          )}
+          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>
+            {st.label}
+          </span>
+        </div>
 
         {/* Owner tagline */}
         <p className="text-xs text-muted-foreground mb-1">
@@ -294,21 +299,16 @@ const ItemCard = memo(function ItemCard({
       </div>
 
       {/* Footer stats */}
-      <div className="border-t border-border/40 px-6 py-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <Activity size={11} className="text-icon" />
-            <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
-            calls
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Users size={11} className="text-icon" />
-            <span className="font-semibold text-foreground">{item.unique_users}</span>
-            users
-          </span>
-        </div>
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>
-          {st.label}
+      <div className="border-t border-border/40 px-6 py-3 flex items-center gap-4">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Activity size={11} className="text-icon" />
+          <span className="font-semibold text-foreground">{item.usage_count.toLocaleString()}</span>
+          calls
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Users size={11} className="text-icon" />
+          <span className="font-semibold text-foreground">{item.unique_users}</span>
+          users
         </span>
       </div>
     </motion.div>

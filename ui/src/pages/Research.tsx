@@ -506,6 +506,31 @@ export default function Research() {
               )}
               {hasConfig && isDeployed ? "Update & Reconnect" : "Connect"}
             </Button>
+
+            {/* Local Client Alternative */}
+            <div className="pt-4 border-t space-y-3 mt-4">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-primary" />
+                Local Client Alternative
+              </h4>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                If you prefer to connect a local client like Cline instead of using the portal, you can directly configure it to communicate with the local server:
+              </p>
+              <div className="flex gap-2">
+                <Input readOnly value="http://localhost:13337" className="font-mono text-xs h-8 bg-muted" />
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText("http://localhost:13337");
+                    toast({ title: "Copied localhost URL" });
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -606,29 +631,6 @@ export default function Research() {
               </div>
             </div>
 
-            <div className="pt-4 border-t space-y-3">
-              <h4 className="font-semibold text-sm flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-primary" /> 
-                Local Client Alternative
-              </h4>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                If you prefer to connect a local client like Cline instead of using the portal, you can directly configure it to communicate with the local server:
-              </p>
-              <div className="flex gap-2">
-                <Input readOnly value="http://localhost:13337" className="font-mono text-xs h-8 bg-muted" />
-                <Button 
-                  size="icon" 
-                  variant="outline" 
-                  className="h-8 w-8 flex-shrink-0"
-                  onClick={() => {
-                    navigator.clipboard.writeText("http://localhost:13337");
-                    toast({ title: "Copied localhost URL" });
-                  }}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </motion.div>

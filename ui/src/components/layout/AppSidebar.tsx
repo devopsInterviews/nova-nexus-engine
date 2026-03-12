@@ -259,7 +259,7 @@ export function AppSidebar() {
         {/* Company Logo + Environment/Version — replaces System Online */}
         <motion.div
           className={cn(
-            "mt-auto rounded-xl border border-border/40 bg-surface/50",
+            "mt-auto rounded-xl",
             open ? "p-4" : "p-2 flex justify-center"
           )}
           initial={{ opacity: 0, y: 20 }}
@@ -267,12 +267,13 @@ export function AppSidebar() {
           transition={{ delay: 0.4 }}
         >
           {open ? (
-            <div className="flex flex-col items-center gap-1.5 text-center">
-              <CompanyLogo size={120} />
+            <div className="flex flex-col items-center gap-1 text-center">
+              <CompanyLogo size={148} />
               <p className="text-xs font-semibold text-foreground/80 leading-tight">AI Portal</p>
               <p className="text-[10px] text-muted-foreground/60">
                 {appConfig.environment.toUpperCase()} · v{appConfig.version}
               </p>
+              <p className="text-[10px] text-muted-foreground/40 mt-0.5">Built by the DevOps Team</p>
             </div>
           ) : (
             <Tooltip>

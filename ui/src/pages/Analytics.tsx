@@ -214,7 +214,7 @@ export default function Analytics() {
                   {...metric}
                   description={undefined}
                   delay={0.5 + index * 0.1}
-                  invertTrendColor={metric.title === "Error Rate"}
+                  invertTrendColor={metric.title === "Error Rate" || metric.title === "Response Time"}
                 />
                 {metric.description && (
                   <button
