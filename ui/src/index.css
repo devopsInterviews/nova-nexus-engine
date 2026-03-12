@@ -335,27 +335,37 @@
     box-shadow: var(--shadow-glow);
   }
 
-  /* Gradient-border (outline) button — stroke: #55C5E2 → #5F27CD
-     Works on any background: transparent inner, gradient fills only the border */
+  /* Gradient-border (outline) button — stroke: #55C5E2 → #5F27CD, hollow inside.
+     Uses CSS mask to punch a hole in the gradient layer so only the 2px border
+     area shows the gradient. Works on any parent background color. */
   .btn-outline-gradient {
-    background:
-      transparent padding-box,
-      var(--gradient-primary) border-box;
-    border: 2px solid transparent;
+    position: relative;
+    border: none;
+    background: transparent;
     color: hsl(var(--secondary));
-    transition: var(--transition-smooth);
+    transition: color 0.3s ease, background-color 0.3s ease;
+    isolation: isolate;
+  }
+
+  .btn-outline-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px;
+    background: var(--gradient-primary);
+    /* Punch a hole in the center — only the 2px border ring shows the gradient */
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
   }
 
   .btn-outline-gradient:hover:not(:disabled) {
-    background:
-      hsl(var(--primary) / 0.07) padding-box,
-      var(--gradient-primary) border-box;
+    background: hsl(var(--primary) / 0.06);
     color: hsl(var(--primary));
-  }
-
-  .btn-outline-gradient:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
   }
 }
 
