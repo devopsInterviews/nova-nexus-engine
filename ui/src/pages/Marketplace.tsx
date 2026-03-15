@@ -479,7 +479,7 @@ const InfraLoadingOverlay = memo(function InfraLoadingOverlay({
     if (state.status !== "loading") return;
     const interval = setInterval(() => {
       setMsgIdx(i => (i + 1) % messages.length);
-    }, 5000);
+    }, 8000);
     return () => clearInterval(interval);
   }, [state.status, messages.length]);
 
@@ -806,7 +806,7 @@ export default function Marketplace() {
         body: JSON.stringify({
           name: createName, description: createDesc, item_type: createType,
           icon: createIcon || null, bitbucket_repo: createRepo || null, how_to_use: createHowTo || null,
-          public_connection_url: createPublicUrl.trim() || null,
+          public_connection_url: createPublicUrl.trim(),
         }),
       });
       if (r.ok) {
@@ -1861,17 +1861,18 @@ export default function Marketplace() {
 
             <div className="space-y-2">
               <Label htmlFor="cpu" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                Public Connection URL
-                <span className="ml-1.5 text-[9px] font-normal text-muted-foreground/50 normal-case">(optional)</span>
+                Public Connection URL <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="cpu"
-                placeholder="https://my-agent.company.internal or http://10.0.0.1:8080"
+                required
+                placeholder="e.g. https://my-agent.company.internal"
+                className="placeholder:text-muted-foreground/30 placeholder:italic"
                 value={createPublicUrl}
                 onChange={e => setCreatePublicUrl(e.target.value)}
               />
               <p className="text-[10px] text-muted-foreground/55 leading-relaxed">
-                The public DNS / URL where users interact with this{" "}
+                The public DNS / URL where users (and the Call button) interact with this{" "}
                 {createType === "agent" ? "agent" : "MCP server"}.
                 Forwarded as <code className="bg-muted/60 px-1 rounded font-mono text-[9px]">values_override.public_connection_url</code> during deployment.
               </p>
@@ -1879,7 +1880,7 @@ export default function Marketplace() {
 
             <DialogFooter className="pt-4 border-t border-border/40 gap-2">
               <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); resetCreate(); }}>Cancel</Button>
-              <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim()}
+              <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim() || !createPublicUrl.trim()}
                 className="gap-1.5 bg-gradient-primary text-primary-foreground font-bold px-6">
                 <Plus size={14} />{createLoading ? "Publishing…" : "Publish Agent / MCP Server"}
               </Button>
