@@ -213,7 +213,7 @@ required**.
 
 | Variable | Example | Purpose |
 |----------|---------|---------|
-| `INFRA_MARKETPLACE_API_SERVER` | `marketplace-infra-api.company.internal` | Base URL of the infra API |
+| `INFRA_CHARTS_API_SERVER` | `marketplace-infra-api.company.internal` | Base URL of the infra API |
 | `MARKETPLACE_MAX_AGENTS_PER_USER` | `5` | Per-user agent creation limit |
 | `MARKETPLACE_MAX_MCP_PER_USER` | `5` | Per-user MCP server creation limit |
 | `MARKETPLACE_DEV_TTL_DAYS` | `10` | Dev deployment lifetime in days |

@@ -329,7 +329,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
                 </Button>
               </div>
               <p className="text-muted-foreground">
-                A unified AI ecosystem for building and managing Agents, connecting LLMs, running analytics, automating DevOps workflows, and deploying infrastructure — all from a single platform designed to bring intelligent capabilities to every part of your organisation.
+                A unified AI ecosystem for building and managing Agents, connecting LLMs, running analytics, automating DevOps workflows, and deploying infrastructure — all from a single platform designed to bring intelligent capabilities to every part of your organization.
               </p>
             </motion.div>
           </motion.div>

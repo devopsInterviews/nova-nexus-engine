@@ -74,7 +74,7 @@ services:
       OPENWEBUI_URL: ${OPENWEBUI_URL:-"https://chat.company.internal"}
       MCP_NGINX_DNS: ${MCP_NGINX_DNS:-"https://mcp-gateway.company.internal"}
       INFRA_API_SERVER: ${INFRA_API_SERVER:-"infra-api.company.internal"}
-      INFRA_MARKETPLACE_API_SERVER: ${INFRA_MARKETPLACE_API_SERVER:-"marketplace-infra-api.company.internal"}
+      INFRA_CHARTS_API_SERVER: ${INFRA_CHARTS_API_SERVER:-"marketplace-infra-api.company.internal"}
       MARKETPLACE_MAX_AGENTS_PER_USER: ${MARKETPLACE_MAX_AGENTS_PER_USER:-5}
       MARKETPLACE_MAX_MCP_PER_USER: ${MARKETPLACE_MAX_MCP_PER_USER:-5}
       MARKETPLACE_DEV_TTL_DAYS: ${MARKETPLACE_DEV_TTL_DAYS:-10}

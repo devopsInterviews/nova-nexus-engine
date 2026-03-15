@@ -42,14 +42,17 @@ router = APIRouter(prefix="/api/marketplace", tags=["Marketplace"])
 MARKETPLACE_MAX_AGENTS_PER_USER: int = int(os.getenv("MARKETPLACE_MAX_AGENTS_PER_USER", "5"))
 MARKETPLACE_MAX_MCP_PER_USER: int = int(os.getenv("MARKETPLACE_MAX_MCP_PER_USER", "5"))
 MARKETPLACE_DEV_TTL_DAYS: int = int(os.getenv("MARKETPLACE_DEV_TTL_DAYS", "10"))
-INFRA_MARKETPLACE_API_SERVER: Optional[str] = os.getenv("INFRA_MARKETPLACE_API_SERVER")
+INFRA_CHARTS_API_SERVER: Optional[str] = os.getenv("INFRA_CHARTS_API_SERVER")
+
+# 5-minute timeout for infra API calls (deploy/delete can take a while)
+INFRA_API_TIMEOUT_SECONDS: int = 300
 
 logger.info(
     "[MARKETPLACE] Config — max_agents=%d, max_mcp=%d, dev_ttl=%d days, infra_api=%s",
     MARKETPLACE_MAX_AGENTS_PER_USER,
     MARKETPLACE_MAX_MCP_PER_USER,
     MARKETPLACE_DEV_TTL_DAYS,
-    INFRA_MARKETPLACE_API_SERVER or "not set",
+    INFRA_CHARTS_API_SERVER or "not set",
 )
 
 
@@ -63,6 +66,8 @@ class ItemCreate(BaseModel):
     bitbucket_repo: Optional[str] = None
     how_to_use: Optional[str] = None
     tools_exposed: Optional[List[Dict[str, Any]]] = None
+    # Public DNS / URL that users will interact with; forwarded in values_override at deploy time
+    public_connection_url: Optional[str] = None
 
 
 class ItemUpdate(BaseModel):
@@ -85,6 +90,8 @@ class DeployRequest(BaseModel):
     environment: str        # 'dev' or 'release'
     chart_name: str = ""    # Artifactory chart name
     chart_version: str = "latest"
+    # Optional Helm values overrides supplied by the user in the deploy dialog
+    values_override: Optional[Dict[str, Any]] = None
 
 
 class RedeployRequest(BaseModel):
@@ -92,6 +99,8 @@ class RedeployRequest(BaseModel):
     environment: str        # 'dev' or 'release'
     chart_name: str = ""    # New Artifactory chart name
     chart_version: str = "latest"
+    # Optional Helm values overrides supplied by the user in the redeploy dialog
+    values_override: Optional[Dict[str, Any]] = None
 
 
 class UsageRequest(BaseModel):
@@ -160,9 +169,9 @@ class PingRequest(BaseModel):
 # ─── Helper: build infra API base URL ────────────────────────────────────────
 
 def _infra_url() -> Optional[str]:
-    if not INFRA_MARKETPLACE_API_SERVER:
+    if not INFRA_CHARTS_API_SERVER:
         return None
-    srv = INFRA_MARKETPLACE_API_SERVER
+    srv = INFRA_CHARTS_API_SERVER
     return srv if srv.startswith("http") else f"http://{srv}"
 
 
@@ -260,6 +269,7 @@ def create_marketplace_item(
         bitbucket_repo=req.bitbucket_repo,
         how_to_use=req.how_to_use,
         url_to_connect=None,  # set by infra after first deploy
+        public_connection_url=req.public_connection_url or None,
         tools_exposed=req.tools_exposed or [],
         # Start as BUILT — Create = Build in the current workflow
         deployment_status="BUILT",
@@ -354,42 +364,103 @@ def deploy_marketplace_item(
             detail="Item must be BUILT or DEPLOYED before deploying.",
         )
 
+    logger.info(
+        "[MARKETPLACE] User '%s' deploying '%s' (id=%d) → env=%s chart=%s@%s",
+        current_user.username, item.name, item.id,
+        req.environment, req.chart_name, req.chart_version,
+    )
+
+    # ── Call infra API ───────────────────────────────────────────────────────
+    infra = _infra_url()
+    public_url_from_infra: Optional[str] = None
+
+    if infra:
+        # Merge the item's pre-configured public_connection_url (if any) with
+        # user-provided values_override entries. User entries win on conflicts.
+        merged_overrides: Dict[str, Any] = {}
+        if item.public_connection_url:
+            merged_overrides["public_connection_url"] = item.public_connection_url
+        if req.values_override:
+            merged_overrides.update(req.values_override)
+
+        infra_payload: Dict[str, Any] = {
+            "entity_name": item.name,
+            "entity_type": item.item_type,
+            "chart_name": req.chart_name or item.name,
+            "chart_version": req.chart_version,
+            "owner_username": current_user.username,
+            "target_environment": req.environment,
+        }
+        if merged_overrides:
+            infra_payload["values_override"] = merged_overrides
+
+        try:
+            logger.info(
+                "[MARKETPLACE] POST %s/api/infra/deploy — payload=%s",
+                infra, infra_payload,
+            )
+            infra_resp = http_requests.post(
+                f"{infra}/api/infra/deploy",
+                json=infra_payload,
+                timeout=INFRA_API_TIMEOUT_SECONDS,
+            )
+            infra_resp.raise_for_status()
+            infra_data = infra_resp.json()
+            logger.info(
+                "[MARKETPLACE] Infra deploy response for '%s': %s", item.name, infra_data
+            )
+            public_url_from_infra = infra_data.get("public_connection_url")
+        except http_requests.exceptions.Timeout:
+            logger.error("[MARKETPLACE] Infra deploy timed out for '%s' (id=%d)", item.name, item.id)
+            raise HTTPException(
+                status_code=504,
+                detail="Infra API did not respond within 5 minutes. Please try again.",
+            )
+        except http_requests.exceptions.ConnectionError as exc:
+            logger.error("[MARKETPLACE] Infra deploy connection error for '%s': %s", item.name, exc)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Could not reach the infra API server: {exc}",
+            )
+        except http_requests.exceptions.HTTPError as exc:
+            error_body: str = ""
+            try:
+                error_body = exc.response.json().get("detail") or exc.response.text
+            except Exception:
+                error_body = str(exc)
+            logger.error(
+                "[MARKETPLACE] Infra deploy HTTP error for '%s': %s — %s",
+                item.name, exc, error_body,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Infra API returned an error: {error_body}",
+            )
+        except Exception as exc:
+            logger.error(
+                "[MARKETPLACE] Unexpected infra deploy error for '%s': %s", item.name, exc, exc_info=True
+            )
+            raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API: {exc}")
+    # ────────────────────────────────────────────────────────────────────────
+
     item.deployment_status = "DEPLOYED"
     item.environment = req.environment
     item.chart_name = req.chart_name or item.name
     item.chart_version = req.chart_version
     item.deployed_at = datetime.now(timezone.utc)
     item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
+    if public_url_from_infra:
+        item.url_to_connect = public_url_from_infra
 
     db.commit()
     db.refresh(item)
 
-    logger.info(
-        "[MARKETPLACE] User '%s' deployed '%s' (id=%d) → env=%s chart=%s@%s",
-        current_user.username, item.name, item.id,
-        req.environment, req.chart_name, req.chart_version,
-    )
-
-    infra = _infra_url()
-    if infra:
-        logger.info(
-            "[MARKETPLACE] TODO: POST %s/api/infra/deploy — entity=%s chart=%s@%s env=%s ttl=%s",
-            infra, item.name, req.chart_name, req.chart_version,
-            req.environment, MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else "none",
-        )
-        # TODO: uncomment when infra is ready
-        # http_requests.post(f"{infra}/api/infra/deploy", json={
-        #     "entity_name": item.name,
-        #     "entity_type": item.item_type,
-        #     "chart_name": req.chart_name,
-        #     "chart_version": req.chart_version,
-        #     "owner_username": current_user.username,
-        #     "target_environment": req.environment,
-        #     "ttl_days": MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None,
-        #     "quota_profile": "standard",
-        # }, timeout=10)
-
-    return {"status": "ok", "message": f"Deployed to {req.environment}", "item": _enrich_item(item, db)}
+    return {
+        "status": "ok",
+        "message": f"Deployed to {req.environment}",
+        "item": _enrich_item(item, db),
+        "connection_url": public_url_from_infra,
+    }
 
 
 @router.post("/redeploy")
@@ -421,46 +492,125 @@ def redeploy_marketplace_item(
     old_version = item.chart_version
     old_env = item.environment
 
-    item.environment = req.environment
-    item.chart_name = req.chart_name or item.chart_name
-    item.chart_version = req.chart_version
-    item.deployed_at = datetime.now(timezone.utc)
-    item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
-
-    db.commit()
-    db.refresh(item)
-
     logger.info(
-        "[MARKETPLACE] User '%s' redeployed '%s' (id=%d): %s@%s/%s → %s@%s/%s",
+        "[MARKETPLACE] User '%s' redeploying '%s' (id=%d): %s@%s/%s → %s@%s/%s",
         current_user.username, item.name, item.id,
         old_chart, old_version, old_env,
         req.chart_name, req.chart_version, req.environment,
     )
 
+    # ── Call infra API ───────────────────────────────────────────────────────
     infra = _infra_url()
-    if infra:
-        logger.info(
-            "[MARKETPLACE] TODO: DELETE %s/api/infra/deploy/%d (old deployment) then re-deploy",
-            infra, item.id,
-        )
-        # TODO: uncomment when infra is ready
-        # Step 1 — undeploy old
-        # http_requests.delete(f"{infra}/api/infra/deploy/{item.id}", json={
-        #     "owner_username": current_user.username,
-        #     "reason": "redeploy",
-        # }, timeout=10)
-        # Step 2 — deploy new
-        # http_requests.post(f"{infra}/api/infra/deploy", json={
-        #     "entity_name": item.name,
-        #     "entity_type": item.item_type,
-        #     "chart_name": req.chart_name,
-        #     "chart_version": req.chart_version,
-        #     "owner_username": current_user.username,
-        #     "target_environment": req.environment,
-        #     "ttl_days": MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None,
-        # }, timeout=10)
+    public_url_from_infra: Optional[str] = None
 
-    return {"status": "ok", "message": f"Redeployed to {req.environment}", "item": _enrich_item(item, db)}
+    if infra:
+        # Step 1 — undeploy old deployment
+        delete_payload: Dict[str, Any] = {
+            "entity_name": item.name,
+            "entity_type": item.item_type,
+            "owner_username": current_user.username,
+            "target_environment": old_env,
+        }
+        try:
+            logger.info(
+                "[MARKETPLACE] POST %s/api/infra/delete (redeploy step 1) — payload=%s",
+                infra, delete_payload,
+            )
+            del_resp = http_requests.post(
+                f"{infra}/api/infra/delete",
+                json=delete_payload,
+                timeout=INFRA_API_TIMEOUT_SECONDS,
+            )
+            del_resp.raise_for_status()
+            logger.info("[MARKETPLACE] Infra delete (redeploy) succeeded for '%s'", item.name)
+        except http_requests.exceptions.Timeout:
+            logger.error("[MARKETPLACE] Infra delete (redeploy) timed out for '%s'", item.name)
+            raise HTTPException(status_code=504, detail="Infra API did not respond within 5 minutes (delete step).")
+        except http_requests.exceptions.ConnectionError as exc:
+            logger.error("[MARKETPLACE] Infra delete (redeploy) connection error: %s", exc)
+            raise HTTPException(status_code=502, detail=f"Could not reach the infra API server: {exc}")
+        except http_requests.exceptions.HTTPError as exc:
+            error_body = ""
+            try:
+                error_body = exc.response.json().get("detail") or exc.response.text
+            except Exception:
+                error_body = str(exc)
+            logger.error("[MARKETPLACE] Infra delete (redeploy) HTTP error: %s — %s", exc, error_body)
+            raise HTTPException(status_code=502, detail=f"Infra API error during undeploy: {error_body}")
+        except Exception as exc:
+            logger.error("[MARKETPLACE] Unexpected infra delete (redeploy) error: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API (delete step): {exc}")
+
+        # Step 2 — deploy new
+        merged_overrides: Dict[str, Any] = {}
+        if item.public_connection_url:
+            merged_overrides["public_connection_url"] = item.public_connection_url
+        if req.values_override:
+            merged_overrides.update(req.values_override)
+
+        deploy_payload: Dict[str, Any] = {
+            "entity_name": item.name,
+            "entity_type": item.item_type,
+            "chart_name": req.chart_name or item.chart_name or item.name,
+            "chart_version": req.chart_version,
+            "owner_username": current_user.username,
+            "target_environment": req.environment,
+        }
+        if merged_overrides:
+            deploy_payload["values_override"] = merged_overrides
+
+        try:
+            logger.info(
+                "[MARKETPLACE] POST %s/api/infra/deploy (redeploy step 2) — payload=%s",
+                infra, deploy_payload,
+            )
+            dep_resp = http_requests.post(
+                f"{infra}/api/infra/deploy",
+                json=deploy_payload,
+                timeout=INFRA_API_TIMEOUT_SECONDS,
+            )
+            dep_resp.raise_for_status()
+            infra_data = dep_resp.json()
+            logger.info(
+                "[MARKETPLACE] Infra redeploy response for '%s': %s", item.name, infra_data
+            )
+            public_url_from_infra = infra_data.get("public_connection_url")
+        except http_requests.exceptions.Timeout:
+            logger.error("[MARKETPLACE] Infra deploy (redeploy) timed out for '%s'", item.name)
+            raise HTTPException(status_code=504, detail="Infra API did not respond within 5 minutes (deploy step).")
+        except http_requests.exceptions.ConnectionError as exc:
+            logger.error("[MARKETPLACE] Infra deploy (redeploy) connection error: %s", exc)
+            raise HTTPException(status_code=502, detail=f"Could not reach the infra API server: {exc}")
+        except http_requests.exceptions.HTTPError as exc:
+            error_body = ""
+            try:
+                error_body = exc.response.json().get("detail") or exc.response.text
+            except Exception:
+                error_body = str(exc)
+            logger.error("[MARKETPLACE] Infra deploy (redeploy) HTTP error: %s — %s", exc, error_body)
+            raise HTTPException(status_code=502, detail=f"Infra API error during redeploy: {error_body}")
+        except Exception as exc:
+            logger.error("[MARKETPLACE] Unexpected infra deploy (redeploy) error: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API (deploy step): {exc}")
+    # ────────────────────────────────────────────────────────────────────────
+
+    item.environment = req.environment
+    item.chart_name = req.chart_name or item.chart_name
+    item.chart_version = req.chart_version
+    item.deployed_at = datetime.now(timezone.utc)
+    item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
+    if public_url_from_infra:
+        item.url_to_connect = public_url_from_infra
+
+    db.commit()
+    db.refresh(item)
+
+    return {
+        "status": "ok",
+        "message": f"Redeployed to {req.environment}",
+        "item": _enrich_item(item, db),
+        "connection_url": public_url_from_infra,
+    }
 
 
 @router.post("/items/{item_id}/extend-ttl")
@@ -695,7 +845,19 @@ def delete_marketplace_item(
     if item.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this item")
 
-    _call_infra_undeploy(item, current_user.username if current_user else "system", reason="manual_user_deletion")
+    # For deployed items, call infra first — raise on error so user sees the problem
+    infra_error = _call_infra_undeploy(
+        item,
+        owner_username=current_user.username if current_user else "system",
+        reason="manual_user_deletion",
+        raise_on_error=(item.deployment_status == "DEPLOYED"),
+    )
+    if infra_error and item.deployment_status != "DEPLOYED":
+        # Non-deployed item — infra call is a no-op, but log the warning
+        logger.warning(
+            "[MARKETPLACE] Infra undeploy warning during delete for '%s' (id=%d): %s",
+            item.name, item_id, infra_error,
+        )
 
     db.delete(item)
     db.commit()
@@ -782,20 +944,71 @@ def public_ping(req: PingRequest, db: Session = Depends(get_db_session)):
 
 # ─── Background TTL Expiry Task ───────────────────────────────────────────────
 
-def _call_infra_undeploy(item: MarketplaceItem, owner_username: str = "system", reason: str = "ttl_expired") -> None:
-    """Log and stub the infra undeploy call."""
+def _call_infra_undeploy(
+    item: MarketplaceItem,
+    owner_username: str = "system",
+    reason: str = "ttl_expired",
+    raise_on_error: bool = False,
+) -> Optional[str]:
+    """
+    Call the infra API to delete/undeploy a running deployment.
+
+    Returns None on success or if infra is not configured.
+    Returns an error message string if the call fails and raise_on_error is False.
+    Raises HTTPException if raise_on_error is True and the call fails.
+    """
+    if item.deployment_status != "DEPLOYED":
+        return None
+
     infra = _infra_url()
-    if infra:
+    if not infra:
         logger.info(
-            "[MARKETPLACE] TODO: DELETE %s/api/infra/deploy/%d owner=%s reason=%s",
-            infra, item.id, owner_username, reason,
+            "[MARKETPLACE] Infra API not configured — skipping undeploy for '%s' (id=%d)",
+            item.name, item.id,
         )
-        # TODO: uncomment when infra is ready
-        # http_requests.delete(
-        #     f"{infra}/api/infra/deploy/{item.id}",
-        #     json={"owner_username": owner_username, "reason": reason},
-        #     timeout=10,
-        # )
+        return None
+
+    payload: Dict[str, Any] = {
+        "entity_name": item.name,
+        "entity_type": item.item_type,
+        "owner_username": owner_username,
+        "target_environment": item.environment,
+    }
+    try:
+        logger.info(
+            "[MARKETPLACE] POST %s/api/infra/delete — entity='%s' reason=%s payload=%s",
+            infra, item.name, reason, payload,
+        )
+        resp = http_requests.post(
+            f"{infra}/api/infra/delete",
+            json=payload,
+            timeout=INFRA_API_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        logger.info(
+            "[MARKETPLACE] Infra undeploy succeeded for '%s' (id=%d): %s",
+            item.name, item.id, resp.json(),
+        )
+        return None
+    except http_requests.exceptions.Timeout:
+        msg = "Infra API did not respond within 5 minutes."
+        logger.error("[MARKETPLACE] Infra undeploy timed out for '%s' (id=%d)", item.name, item.id)
+    except http_requests.exceptions.ConnectionError as exc:
+        msg = f"Could not reach the infra API server: {exc}"
+        logger.error("[MARKETPLACE] Infra undeploy connection error for '%s' (id=%d): %s", item.name, item.id, exc)
+    except http_requests.exceptions.HTTPError as exc:
+        try:
+            msg = exc.response.json().get("detail") or exc.response.text
+        except Exception:
+            msg = str(exc)
+        logger.error("[MARKETPLACE] Infra undeploy HTTP error for '%s' (id=%d): %s", item.name, item.id, msg)
+    except Exception as exc:
+        msg = f"Unexpected error: {exc}"
+        logger.error("[MARKETPLACE] Unexpected infra undeploy error for '%s' (id=%d): %s", item.name, item.id, exc, exc_info=True)
+
+    if raise_on_error:
+        raise HTTPException(status_code=502, detail=f"Infra API error during undeploy: {msg}")
+    return msg
 
 
 # ─── Background TTL Expiry Task ───────────────────────────────────────────────

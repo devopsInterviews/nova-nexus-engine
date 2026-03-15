@@ -624,7 +624,7 @@ export default function Research() {
                   <div>
                     <p className="text-muted-foreground font-medium">Register connection</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Enter your workstation hostname and the port shown in IDA in the form on the left, then click Connect.
+                      Enter your workstation hostname and the port shown in IDA in the form on the right, then click Connect.
                     </p>
                   </div>
                 </div>

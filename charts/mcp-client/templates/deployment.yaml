@@ -65,8 +65,8 @@ spec:
           {{- if .Values.marketPlace.enabled }}
             - name: MARKETPLACE_ENABLED
               value: "true"
-            - name: INFRA_MARKETPLACE_API_SERVER
-              value: "{{ .Values.marketPlace.infraMarketplaceApiServer }}"
+            - name: INFRA_CHARTS_API_SERVER
+              value: "{{ .Values.marketPlace.infraChartsApiServer }}"
             - name: MARKETPLACE_MAX_AGENTS_PER_USER
               value: "{{ .Values.marketPlace.maxAgentsPerUser | default 5 }}"
             - name: MARKETPLACE_MAX_MCP_PER_USER
@@ -108,8 +108,8 @@ spec:
             value: "{{ .Values.idaMcp.mcpNginxDns }}"
           - name: INFRA_API_SERVER
             value: "{{ .Values.idaMcp.infraApiServer }}"
-          - name: INFRA_MARKETPLACE_API_SERVER
-            value: "{{ .Values.idaMcp.infraMarketplaceApiServer }}"
+          - name: INFRA_CHARTS_API_SERVER
+            value: "{{ .Values.idaMcp.infraChartsApiServer }}"
           - name: ALLOWED_HOSTNAME_PATTERNS
             value: "{{ .Values.idaMcp.allowedHostnamePatterns }}"
             - name: PROXY_PORT_MIN

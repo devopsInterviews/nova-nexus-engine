@@ -85,6 +85,8 @@ interface MarketplaceItem {
   bitbucket_repo: string | null;
   how_to_use: string | null;
   url_to_connect: string | null;
+  /** User-provided public DNS entered at creation; forwarded in values_override at deploy time. */
+  public_connection_url: string | null;
   tools_exposed: { name: string }[];
   deployment_status: "BUILT" | "DEPLOYED";
   version: string;
@@ -97,6 +99,23 @@ interface MarketplaceItem {
   created_at: string;
   usage_count: number;
   unique_users: number;
+}
+
+/** A single key/value entry for values_override in the deploy dialog. */
+interface OverrideEntry {
+  key: string;
+  value: string;
+}
+
+/** State machine for the infra loading overlay. */
+type InfraOpStatus = "idle" | "loading" | "success" | "error";
+interface InfraOpState {
+  status: InfraOpStatus;
+  operation: "deploy" | "delete";
+  itemName: string;
+  entityType: "agent" | "mcp_server";
+  message: string;
+  connectionUrl?: string;
 }
 
 interface MarketplaceConfig {
@@ -424,6 +443,170 @@ function StatBig({ value, label, color }: { value: number; label: string; color:
   );
 }
 
+// ─── Infra loading overlay ────────────────────────────────────────────────────
+
+const DEPLOY_MESSAGES = (entityType: "agent" | "mcp_server") => [
+  `Go grab a coffee, this might take a few minutes ☕`,
+  `In Linux that wouldn't take so long... 🐧`,
+  `Nice code — did you write it or AI? 🤖`,
+  `Are you ready for your ${entityType === "agent" ? "agent" : "MCP"}? 🚀`,
+  `Kubernetes is doing its thing, hang tight ⚙️`,
+  `Deploying atoms... I mean containers 🫙`,
+  `If it takes forever, blame the network 🌐`,
+  `Fun fact: Docker was born in 2013. This pod is younger than your coffee ☕`,
+];
+
+const DELETE_MESSAGES = (entityType: "agent" | "mcp_server") => [
+  `Saying goodbye to your ${entityType === "agent" ? "agent" : "MCP"}... 👋`,
+  `Tearing down namespaces like it's spring cleaning 🧹`,
+  `In Linux that wouldn't take so long... 🐧`,
+  `Kubernetes is cleaning up gracefully 🗑️`,
+  `Nice while it lasted, right? 😅`,
+  `Sending the termination signal... politely 🤝`,
+  `If it takes forever, blame the finalizers ⏳`,
+];
+
+const InfraLoadingOverlay = memo(function InfraLoadingOverlay({
+  state,
+  onClose,
+}: { state: InfraOpState; onClose: () => void }) {
+  const [msgIdx, setMsgIdx] = useState(0);
+  const messages = state.operation === "deploy"
+    ? DEPLOY_MESSAGES(state.entityType)
+    : DELETE_MESSAGES(state.entityType);
+
+  useEffect(() => {
+    if (state.status !== "loading") return;
+    const interval = setInterval(() => {
+      setMsgIdx(i => (i + 1) % messages.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [state.status, messages.length]);
+
+  const isSuccess = state.status === "success";
+  const isError   = state.status === "error";
+  const isDone    = isSuccess || isError;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <motion.div
+        className="relative w-[92vw] max-w-[480px] rounded-2xl overflow-hidden border border-border/50 shadow-2xl"
+        style={{ background: "hsl(var(--surface))" }}
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+      >
+        {/* Top gradient bar */}
+        <div className={`h-1.5 w-full ${
+          isError ? "bg-gradient-to-r from-[#F16C6C] to-[#c03232]"
+          : isSuccess ? "bg-gradient-to-r from-[#00C986] to-[#007a52]"
+          : "bg-gradient-primary"
+        }`} />
+
+        <div className="p-8 flex flex-col items-center text-center gap-5">
+          {/* Icon / spinner */}
+          {state.status === "loading" && (
+            <div className="relative w-16 h-16 flex items-center justify-center">
+              <motion.div
+                className="absolute inset-0 rounded-full border-4 border-primary/20 border-t-primary"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              />
+              <div className="w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center shadow-lg">
+                {state.operation === "deploy"
+                  ? <Rocket size={16} className="text-white" />
+                  : <Trash2 size={16} className="text-white" />}
+              </div>
+            </div>
+          )}
+          {isSuccess && (
+            <div className="w-16 h-16 rounded-full bg-[#00C986]/20 border-2 border-[#00C986]/50 flex items-center justify-center">
+              <Sparkles size={28} className="text-[#00C986]" />
+            </div>
+          )}
+          {isError && (
+            <div className="w-16 h-16 rounded-full bg-[#F16C6C]/20 border-2 border-[#F16C6C]/50 flex items-center justify-center">
+              <AlertTriangle size={28} className="text-[#F16C6C]" />
+            </div>
+          )}
+
+          {/* Title */}
+          <div>
+            {state.status === "loading" && (
+              <>
+                <p className="text-xl font-black text-foreground leading-tight">
+                  {state.operation === "deploy" ? "Deploying" : "Deleting"}{" "}
+                  <span className="gradient-text">"{state.itemName}"</span>
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  This might take a few minutes — please don't close the tab.
+                </p>
+              </>
+            )}
+            {isSuccess && (
+              <>
+                <p className="text-xl font-black text-[#007a52] dark:text-[#00C986] leading-tight">
+                  {state.operation === "deploy" ? "Successfully Deployed! 🎉" : "Deletion Completed! ✓"}
+                </p>
+                {state.connectionUrl && (
+                  <div className="mt-3 px-3 py-2 bg-[#00C986]/10 border border-[#00C986]/30 rounded-xl">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#007a52] dark:text-[#00C986] mb-1">
+                      Connection URL
+                    </p>
+                    <p className="text-xs font-mono text-foreground break-all">{state.connectionUrl}</p>
+                  </div>
+                )}
+              </>
+            )}
+            {isError && (
+              <>
+                <p className="text-xl font-black text-[#c03232] dark:text-[#F16C6C] leading-tight">
+                  {state.operation === "deploy" ? "Deployment Failed" : "Deletion Failed"}
+                </p>
+                <div className="mt-3 px-3 py-3 bg-[#F16C6C]/10 border border-[#F16C6C]/30 rounded-xl text-left">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#c03232] dark:text-[#F16C6C] mb-1">
+                    Error from infra API
+                  </p>
+                  <p className="text-xs text-foreground/80 break-words">{state.message}</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Rotating funny messages (loading only) */}
+          {state.status === "loading" && (
+            <motion.p
+              key={msgIdx}
+              className="text-sm text-muted-foreground/70 italic min-h-[1.5rem]"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              {messages[msgIdx]}
+            </motion.p>
+          )}
+
+          {/* Close button (done states only) */}
+          {isDone && (
+            <Button
+              onClick={onClose}
+              className={`gap-2 font-bold ${
+                isSuccess
+                  ? "bg-[#00C986] hover:opacity-90 text-white"
+                  : "bg-[#F16C6C] hover:opacity-90 text-white"
+              }`}
+            >
+              {isSuccess ? <Sparkles size={14} /> : <X size={14} />}
+              {isSuccess ? "Awesome!" : "Close"}
+            </Button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+});
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Marketplace() {
@@ -465,6 +648,18 @@ export default function Marketplace() {
   const [selectedVersion, setSelectedVersion] = useState("latest");
   const [deployLoading, setDeployLoading] = useState(false);
 
+  // ── Deploy — values_override entries ──────────────────────────────────────
+  const [valuesOverrideEntries, setValuesOverrideEntries] = useState<OverrideEntry[]>([]);
+
+  // ── Infra operation loading overlay ───────────────────────────────────────
+  const [infraOp, setInfraOp] = useState<InfraOpState>({
+    status: "idle",
+    operation: "deploy",
+    itemName: "",
+    entityType: "agent",
+    message: "",
+  });
+
   // ── Create modal — each field is a separate useState ───────────────────────
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -474,6 +669,7 @@ export default function Marketplace() {
   const [createIcon, setCreateIcon] = useState("");
   const [createRepo, setCreateRepo] = useState("");
   const [createHowTo, setCreateHowTo] = useState("");
+  const [createPublicUrl, setCreatePublicUrl] = useState("");
   const iconInputRef = useRef<HTMLInputElement>(null);
 
   // ── Run / Call modal ───────────────────────────────────────────────────────
@@ -575,6 +771,7 @@ export default function Marketplace() {
     setSelectedChart("");
     setChartVersions([]);
     setSelectedVersion("latest");
+    setValuesOverrideEntries([]);
     setIsDeployOpen(true);
     loadCharts(initialEnv);
   }, [loadCharts]);
@@ -596,7 +793,7 @@ export default function Marketplace() {
 
   const resetCreate = useCallback(() => {
     setCreateName(""); setCreateDesc(""); setCreateType("agent");
-    setCreateIcon(""); setCreateRepo(""); setCreateHowTo("");
+    setCreateIcon(""); setCreateRepo(""); setCreateHowTo(""); setCreatePublicUrl("");
   }, []);
 
   const handleCreate = useCallback(async (e: React.FormEvent) => {
@@ -609,6 +806,7 @@ export default function Marketplace() {
         body: JSON.stringify({
           name: createName, description: createDesc, item_type: createType,
           icon: createIcon || null, bitbucket_repo: createRepo || null, how_to_use: createHowTo || null,
+          public_connection_url: createPublicUrl.trim() || null,
         }),
       });
       if (r.ok) {
@@ -661,27 +859,72 @@ export default function Marketplace() {
 
   const handleDeploy = useCallback(async () => {
     if (!deployItem || !selectedChart) return;
+
+    // Build values_override: user entries win; item's public_connection_url is the base
+    const userOverrides: Record<string, string | number> = {};
+    for (const entry of valuesOverrideEntries) {
+      const k = entry.key.trim();
+      if (!k) continue;
+      const num = Number(entry.value);
+      userOverrides[k] = entry.value !== "" && !isNaN(num) ? num : entry.value;
+    }
+    const valuesOverride = Object.keys(userOverrides).length > 0 ? userOverrides : undefined;
+
+    // Close deploy modal and show infra loading overlay
+    setIsDeployOpen(false);
+    setDetailItem(null);
     setDeployLoading(true);
+    setInfraOp({
+      status: "loading",
+      operation: "deploy",
+      itemName: deployItem.name,
+      entityType: deployItem.item_type,
+      message: "",
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000 + 10_000); // 5min + buffer
+
     try {
       const endpoint = isRedeploy ? "/api/marketplace/redeploy" : "/api/marketplace/deploy";
       const r = await fetch(endpoint, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ item_id: deployItem.id, environment: deployEnv, chart_name: selectedChart, chart_version: selectedVersion }),
+        body: JSON.stringify({
+          item_id: deployItem.id,
+          environment: deployEnv,
+          chart_name: selectedChart,
+          chart_version: selectedVersion,
+          values_override: valuesOverride,
+        }),
+        signal: controller.signal,
       });
+      const d = await r.json();
       if (r.ok) {
-        const d = await r.json();
         setItems(prev => prev.map(i => i.id === deployItem.id ? d.item : i));
-        toast.success(`${isRedeploy ? "Upgraded" : "Deployed"} to ${deployEnv.toUpperCase()} — ${selectedChart}@${selectedVersion}`);
-        setIsDeployOpen(false);
-        setDetailItem(null);
+        setInfraOp(prev => ({
+          ...prev,
+          status: "success",
+          message: d.message || "Deployment successful",
+          connectionUrl: d.connection_url || d.item?.url_to_connect || undefined,
+        }));
       } else {
-        const e = await r.json();
-        toast.error(e.detail || "Deploy failed.");
+        setInfraOp(prev => ({
+          ...prev,
+          status: "error",
+          message: d.detail || "Deploy failed.",
+        }));
       }
-    } catch { toast.error("Network error."); }
-    finally { setDeployLoading(false); }
-  }, [deployItem, deployEnv, selectedChart, selectedVersion, isRedeploy, authHeaders]);
+    } catch (err: unknown) {
+      const msg = (err instanceof Error && err.name === "AbortError")
+        ? "Request timed out after 5 minutes."
+        : String(err);
+      setInfraOp(prev => ({ ...prev, status: "error", message: msg }));
+    } finally {
+      clearTimeout(timeoutId);
+      setDeployLoading(false);
+    }
+  }, [deployItem, deployEnv, selectedChart, selectedVersion, isRedeploy, valuesOverrideEntries, authHeaders]);
 
   const handleExtendTTL = useCallback(async (item: MarketplaceItem) => {
     try {
@@ -715,22 +958,65 @@ export default function Marketplace() {
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
+    const isDeployed = deleteTarget.deployment_status === "DEPLOYED";
+
+    // Close confirmation dialog first
+    setDeleteTarget(null);
+    setDetailItem(null);
     setDeleteLoading(true);
+
+    if (isDeployed) {
+      // Show the infra loading overlay for deployed items (infra must undeploy)
+      setInfraOp({
+        status: "loading",
+        operation: "delete",
+        itemName: deleteTarget.name,
+        entityType: deleteTarget.item_type,
+        message: "",
+      });
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000 + 10_000);
+
     try {
       const r = await fetch(`/api/marketplace/items/${deleteTarget.id}`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
       if (r.ok) {
         setItems(prev => prev.filter(i => i.id !== deleteTarget.id));
-        toast.success(`"${deleteTarget.name}" deleted.`);
-        setDeleteTarget(null);
-        setDetailItem(null);
+        if (isDeployed) {
+          setInfraOp(prev => ({
+            ...prev,
+            status: "success",
+            message: "Deployment deleted and item removed.",
+          }));
+        } else {
+          toast.success(`"${deleteTarget.name}" deleted.`);
+        }
       } else {
         const e = await r.json();
-        toast.error(e.detail || "Delete failed.");
+        if (isDeployed) {
+          setInfraOp(prev => ({ ...prev, status: "error", message: e.detail || "Delete failed." }));
+        } else {
+          toast.error(e.detail || "Delete failed.");
+        }
       }
-    } catch { toast.error("Network error."); }
-    finally { setDeleteLoading(false); }
+    } catch (err: unknown) {
+      const msg = (err instanceof Error && err.name === "AbortError")
+        ? "Request timed out after 5 minutes."
+        : String(err);
+      if (isDeployed) {
+        setInfraOp(prev => ({ ...prev, status: "error", message: msg }));
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setDeleteLoading(false);
+    }
   }, [deleteTarget, token]);
 
   const handleCall = useCallback(async () => {
@@ -1264,6 +1550,68 @@ export default function Marketplace() {
               </div>
             )}
 
+            {/* Values Override */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                  Values Override
+                  <span className="ml-1.5 text-[9px] font-normal normal-case text-muted-foreground/50">(optional — passed to helm chart)</span>
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px] gap-1 px-2"
+                  onClick={() => setValuesOverrideEntries(prev => [...prev, { key: "", value: "" }])}
+                >
+                  <Plus size={10} /> Add Entry
+                </Button>
+              </div>
+              {deployItem?.public_connection_url && (
+                <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
+                  <Info size={11} className="text-primary shrink-0" />
+                  <span>
+                    <code className="font-mono text-primary/80">public_connection_url</code>
+                    {" = "}
+                    <span className="font-mono text-foreground/70">{deployItem.public_connection_url}</span>
+                    {" "}will be included automatically.
+                  </span>
+                </div>
+              )}
+              {valuesOverrideEntries.length === 0 && !deployItem?.public_connection_url && (
+                <p className="text-[11px] text-muted-foreground/40 italic">No overrides — click "Add Entry" to specify helm values.</p>
+              )}
+              {valuesOverrideEntries.map((entry, idx) => (
+                <div key={idx} className="flex items-center gap-2 mb-2">
+                  <Input
+                    className="h-8 text-xs font-mono flex-1"
+                    placeholder="key"
+                    value={entry.key}
+                    onChange={e => setValuesOverrideEntries(prev =>
+                      prev.map((en, i) => i === idx ? { ...en, key: e.target.value } : en)
+                    )}
+                  />
+                  <Input
+                    className="h-8 text-xs font-mono flex-1"
+                    placeholder="value"
+                    value={entry.value}
+                    onChange={e => setValuesOverrideEntries(prev =>
+                      prev.map((en, i) => i === idx ? { ...en, value: e.target.value } : en)
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() => setValuesOverrideEntries(prev => prev.filter((_, i) => i !== idx))}
+                  >
+                    <X size={13} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
             {/* Summary */}
             {selectedChart && selectedVersion && (
               <div className={`flex items-start gap-3 p-4 rounded-xl border bg-muted/50 text-sm`}
@@ -1371,6 +1719,19 @@ export default function Marketplace() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          INFRA OPERATION LOADING OVERLAY
+          ══════════════════════════════════════════════════════════════════════ */}
+      {infraOp.status !== "idle" && (
+        <InfraLoadingOverlay
+          state={infraOp}
+          onClose={() => {
+            setInfraOp(prev => ({ ...prev, status: "idle" }));
+            if (infraOp.status === "success") fetchItems();
+          }}
+        />
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════
           CREATE / PUBLISH MODAL
@@ -1496,6 +1857,24 @@ export default function Marketplace() {
               <Textarea id="ch" className="min-h-[72px] resize-none"
                 placeholder="Example prompts, prerequisites, example inputs…"
                 value={createHowTo} onChange={e => setCreateHowTo(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cpu" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                Public Connection URL
+                <span className="ml-1.5 text-[9px] font-normal text-muted-foreground/50 normal-case">(optional)</span>
+              </Label>
+              <Input
+                id="cpu"
+                placeholder="https://my-agent.company.internal or http://10.0.0.1:8080"
+                value={createPublicUrl}
+                onChange={e => setCreatePublicUrl(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground/55 leading-relaxed">
+                The public DNS / URL where users interact with this{" "}
+                {createType === "agent" ? "agent" : "MCP server"}.
+                Forwarded as <code className="bg-muted/60 px-1 rounded font-mono text-[9px]">values_override.public_connection_url</code> during deployment.
+              </p>
             </div>
 
             <DialogFooter className="pt-4 border-t border-border/40 gap-2">
