@@ -448,12 +448,10 @@ function StatBig({ value, label, color }: { value: number; label: string; color:
 const DEPLOY_MESSAGES = (entityType: "agent" | "mcp_server") => [
   `Go grab a coffee, this might take a few minutes ☕`,
   `In Linux that wouldn't take so long... 🐧`,
-  `Nice code — did you write it or AI? 🤖`,
+  `Nice code! Did you write it or AI? 🤖`,
   `Are you ready for your ${entityType === "agent" ? "agent" : "MCP"}? 🚀`,
   `Kubernetes is doing its thing, hang tight ⚙️`,
-  `Deploying atoms... I mean containers 🫙`,
   `If it takes forever, blame the network 🌐`,
-  `Fun fact: Docker was born in 2013. This pod is younger than your coffee ☕`,
 ];
 
 const DELETE_MESSAGES = (entityType: "agent" | "mcp_server") => [
@@ -1833,6 +1831,7 @@ export default function Marketplace() {
                   Name <span className="text-destructive">*</span>
                 </Label>
                 <Input id="cn" required placeholder="e.g. Jira Integration MCP"
+                  className="placeholder:text-muted-foreground/45 placeholder:italic"
                   value={createName} onChange={e => setCreateName(e.target.value)} />
               </div>
             </div>
@@ -1841,7 +1840,7 @@ export default function Marketplace() {
               <Label htmlFor="cd" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
                 Description <span className="text-destructive">*</span>
               </Label>
-              <Textarea id="cd" required className="min-h-[80px] resize-none"
+              <Textarea id="cd" required className="min-h-[80px] resize-none placeholder:text-muted-foreground/45 placeholder:italic"
                 placeholder="What does this entity do? When should someone use it?"
                 value={createDesc} onChange={e => setCreateDesc(e.target.value)} />
             </div>
@@ -1849,12 +1848,13 @@ export default function Marketplace() {
             <div className="space-y-2">
               <Label htmlFor="cr" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Bitbucket Repo URL</Label>
               <Input id="cr" placeholder="https://bitbucket.company.internal/…"
+                className="placeholder:text-muted-foreground/45 placeholder:italic"
                 value={createRepo} onChange={e => setCreateRepo(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="ch" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">How to Use</Label>
-              <Textarea id="ch" className="min-h-[72px] resize-none"
+              <Textarea id="ch" className="min-h-[72px] resize-none placeholder:text-muted-foreground/45 placeholder:italic"
                 placeholder="Example prompts, prerequisites, example inputs…"
                 value={createHowTo} onChange={e => setCreateHowTo(e.target.value)} />
             </div>
@@ -1867,7 +1867,7 @@ export default function Marketplace() {
                 id="cpu"
                 required
                 placeholder="e.g. https://my-agent.company.internal"
-                className="placeholder:text-muted-foreground/30 placeholder:italic"
+                className="placeholder:text-muted-foreground/45 placeholder:italic"
                 value={createPublicUrl}
                 onChange={e => setCreatePublicUrl(e.target.value)}
               />
