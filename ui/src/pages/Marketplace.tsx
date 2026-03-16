@@ -85,8 +85,6 @@ interface MarketplaceItem {
   bitbucket_repo: string | null;
   how_to_use: string | null;
   url_to_connect: string | null;
-  /** User-provided public DNS entered at creation; forwarded in values_override at deploy time. */
-  public_connection_url: string | null;
   tools_exposed: { name: string }[];
   deployment_status: "BUILT" | "DEPLOYED";
   version: string;
@@ -667,7 +665,6 @@ export default function Marketplace() {
   const [createIcon, setCreateIcon] = useState("");
   const [createRepo, setCreateRepo] = useState("");
   const [createHowTo, setCreateHowTo] = useState("");
-  const [createPublicUrl, setCreatePublicUrl] = useState("");
   const iconInputRef = useRef<HTMLInputElement>(null);
 
   // ── Run / Call modal ───────────────────────────────────────────────────────
@@ -791,7 +788,7 @@ export default function Marketplace() {
 
   const resetCreate = useCallback(() => {
     setCreateName(""); setCreateDesc(""); setCreateType("agent");
-    setCreateIcon(""); setCreateRepo(""); setCreateHowTo(""); setCreatePublicUrl("");
+    setCreateIcon(""); setCreateRepo(""); setCreateHowTo("");
   }, []);
 
   const handleCreate = useCallback(async (e: React.FormEvent) => {
@@ -804,7 +801,6 @@ export default function Marketplace() {
         body: JSON.stringify({
           name: createName, description: createDesc, item_type: createType,
           icon: createIcon || null, bitbucket_repo: createRepo || null, how_to_use: createHowTo || null,
-          public_connection_url: createPublicUrl.trim(),
         }),
       });
       if (r.ok) {
@@ -858,7 +854,7 @@ export default function Marketplace() {
   const handleDeploy = useCallback(async () => {
     if (!deployItem || !selectedChart) return;
 
-    // Build values_override: user entries win; item's public_connection_url is the base
+    // Build values_override from user-entered key/value pairs
     const userOverrides: Record<string, string | number> = {};
     for (const entry of valuesOverrideEntries) {
       const k = entry.key.trim();
@@ -1565,18 +1561,7 @@ export default function Marketplace() {
                   <Plus size={10} /> Add Entry
                 </Button>
               </div>
-              {deployItem?.public_connection_url && (
-                <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
-                  <Info size={11} className="text-primary shrink-0" />
-                  <span>
-                    <code className="font-mono text-primary/80">public_connection_url</code>
-                    {" = "}
-                    <span className="font-mono text-foreground/70">{deployItem.public_connection_url}</span>
-                    {" "}will be included automatically.
-                  </span>
-                </div>
-              )}
-              {valuesOverrideEntries.length === 0 && !deployItem?.public_connection_url && (
+              {valuesOverrideEntries.length === 0 && (
                 <p className="text-[11px] text-muted-foreground/40 italic">No overrides — click "Add Entry" to specify helm values.</p>
               )}
               {valuesOverrideEntries.map((entry, idx) => (
@@ -1859,28 +1844,9 @@ export default function Marketplace() {
                 value={createHowTo} onChange={e => setCreateHowTo(e.target.value)} />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="cpu" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                Public Connection URL <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="cpu"
-                required
-                placeholder="e.g. https://my-agent.company.internal"
-                className="placeholder:text-muted-foreground/45 placeholder:italic"
-                value={createPublicUrl}
-                onChange={e => setCreatePublicUrl(e.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground/55 leading-relaxed">
-                The public DNS / URL where users (and the Call button) interact with this{" "}
-                {createType === "agent" ? "agent" : "MCP server"}.
-                Forwarded as <code className="bg-muted/60 px-1 rounded font-mono text-[9px]">values_override.public_connection_url</code> during deployment.
-              </p>
-            </div>
-
             <DialogFooter className="pt-4 border-t border-border/40 gap-2">
               <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); resetCreate(); }}>Cancel</Button>
-              <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim() || !createPublicUrl.trim()}
+              <Button type="submit" disabled={createLoading || !createName.trim() || !createDesc.trim()}
                 className="gap-1.5 bg-gradient-primary text-primary-foreground font-bold px-6">
                 <Plus size={14} />{createLoading ? "Publishing…" : "Publish Agent / MCP Server"}
               </Button>

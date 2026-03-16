@@ -984,8 +984,6 @@ class MarketplaceItem(Base):
     bitbucket_repo = Column(String(500), nullable=True)
     how_to_use = Column(Text, nullable=True)
     url_to_connect = Column(String(500), nullable=True)
-    # User-provided public DNS for the agent/MCP (passed in values_override during deploy)
-    public_connection_url = Column(String(500), nullable=True)
 
     # For MCP servers
     tools_exposed = Column(JSON, default=list, nullable=True)
@@ -1036,7 +1034,6 @@ class MarketplaceItem(Base):
             "bitbucket_repo": self.bitbucket_repo,
             "how_to_use": self.how_to_use,
             "url_to_connect": self.url_to_connect,
-            "public_connection_url": self.public_connection_url,
             "tools_exposed": self.tools_exposed,
             "deployment_status": self.deployment_status,
             "version": self.version,

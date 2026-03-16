@@ -126,12 +126,6 @@ def _run_schema_migrations(engine) -> None:
             "is_admin",
             "ALTER TABLE sso_groups ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE",
         ),
-        # v3.x → public_connection_url: user-provided public DNS for agent/MCP (sent in values_override at deploy time)
-        (
-            "marketplace_items",
-            "public_connection_url",
-            "ALTER TABLE marketplace_items ADD COLUMN public_connection_url VARCHAR(500)",
-        ),
     ]
 
     with engine.connect() as conn:

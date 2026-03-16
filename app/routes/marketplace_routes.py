@@ -69,8 +69,6 @@ class ItemCreate(BaseModel):
     bitbucket_repo: Optional[str] = None
     how_to_use: Optional[str] = None
     tools_exposed: Optional[List[Dict[str, Any]]] = None
-    # Public DNS / URL that users will interact with; forwarded in values_override at deploy time
-    public_connection_url: Optional[str] = None
 
 
 class ItemUpdate(BaseModel):
@@ -272,7 +270,6 @@ def create_marketplace_item(
         bitbucket_repo=req.bitbucket_repo,
         how_to_use=req.how_to_use,
         url_to_connect=None,  # set by infra after first deploy
-        public_connection_url=req.public_connection_url or None,
         tools_exposed=req.tools_exposed or [],
         # Start as BUILT — Create = Build in the current workflow
         deployment_status="BUILT",
@@ -378,14 +375,6 @@ def deploy_marketplace_item(
     public_url_from_infra: Optional[str] = None
 
     if infra:
-        # Merge the item's pre-configured public_connection_url (if any) with
-        # user-provided values_override entries. User entries win on conflicts.
-        merged_overrides: Dict[str, Any] = {}
-        if item.public_connection_url:
-            merged_overrides["public_connection_url"] = item.public_connection_url
-        if req.values_override:
-            merged_overrides.update(req.values_override)
-
         infra_payload: Dict[str, Any] = {
             "entity_name": item.name,
             "entity_type": item.item_type,
@@ -394,8 +383,8 @@ def deploy_marketplace_item(
             "owner_username": current_user.username,
             "target_environment": req.environment,
         }
-        if merged_overrides:
-            infra_payload["values_override"] = merged_overrides
+        if req.values_override:
+            infra_payload["values_override"] = req.values_override
 
         try:
             logger.info(
@@ -595,12 +584,6 @@ def redeploy_marketplace_item(
             raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API (delete step): {exc}")
 
         # Step 2 — deploy new
-        merged_overrides: Dict[str, Any] = {}
-        if item.public_connection_url:
-            merged_overrides["public_connection_url"] = item.public_connection_url
-        if req.values_override:
-            merged_overrides.update(req.values_override)
-
         deploy_payload: Dict[str, Any] = {
             "entity_name": item.name,
             "entity_type": item.item_type,
@@ -609,8 +592,8 @@ def redeploy_marketplace_item(
             "owner_username": current_user.username,
             "target_environment": req.environment,
         }
-        if merged_overrides:
-            deploy_payload["values_override"] = merged_overrides
+        if req.values_override:
+            deploy_payload["values_override"] = req.values_override
 
         try:
             logger.info(
