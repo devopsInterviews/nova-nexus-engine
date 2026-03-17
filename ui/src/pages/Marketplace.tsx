@@ -61,7 +61,6 @@ import {
   RefreshCw,
   Rocket,
   Search,
-  Send,
   Sparkles,
   Store,
   Tag,
@@ -667,13 +666,6 @@ export default function Marketplace() {
   const [createHowTo, setCreateHowTo] = useState("");
   const iconInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Run / Call modal ───────────────────────────────────────────────────────
-  const [callItem, setCallItem] = useState<MarketplaceItem | null>(null);
-  const [callPrompt, setCallPrompt] = useState("");
-  const [callResponse, setCallResponse] = useState<string | null>(null);
-  const [callError, setCallError] = useState<string | null>(null);
-  const [callLoading, setCallLoading] = useState(false);
-
   // ── API helpers ───────────────────────────────────────────────────────────
 
   const authHeaders = useCallback(() => ({
@@ -1012,29 +1004,6 @@ export default function Marketplace() {
       setDeleteLoading(false);
     }
   }, [deleteTarget, token]);
-
-  const handleCall = useCallback(async () => {
-    if (!callItem || !callPrompt.trim()) return;
-    setCallLoading(true);
-    setCallResponse(null);
-    setCallError(null);
-    try {
-      const r = await fetch(`/api/marketplace/items/${callItem.id}/call`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ prompt: callPrompt }),
-      });
-      const d = await r.json();
-      if (r.ok && d.status === "ok") {
-        setCallResponse(typeof d.response === "string" ? d.response : JSON.stringify(d.response, null, 2));
-        fetchItems();
-      } else {
-        setCallError(d.error || d.detail || "Unknown error");
-      }
-    } catch (err) {
-      setCallError(String(err));
-    } finally { setCallLoading(false); }
-  }, [callItem, callPrompt, authHeaders, fetchItems]);
 
   const handleIconFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1393,12 +1362,6 @@ export default function Marketplace() {
                             <Copy size={13} /> Fork
                           </Button>
                         )}
-                        {item.deployment_status === "DEPLOYED" && (
-                          <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground"
-                            onClick={() => { setDetailItem(null); setCallItem(item); setCallPrompt(""); setCallResponse(null); setCallError(null); }}>
-                            <Zap size={13} /> Run / Call
-                          </Button>
-                        )}
                       </div>
                     </>
                   )}
@@ -1634,70 +1597,6 @@ export default function Marketplace() {
               className={`gap-1.5 font-bold ${deployEnv === "dev" ? "bg-[#FFB24C] hover:opacity-90 text-white" : "bg-[#00C986] hover:opacity-90 text-white"}`}>
               {deployEnv === "dev" ? <Cloud size={14} /> : <Rocket size={14} />}
               {deployLoading ? "Working…" : isRedeploy ? "Upgrade" : "Deploy"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          RUN / CALL DIALOG
-          ══════════════════════════════════════════════════════════════════════ */}
-      <Dialog open={!!callItem} onOpenChange={open => { if (!open) { setCallItem(null); setCallPrompt(""); setCallResponse(null); setCallError(null); } }}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 font-black">
-              <Zap size={17} className="text-primary" /> Test — {callItem?.name}
-            </DialogTitle>
-            <DialogDescription>
-              Send a prompt to this {callItem?.item_type === "agent" ? "agent" : "MCP server"}.
-              The request is proxied through the portal to its internal connection URL.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-1">
-            {callItem?.url_to_connect ? (
-              <p className="text-xs text-muted-foreground font-mono bg-muted/40 border border-border/50 rounded-lg px-3 py-2 truncate">
-                {callItem.url_to_connect}
-              </p>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-[#935900] dark:text-[#FFB24C] bg-[#FFB24C]/10 border border-[#FFB24C]/30 rounded-lg px-3 py-2">
-                <AlertTriangle size={14} /> No connection URL — redeploy to assign one.
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Prompt</Label>
-              <Textarea
-                className="min-h-[100px] resize-none font-mono text-sm"
-                placeholder={`Send a message to ${callItem?.name}…`}
-                value={callPrompt}
-                onChange={e => setCallPrompt(e.target.value)}
-              />
-            </div>
-
-            {callResponse !== null && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#007a52] dark:text-[#00C986]/80 mb-1.5">Response</p>
-                <pre className="text-xs text-foreground bg-muted/50 border border-border/50 rounded-xl p-4 overflow-auto max-h-60 whitespace-pre-wrap font-mono leading-relaxed">
-                  {callResponse}
-                </pre>
-              </div>
-            )}
-            {callError && (
-              <div className="flex items-start gap-2 text-sm text-[#c03232] dark:text-[#F16C6C] bg-[#F16C6C]/10 border border-[#F16C6C]/30 rounded-xl p-3">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                <span>{callError}</span>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setCallItem(null); setCallPrompt(""); setCallResponse(null); setCallError(null); }}>
-              Close
-            </Button>
-            <Button disabled={callLoading || !callPrompt.trim() || !callItem?.url_to_connect}
-              onClick={handleCall} className="gap-1.5 bg-primary text-primary-foreground font-bold">
-              <Send size={13} /> {callLoading ? "Sending…" : "Send Prompt"}
             </Button>
           </DialogFooter>
         </DialogContent>

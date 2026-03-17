@@ -11,14 +11,25 @@ Additional endpoints:
                             See PingRequest for full docs and curl examples.
   POST /items/{id}/clone  — fork a deployed item for a parallel deployment
   POST /redeploy          — undeploy then re-deploy with a new chart/version
+
+Background threads (started from client.py on application startup):
+  start_ttl_cleanup_thread()   — runs every 24 h; removes dev items whose TTL
+                                  has elapsed from the DB.
+  start_cluster_sync_thread()  — runs every 10 min; calls
+                                  GET {INFRA_CHARTS_API_SERVER}/api/infra/deployments
+                                  and warns about any DEPLOYED DB item whose Helm
+                                  release is no longer present in the cluster.
+                                  Deletion is currently disabled (observation-only
+                                  mode); see _run_cluster_sync() to enable it.
 """
 
 import os
 import logging
+import re
 import threading
 import time
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set
 
 import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException
@@ -78,12 +89,6 @@ class ItemUpdate(BaseModel):
     how_to_use: Optional[str] = None
     bitbucket_repo: Optional[str] = None
     icon: Optional[str] = None
-
-
-class CallRequest(BaseModel):
-    """Payload for the Run/Call proxy endpoint."""
-    prompt: str
-    user_identifier: Optional[str] = None  # overrides current_user.username if set
 
 
 class DeployRequest(BaseModel):
@@ -754,92 +759,6 @@ def update_marketplace_item(
     return _enrich_item(item, db)
 
 
-@router.post("/items/{item_id}/call")
-def call_marketplace_item(
-    item_id: int,
-    req: CallRequest,
-    db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Proxy a prompt to a deployed item's connection URL and return the response.
-
-    This allows users to test/interact with a running Agent or MCP Server
-    directly from the portal without needing direct cluster access.
-
-    The request body `{"prompt": "...", "user": "username"}` is forwarded to the
-    item's `url_to_connect`.  A usage record is written regardless of outcome.
-    """
-    item = db.query(MarketplaceItem).filter_by(id=item_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    if item.deployment_status != "DEPLOYED":
-        raise HTTPException(status_code=400, detail="Item is not deployed — deploy it first.")
-    if not item.url_to_connect:
-        raise HTTPException(
-            status_code=400,
-            detail="No connection URL set for this item. The URL is assigned by infra after deployment.",
-        )
-
-    caller = req.user_identifier or current_user.username
-    payload = {"prompt": req.prompt, "user": caller, "item_name": item.name}
-
-    logger.info(
-        "[MARKETPLACE] User '%s' calling item '%s' (id=%d) at %s — prompt length=%d",
-        current_user.username, item.name, item.id, item.url_to_connect, len(req.prompt),
-    )
-
-    result: Any = None
-    error_msg: Optional[str] = None
-    try:
-        response = http_requests.post(
-            item.url_to_connect,
-            json=payload,
-            timeout=30,
-            # Internal cluster URLs may use self-signed certs; allow both
-            verify=False,
-        )
-        logger.info(
-            "[MARKETPLACE] Call to '%s' returned HTTP %d (%.2fs)",
-            item.url_to_connect, response.status_code,
-            response.elapsed.total_seconds() if hasattr(response, "elapsed") else 0,
-        )
-        content_type = response.headers.get("content-type", "")
-        if "application/json" in content_type:
-            result = response.json()
-        else:
-            result = response.text
-
-    except http_requests.exceptions.Timeout:
-        error_msg = "Request timed out after 30 seconds."
-        logger.warning(
-            "[MARKETPLACE] Call to '%s' (item id=%d) timed out.", item.url_to_connect, item.id
-        )
-    except http_requests.exceptions.ConnectionError as exc:
-        error_msg = f"Could not connect to {item.url_to_connect}: {exc}"
-        logger.error(
-            "[MARKETPLACE] Call connection error for item id=%d: %s", item.id, exc
-        )
-    except Exception as exc:
-        error_msg = f"Unexpected error: {exc}"
-        logger.error(
-            "[MARKETPLACE] Unexpected call error for item id=%d: %s", item.id, exc, exc_info=True
-        )
-
-    # Always log a usage record
-    usage = MarketplaceUsage(user_id=current_user.id, item_id=item.id, action="call")
-    db.add(usage)
-    db.commit()
-    logger.info(
-        "[MARKETPLACE] Usage record written — item '%s' (id=%d) called by '%s'",
-        item.name, item.id, current_user.username,
-    )
-
-    if error_msg:
-        return {"status": "error", "error": error_msg, "response": None}
-    return {"status": "ok", "response": result}
-
-
 @router.post("/items/{item_id}/clone")
 def clone_marketplace_item(
     item_id: int,
@@ -1168,6 +1087,309 @@ def start_ttl_cleanup_thread() -> threading.Thread:
     thread = threading.Thread(target=_target, daemon=True, name="marketplace-ttl-cleanup")
     thread.start()
     logger.info("[MARKETPLACE] TTL cleanup daemon thread launched (tid=%s).", thread.ident)
+    return thread
+
+
+# ─── Background Cluster Deployment Reconciliation ────────────────────────────
+
+def _normalize_name_for_helm(name: str) -> str:
+    """
+    Normalise a Marketplace item name to the Helm-compatible slug that the
+    infra API uses when building a Helm release name:
+
+      - Convert to lowercase
+      - Replace every run of non-alphanumeric characters with a single hyphen
+      - Strip leading / trailing hyphens
+
+    Examples:
+      "Data Analysis Agent" → "data-analysis-agent"
+      "My Jira MCP!"       → "my-jira-mcp"
+      "my-test-app2"       → "my-test-app2"
+    """
+    return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+
+
+def _parse_release_components(release_name: str) -> Optional[Dict[str, str]]:
+    """
+    Decompose a Helm release name into its structural components.
+
+    Full naming convention (defined by the infra team):
+      {project}-{entity_type}-{entity_name}-{target_environment}
+
+    Since entity_name itself can contain hyphens, we extract:
+      • parts[0]     → project       (skipped during matching — not stored in DB)
+      • parts[1]     → entity_type   (e.g. 'agent', 'mcp')
+      • parts[2:-1]  → entity_name   (re-joined with '-'; may be multi-segment)
+      • parts[-1]    → environment   (e.g. 'dev', 'release')
+
+    Returns None when the name has fewer than 4 segments (cannot be a valid
+    marketplace release and will be silently skipped during reconciliation).
+
+    Examples:
+      "infra-agent-my-test-app2-dev"
+        → {project: 'infra', entity_type: 'agent',
+           entity_name: 'my-test-app2', environment: 'dev'}
+
+      "infra-mcp-jira-integration-mcp-release"
+        → {project: 'infra', entity_type: 'mcp',
+           entity_name: 'jira-integration-mcp', environment: 'release'}
+    """
+    parts = release_name.split('-')
+    if len(parts) < 4:
+        return None
+    return {
+        "project":     parts[0],
+        "entity_type": parts[1],
+        "entity_name": '-'.join(parts[2:-1]),
+        "environment": parts[-1],
+    }
+
+
+def _item_matches_release(item: MarketplaceItem, parsed: Dict[str, str]) -> bool:
+    """
+    Return True when a parsed Helm release name corresponds to this DB item.
+
+    The project segment is intentionally ignored (not stored in the DB).
+    Matching is done on the remaining three fields:
+
+      environment  — exact match against item.environment
+      entity_name  — exact match against the normalised item.name
+      entity_type  — 'agent' matches item_type='agent'
+                     'mcp' OR 'mcp_server' both match item_type='mcp_server'
+                     (infra may shorten 'mcp_server' to 'mcp' in the slug)
+    """
+    if parsed["environment"] != item.environment:
+        return False
+    if parsed["entity_name"] != _normalize_name_for_helm(item.name):
+        return False
+    # Accept the DB value verbatim OR the commonly shortened slug form
+    expected_types = {item.item_type, item.item_type.replace("_server", "")}
+    return parsed["entity_type"] in expected_types
+
+
+def _run_cluster_sync() -> None:
+    """
+    Reconcile every DEPLOYED Marketplace item against the live Helm releases
+    reported by GET {INFRA_CHARTS_API_SERVER}/api/infra/deployments.
+
+    Workflow
+    ────────
+    1. Fetch the full release list from the infra API.
+    2. Parse every release name into {project, entity_type, entity_name,
+       environment}.  The project segment is ignored — it is not stored in the
+       DB — so matching is done on the remaining three fields only.
+    3. For each DEPLOYED item in the DB:
+         • FOUND   → log at INFO; item is healthy, no action taken.
+         • MISSING → log at WARNING explaining that the item should be deleted
+                     from the DB because its deployment no longer exists in
+                     the cluster.
+
+    NOTE: Deletion is intentionally disabled for now.
+    When an orphaned item is detected we only emit a WARNING log.
+    Once the matching logic has been validated in production the commented-out
+    deletion block below can be re-enabled.
+
+    All findings (both present and absent) are written to the application log
+    so operators can audit what the reconciliation found each cycle.
+    """
+    infra = _infra_url()
+    if not infra:
+        logger.debug(
+            "[MARKETPLACE][SYNC] INFRA_CHARTS_API_SERVER not configured — cluster sync skipped."
+        )
+        return
+
+    deployments_url = f"{infra}/api/infra/deployments"
+
+    # ── Step 1: Fetch active releases from infra ──────────────────────────────
+    try:
+        logger.info(
+            "[MARKETPLACE][SYNC] ── Cluster sync cycle starting ──────────────────────"
+        )
+        logger.info(
+            "[MARKETPLACE][SYNC] Fetching active deployments from %s", deployments_url
+        )
+        resp = http_requests.get(deployments_url, timeout=30)
+        resp.raise_for_status()
+        payload = resp.json()
+    except http_requests.exceptions.Timeout:
+        logger.error(
+            "[MARKETPLACE][SYNC] Timed out (30s) fetching %s — sync aborted.", deployments_url
+        )
+        return
+    except http_requests.exceptions.ConnectionError as exc:
+        logger.error(
+            "[MARKETPLACE][SYNC] Connection error fetching %s: %s — sync aborted.",
+            deployments_url, exc,
+        )
+        return
+    except http_requests.exceptions.HTTPError as exc:
+        logger.error(
+            "[MARKETPLACE][SYNC] HTTP %d error from infra deployments API: %s — sync aborted.",
+            exc.response.status_code if exc.response is not None else -1, exc,
+        )
+        return
+    except Exception as exc:
+        logger.error(
+            "[MARKETPLACE][SYNC] Unexpected error fetching deployments: %s — sync aborted.",
+            exc, exc_info=True,
+        )
+        return
+
+    releases: List[Dict[str, Any]] = payload.get("releases", [])
+    total_in_cluster: int = payload.get("total", len(releases))
+
+    logger.info(
+        "[MARKETPLACE][SYNC] Infra reports %d active release(s) (total=%d).",
+        len(releases), total_in_cluster,
+    )
+
+    # Parse every release name upfront; skip names that are too short to be
+    # valid marketplace releases and log them so nothing is silently ignored.
+    parsed_releases: List[Dict[str, str]] = []
+    for r in releases:
+        name = r.get("name", "")
+        parsed = _parse_release_components(name)
+        if parsed is None:
+            logger.debug(
+                "[MARKETPLACE][SYNC] Skipping release '%s' — fewer than 4 segments,"
+                " not a marketplace release.",
+                name,
+            )
+            continue
+        parsed_releases.append(parsed)
+        logger.info(
+            "[MARKETPLACE][SYNC] Cluster release '%s'"
+            " → project='%s' type='%s' name='%s' env='%s'",
+            name,
+            parsed["project"], parsed["entity_type"],
+            parsed["entity_name"], parsed["environment"],
+        )
+
+    # ── Step 2: Cross-reference with DB ──────────────────────────────────────
+    db: Session = SessionLocal()
+    try:
+        deployed_items = (
+            db.query(MarketplaceItem)
+            .filter(MarketplaceItem.deployment_status == "DEPLOYED")
+            .all()
+        )
+
+        if not deployed_items:
+            logger.info(
+                "[MARKETPLACE][SYNC] No DEPLOYED items in DB — nothing to reconcile."
+            )
+            return
+
+        logger.info(
+            "[MARKETPLACE][SYNC] Reconciling %d DEPLOYED DB item(s) against"
+            " %d parsed cluster release(s) …",
+            len(deployed_items), len(parsed_releases),
+        )
+
+        items_missing: List[MarketplaceItem] = []
+
+        for item in deployed_items:
+            normalised = _normalize_name_for_helm(item.name)
+            matched = any(
+                _item_matches_release(item, p) for p in parsed_releases
+            )
+            if matched:
+                logger.info(
+                    "[MARKETPLACE][SYNC] ✓ FOUND   — '%s' (id=%d, type=%s, env=%s,"
+                    " normalised_name='%s') matched a cluster release.",
+                    item.name, item.id, item.item_type, item.environment, normalised,
+                )
+            else:
+                logger.warning(
+                    "[MARKETPLACE][SYNC] ✗ MISSING — '%s' (id=%d, type=%s, env=%s,"
+                    " normalised_name='%s') has no matching release in the cluster.",
+                    item.name, item.id, item.item_type, item.environment, normalised,
+                )
+                items_missing.append(item)
+
+        if not items_missing:
+            logger.info(
+                "[MARKETPLACE][SYNC] All %d DEPLOYED item(s) are present in the cluster."
+                " No action needed.",
+                len(deployed_items),
+            )
+            return
+
+        # ── Orphan report ─────────────────────────────────────────────────────
+        logger.warning(
+            "[MARKETPLACE][SYNC] %d orphaned item(s) detected (deployment gone from"
+            " cluster): %s",
+            len(items_missing),
+            [f"'{i.name}' (id={i.id}, type={i.item_type}, env={i.environment})"
+             for i in items_missing],
+        )
+        for item in items_missing:
+            logger.warning(
+                "[MARKETPLACE][SYNC] ACTION REQUIRED — '%s' (id=%d) should be deleted"
+                " from the DB: its Helm release no longer exists in the cluster."
+                " Deletion is currently DISABLED (observation-only mode)."
+                " Re-enable the deletion block in _run_cluster_sync() when ready.",
+                item.name, item.id,
+            )
+
+        # ── Deletion block — DISABLED (observation-only mode) ─────────────────
+        # Uncomment the lines below once the matching logic has been validated
+        # in production and you are confident the orphan detection is accurate.
+        #
+        # for item in items_missing:
+        #     db.delete(item)
+        # db.commit()
+        # logger.info(
+        #     "[MARKETPLACE][SYNC] ✓ Deleted %d orphaned item(s) from DB successfully.",
+        #     len(items_missing),
+        # )
+
+    except Exception as exc:
+        db.rollback()
+        logger.error(
+            "[MARKETPLACE][SYNC] DB error during reconciliation: %s", exc, exc_info=True
+        )
+    finally:
+        db.close()
+        logger.info("[MARKETPLACE][SYNC] ── Cluster sync cycle complete ────────────────────")
+
+
+def start_cluster_sync_thread() -> threading.Thread:
+    """
+    Daemon thread that reconciles DEPLOYED Marketplace items against live Helm
+    releases every 10 minutes by calling GET /api/infra/deployments.
+
+    If INFRA_CHARTS_API_SERVER is not set, each cycle exits immediately after a
+    single debug log — no performance cost in environments without infra.
+
+    The thread is a daemon so uvicorn shuts down cleanly without waiting for it.
+    """
+    interval_seconds = 600  # 10 minutes
+
+    def _target() -> None:
+        logger.info(
+            "[MARKETPLACE] Cluster sync thread started"
+            " (interval=%ds / %.0f min).",
+            interval_seconds, interval_seconds / 60,
+        )
+        while True:
+            time.sleep(interval_seconds)
+            try:
+                _run_cluster_sync()
+            except Exception as exc:
+                logger.error(
+                    "[MARKETPLACE] Cluster sync thread unhandled error: %s",
+                    exc, exc_info=True,
+                )
+
+    thread = threading.Thread(
+        target=_target, daemon=True, name="marketplace-cluster-sync"
+    )
+    thread.start()
+    logger.info(
+        "[MARKETPLACE] Cluster sync daemon thread launched (tid=%s).", thread.ident
+    )
     return thread
 
 
