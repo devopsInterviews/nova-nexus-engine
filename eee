@@ -1,0 +1,13 @@
+There is a new api I want to show you:
+
+curl -X GET <infraChartApiServer>/api/infra/deployments
+
+This is what it returns for example:
+
+{"releases":[{"name":"my-test-app2-dev","namespace":"infra-agent-my-test-app2-dev","revision":"1","updated":"2026-03-16 14:54:28.305796863 +0000 UTC","status":"deployed","chart":"test-app-0.1.0","app_version":"1.0.0"}],"total":1}%                                                                                                                                                                              
+
+The infraChartApiServer is environment variable, please look it up I'm already use it in the market place to interact with infra.
+What I want to do now is like each 10 minutes I'll check this api, if an agent or mcp server I have is not there it means it does not in the cluster anymore and needs to be deleted from the database and not being shown in the frontend, I want to see the test in the logs, what it found and what not.
+The name here seems to be composed from the name we send and the environment. Write everything in the logs, what you found was fidderent and what did you deleted if it really did not exist.
+
+You don't have to test it by running the app, just make sure everything logicly is correct and that you are not breaking anything in the way.
