@@ -965,8 +965,7 @@ def _call_infra_undeploy(
             "[MARKETPLACE][DELETE] → POST %s/api/infra/delete | entity='%s' env=%s reason=%s",
             infra, item.name, item.environment, reason,
         )
-        if _DEBUG_INFRA:
-            logger.debug("[MARKETPLACE][DELETE] Full payload: %s", payload)
+        logger.info("[MARKETPLACE][DELETE] Full payload: %s", payload)
 
         resp = http_requests.post(
             f"{infra}/api/infra/delete",
@@ -974,16 +973,17 @@ def _call_infra_undeploy(
             timeout=INFRA_API_TIMEOUT_SECONDS,
         )
 
-        if _DEBUG_INFRA:
-            logger.debug(
-                "[MARKETPLACE][DELETE] Raw response HTTP %d: %s",
-                resp.status_code, resp.text,
-            )
+        # Log the full response unconditionally before raise_for_status() so the
+        # body is always captured in the log regardless of success or failure.
+        logger.info(
+            "[MARKETPLACE][DELETE] Infra API responded HTTP %d — body: %s",
+            resp.status_code, resp.text,
+        )
 
         resp.raise_for_status()
         logger.info(
-            "[MARKETPLACE][DELETE] ✓ Undeploy succeeded for '%s' (id=%d): %s",
-            item.name, item.id, resp.json(),
+            "[MARKETPLACE][DELETE] ✓ Undeploy succeeded for '%s' (id=%d).",
+            item.name, item.id,
         )
         return None
     except http_requests.exceptions.Timeout:
@@ -1000,14 +1000,15 @@ def _call_infra_undeploy(
             item.name, item.id, infra, exc,
         )
     except http_requests.exceptions.HTTPError as exc:
+        raw_body = exc.response.text if exc.response is not None else ""
         try:
-            msg = exc.response.json().get("detail") or exc.response.text
+            msg = exc.response.json().get("detail") or raw_body
         except Exception:
-            msg = str(exc)
+            msg = raw_body or str(exc)
         logger.error(
-            "[MARKETPLACE][DELETE] ✗ HTTP %d ERROR for '%s' (id=%d): %s",
+            "[MARKETPLACE][DELETE] ✗ HTTP %d ERROR for '%s' (id=%d) — full response body: %s",
             exc.response.status_code if exc.response is not None else -1,
-            item.name, item.id, msg,
+            item.name, item.id, raw_body,
         )
     except Exception as exc:
         msg = f"Unexpected error: {exc}"
