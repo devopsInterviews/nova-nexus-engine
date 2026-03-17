@@ -627,6 +627,7 @@ export default function Marketplace() {
   // ── Delete confirmation ────────────────────────────────────────────────────
   const [deleteTarget, setDeleteTarget] = useState<MarketplaceItem | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteDbOnly, setDeleteDbOnly] = useState(false);
 
   // ── Deploy / Redeploy modal ────────────────────────────────────────────────
   const [isDeployOpen, setIsDeployOpen] = useState(false);
@@ -945,14 +946,16 @@ export default function Marketplace() {
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
     const isDeployed = deleteTarget.deployment_status === "DEPLOYED";
+    const dbOnly = deleteDbOnly;
 
     // Close confirmation dialog first
     setDeleteTarget(null);
+    setDeleteDbOnly(false);
     setDetailItem(null);
     setDeleteLoading(true);
 
-    if (isDeployed) {
-      // Show the infra loading overlay for deployed items (infra must undeploy)
+    // Only show the infra loading overlay when we are actually calling infra
+    if (isDeployed && !dbOnly) {
       setInfraOp({
         status: "loading",
         operation: "delete",
@@ -962,29 +965,34 @@ export default function Marketplace() {
       });
     }
 
+    const url = `/api/marketplace/items/${deleteTarget.id}${dbOnly ? "?db_only=true" : ""}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000 + 10_000);
 
     try {
-      const r = await fetch(`/api/marketplace/items/${deleteTarget.id}`, {
+      const r = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
       if (r.ok) {
         setItems(prev => prev.filter(i => i.id !== deleteTarget.id));
-        if (isDeployed) {
+        if (isDeployed && !dbOnly) {
           setInfraOp(prev => ({
             ...prev,
             status: "success",
             message: "Deployment deleted and item removed.",
           }));
         } else {
-          toast.success(`"${deleteTarget.name}" deleted.`);
+          toast.success(
+            dbOnly
+              ? `"${deleteTarget.name}" removed from database (deployment untouched).`
+              : `"${deleteTarget.name}" deleted.`
+          );
         }
       } else {
         const e = await r.json();
-        if (isDeployed) {
+        if (isDeployed && !dbOnly) {
           setInfraOp(prev => ({ ...prev, status: "error", message: e.detail || "Delete failed." }));
         } else {
           toast.error(e.detail || "Delete failed.");
@@ -994,7 +1002,7 @@ export default function Marketplace() {
       const msg = (err instanceof Error && err.name === "AbortError")
         ? "Request timed out after 5 minutes."
         : String(err);
-      if (isDeployed) {
+      if (isDeployed && !dbOnly) {
         setInfraOp(prev => ({ ...prev, status: "error", message: msg }));
       } else {
         toast.error(msg);
@@ -1003,7 +1011,7 @@ export default function Marketplace() {
       clearTimeout(timeoutId);
       setDeleteLoading(false);
     }
-  }, [deleteTarget, token]);
+  }, [deleteTarget, deleteDbOnly, token]);
 
   const handleIconFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1375,7 +1383,7 @@ export default function Marketplace() {
       {/* ══════════════════════════════════════════════════════════════════════
           DELETE CONFIRMATION DIALOG
           ══════════════════════════════════════════════════════════════════════ */}
-      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) { setDeleteTarget(null); setDeleteDbOnly(false); } }}>
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -1389,20 +1397,52 @@ export default function Marketplace() {
             <li>
               The item will be <strong className="text-foreground">permanently removed</strong> from the Marketplace database.
             </li>
-            {deleteTarget?.deployment_status === "DEPLOYED" && (
+            {deleteTarget?.deployment_status === "DEPLOYED" && !deleteDbOnly && (
               <li>
                 The <strong className="text-foreground">{deleteTarget.environment.toUpperCase()}</strong> deployment will be <strong className="text-foreground">undeployed</strong>.
+              </li>
+            )}
+            {deleteTarget?.deployment_status === "DEPLOYED" && deleteDbOnly && (
+              <li className="text-[#FFB24C] dark:text-[#FFB24C]">
+                The <strong>{deleteTarget.environment.toUpperCase()}</strong> deployment will <strong>NOT</strong> be touched — only the database record is removed.
               </li>
             )}
             <li>
               All usage history for this entity will be deleted.
             </li>
           </ul>
+
+          {/* Admin-only: remove from DB without undeploying */}
+          {user?.is_admin && deleteTarget?.deployment_status === "DEPLOYED" && (
+            <label className="flex items-start gap-3 mt-3 px-3 py-2.5 rounded-xl border border-[#FFB24C]/40 bg-[#FFB24C]/5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={deleteDbOnly}
+                onChange={e => setDeleteDbOnly(e.target.checked)}
+                className="mt-0.5 accent-[#FFB24C] w-4 h-4 shrink-0"
+              />
+              <div>
+                <p className="text-sm font-semibold text-[#935900] dark:text-[#FFB24C] leading-snug">
+                  Remove from database only
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-0.5">
+                  Admin only — skips the infra undeploy call. Use when the deployment is already gone from the cluster.
+                </p>
+              </div>
+            </label>
+          )}
+
           <DialogFooter className="gap-2 mt-2">
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteDbOnly(false); }}>Cancel</Button>
             <Button variant="destructive" disabled={deleteLoading} onClick={handleDelete} className="gap-1.5">
               <Trash2 size={13} />
-              {deleteLoading ? "Deleting…" : deleteTarget?.deployment_status === "DEPLOYED" ? "Delete & Undeploy" : "Delete"}
+              {deleteLoading
+                ? "Deleting…"
+                : deleteDbOnly
+                  ? "Remove from DB"
+                  : deleteTarget?.deployment_status === "DEPLOYED"
+                    ? "Delete & Undeploy"
+                    : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

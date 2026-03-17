@@ -175,6 +175,25 @@ class PingRequest(BaseModel):
 
 # ─── Helper: build infra API base URL ────────────────────────────────────────
 
+def _apply_mcp_url_suffix(url: str, item_type: str) -> str:
+    """
+    For MCP server deployments the SSE/streamable-HTTP endpoint lives at /mcp.
+    Append the suffix when the URL does not already end with it.
+
+    Examples:
+      "http://host:8080"      + mcp_server → "http://host:8080/mcp"
+      "http://host:8080/"     + mcp_server → "http://host:8080/mcp"
+      "http://host:8080/mcp"  + mcp_server → "http://host:8080/mcp"  (no-op)
+      "http://host:8080"      + agent      → "http://host:8080"       (no-op)
+    """
+    if item_type != "mcp_server":
+        return url
+    base = url.rstrip("/")
+    if not base.endswith("/mcp"):
+        base = f"{base}/mcp"
+    return base
+
+
 def _infra_url() -> Optional[str]:
     if not INFRA_CHARTS_API_SERVER:
         return None
@@ -236,6 +255,25 @@ def create_marketplace_item(
     is handled asynchronously by the infra team, this simplifies the UX to a
     single action: Create → then Deploy.
     """
+    # Global duplicate-name check (case-insensitive, across all users and types).
+    # Two items with the same name would produce identical Helm release names and
+    # cause silent infra conflicts, so we reject at creation time.
+    existing = (
+        db.query(MarketplaceItem)
+        .filter(func.lower(MarketplaceItem.name) == req.name.strip().lower())
+        .first()
+    )
+    if existing:
+        logger.warning(
+            "[MARKETPLACE] Duplicate name rejected — '%s' already exists (id=%d, owner=%s)",
+            req.name, existing.id, existing.owner.username if existing.owner else "unknown",
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"An agent or MCP server named \"{req.name.strip()}\" already exists."
+                   " Choose a different name.",
+        )
+
     if req.item_type == "agent":
         user_count = (
             db.query(MarketplaceItem)
@@ -473,7 +511,14 @@ def deploy_marketplace_item(
     item.deployed_at = datetime.now(timezone.utc)
     item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
     if public_url_from_infra:
-        item.url_to_connect = public_url_from_infra
+        final_url = _apply_mcp_url_suffix(public_url_from_infra, item.item_type)
+        item.url_to_connect = final_url
+        if final_url != public_url_from_infra:
+            logger.info(
+                "[MARKETPLACE][DEPLOY] MCP server URL suffixed: '%s' → '%s'",
+                public_url_from_infra, final_url,
+            )
+        public_url_from_infra = final_url
 
     db.commit()
     db.refresh(item)
@@ -672,7 +717,14 @@ def redeploy_marketplace_item(
     item.deployed_at = datetime.now(timezone.utc)
     item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
     if public_url_from_infra:
-        item.url_to_connect = public_url_from_infra
+        final_url = _apply_mcp_url_suffix(public_url_from_infra, item.item_type)
+        item.url_to_connect = final_url
+        if final_url != public_url_from_infra:
+            logger.info(
+                "[MARKETPLACE][REDEPLOY] MCP server URL suffixed: '%s' → '%s'",
+                public_url_from_infra, final_url,
+            )
+        public_url_from_infra = final_url
 
     db.commit()
     db.refresh(item)
@@ -821,35 +873,53 @@ def clone_marketplace_item(
 @router.delete("/items/{item_id}")
 def delete_marketplace_item(
     item_id: int,
+    db_only: bool = False,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete an item. Only the owner or an admin may delete."""
+    """
+    Delete an item. Only the owner or an admin may delete.
+
+    db_only=true (admin only) — removes the DB record immediately without
+    calling the infra undeploy API.  Useful when the deployment is already
+    gone from the cluster and only the stale DB row needs to be cleaned up.
+    """
     item = db.query(MarketplaceItem).filter_by(id=item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     if item.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this item")
 
-    # For deployed items, call infra first — raise on error so user sees the problem
-    infra_error = _call_infra_undeploy(
-        item,
-        owner_username=current_user.username if current_user else "system",
-        reason="manual_user_deletion",
-        raise_on_error=(item.deployment_status == "DEPLOYED"),
-    )
-    if infra_error and item.deployment_status != "DEPLOYED":
-        # Non-deployed item — infra call is a no-op, but log the warning
+    if db_only:
+        if not current_user.is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins may use the db_only deletion mode.",
+            )
         logger.warning(
-            "[MARKETPLACE] Infra undeploy warning during delete for '%s' (id=%d): %s",
-            item.name, item_id, infra_error,
+            "[MARKETPLACE] Admin '%s' is removing '%s' (id=%d, status=%s) from DB only"
+            " — infra undeploy SKIPPED.",
+            current_user.username, item.name, item_id, item.deployment_status,
         )
+    else:
+        # For deployed items, call infra first — raise on error so user sees the problem
+        infra_error = _call_infra_undeploy(
+            item,
+            owner_username=current_user.username if current_user else "system",
+            reason="manual_user_deletion",
+            raise_on_error=(item.deployment_status == "DEPLOYED"),
+        )
+        if infra_error and item.deployment_status != "DEPLOYED":
+            logger.warning(
+                "[MARKETPLACE] Infra undeploy warning during delete for '%s' (id=%d): %s",
+                item.name, item_id, infra_error,
+            )
 
     db.delete(item)
     db.commit()
     logger.info(
-        "[MARKETPLACE] User '%s' deleted item '%s' (id=%d)",
-        current_user.username, item.name, item_id,
+        "[MARKETPLACE] User '%s' deleted item '%s' (id=%d) [db_only=%s]",
+        current_user.username, item.name, item_id, db_only,
     )
     return {"status": "ok"}
 
