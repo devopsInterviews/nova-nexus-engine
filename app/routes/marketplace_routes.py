@@ -406,8 +406,10 @@ def deploy_marketplace_item(
                 timeout=INFRA_API_TIMEOUT_SECONDS,
             )
 
-            logger.debug(
-                "[MARKETPLACE][DEPLOY] Raw response HTTP %d: %s",
+            # Log the full response unconditionally — always visible regardless of log level.
+            # Placed before raise_for_status() so the body is captured on both success and error.
+            logger.info(
+                "[MARKETPLACE][DEPLOY] Infra API responded HTTP %d — body: %s",
                 infra_resp.status_code, infra_resp.text,
             )
 
@@ -420,9 +422,6 @@ def deploy_marketplace_item(
                 infra_data.get("deployment_id"),
                 infra_data.get("namespace"),
                 infra_data.get("public_connection_url"),
-            )
-            logger.info(
-                "[MARKETPLACE][DEPLOY] Full success response body: %s", infra_resp.text
             )
             public_url_from_infra = infra_data.get("public_connection_url")
         except http_requests.exceptions.Timeout:
@@ -617,8 +616,10 @@ def redeploy_marketplace_item(
                 timeout=INFRA_API_TIMEOUT_SECONDS,
             )
 
-            logger.debug(
-                "[MARKETPLACE][REDEPLOY] Deploy raw response HTTP %d: %s",
+            # Log the full response unconditionally — always visible regardless of log level.
+            # Placed before raise_for_status() so the body is captured on both success and error.
+            logger.info(
+                "[MARKETPLACE][REDEPLOY] Infra API responded HTTP %d — body: %s",
                 dep_resp.status_code, dep_resp.text,
             )
 
@@ -631,9 +632,6 @@ def redeploy_marketplace_item(
                 infra_data.get("deployment_id"),
                 infra_data.get("namespace"),
                 infra_data.get("public_connection_url"),
-            )
-            logger.info(
-                "[MARKETPLACE][REDEPLOY] Full success response body: %s", dep_resp.text
             )
             public_url_from_infra = infra_data.get("public_connection_url")
         except http_requests.exceptions.Timeout:
