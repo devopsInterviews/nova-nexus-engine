@@ -538,12 +538,15 @@ def redeploy_marketplace_item(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Redeploy a DEPLOYED item with a new chart name/version or environment.
+    Upgrade a DEPLOYED item to a new chart name/version or environment.
+
+    The infra API runs `helm upgrade --install` internally, so no prior
+    undeploy call is needed.  We call deploy directly and let Helm handle
+    the in-place upgrade.
 
     Workflow:
-      1. Call infra undeploy (logged, TODO)
-      2. Call infra deploy with new spec (logged, TODO)
-      3. Update DB record with new chart_name, chart_version, deployed_at, ttl_days
+      1. Call infra deploy with new spec (helm upgrade --install)
+      2. Update DB record with new chart_name, chart_version, deployed_at, ttl_days
     """
     item = db.query(MarketplaceItem).filter_by(id=req.item_id).first()
     if not item:
@@ -553,7 +556,7 @@ def redeploy_marketplace_item(
     if item.deployment_status != "DEPLOYED":
         raise HTTPException(
             status_code=400,
-            detail="Only DEPLOYED items can be redeployed. Deploy it first.",
+            detail="Only DEPLOYED items can be upgraded. Deploy it first.",
         )
 
     old_chart = item.chart_name
@@ -561,81 +564,17 @@ def redeploy_marketplace_item(
     old_env = item.environment
 
     logger.info(
-        "[MARKETPLACE] User '%s' redeploying '%s' (id=%d): %s@%s/%s → %s@%s/%s",
+        "[MARKETPLACE] User '%s' upgrading '%s' (id=%d): %s@%s/%s → %s@%s/%s",
         current_user.username, item.name, item.id,
         old_chart, old_version, old_env,
         req.chart_name, req.chart_version, req.environment,
     )
 
-    # ── Call infra API ───────────────────────────────────────────────────────
+    # ── Call infra API (helm upgrade --install — no prior delete needed) ─────
     infra = _infra_url()
     public_url_from_infra: Optional[str] = None
 
     if infra:
-        # Step 1 — undeploy old deployment
-        delete_payload: Dict[str, Any] = {
-            "entity_name": item.name,
-            "entity_type": item.item_type,
-            "owner_username": current_user.username,
-            "target_environment": old_env,
-        }
-        try:
-            logger.info(
-                "[MARKETPLACE][REDEPLOY] Step 1/2 → POST %s/api/infra/delete | entity='%s' env=%s",
-                infra, item.name, old_env,
-            )
-            if _DEBUG_INFRA:
-                logger.debug("[MARKETPLACE][REDEPLOY] Delete payload: %s", delete_payload)
-
-            del_resp = http_requests.post(
-                f"{infra}/api/infra/delete",
-                json=delete_payload,
-                timeout=INFRA_API_TIMEOUT_SECONDS,
-            )
-
-            if _DEBUG_INFRA:
-                logger.debug(
-                    "[MARKETPLACE][REDEPLOY] Delete raw response HTTP %d: %s",
-                    del_resp.status_code, del_resp.text,
-                )
-
-            del_resp.raise_for_status()
-            logger.info(
-                "[MARKETPLACE][REDEPLOY] ✓ Step 1/2 delete succeeded for '%s': %s",
-                item.name, del_resp.json(),
-            )
-        except http_requests.exceptions.Timeout:
-            logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ TIMEOUT on delete step for '%s' (id=%d) → %s/api/infra/delete",
-                item.name, item.id, infra,
-            )
-            raise HTTPException(status_code=504, detail="Infra API did not respond within 5 minutes (delete step).")
-        except http_requests.exceptions.ConnectionError as exc:
-            logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ CONNECTION ERROR on delete step for '%s' (id=%d): %s",
-                item.name, item.id, exc,
-            )
-            raise HTTPException(status_code=502, detail=f"Could not reach the infra API server: {exc}")
-        except http_requests.exceptions.HTTPError as exc:
-            error_body = ""
-            try:
-                error_body = exc.response.json().get("detail") or exc.response.text
-            except Exception:
-                error_body = str(exc)
-            logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ HTTP %d ERROR on delete step for '%s' (id=%d): %s",
-                exc.response.status_code if exc.response is not None else -1,
-                item.name, item.id, error_body,
-            )
-            raise HTTPException(status_code=502, detail=f"Infra API error during undeploy: {error_body}")
-        except Exception as exc:
-            logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ UNEXPECTED ERROR on delete step for '%s' (id=%d): %s",
-                item.name, item.id, exc, exc_info=True,
-            )
-            raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API (delete step): {exc}")
-
-        # Step 2 — deploy new
         deploy_payload: Dict[str, Any] = {
             "entity_name": item.name,
             "entity_type": item.item_type,
@@ -649,7 +588,7 @@ def redeploy_marketplace_item(
 
         try:
             logger.info(
-                "[MARKETPLACE][REDEPLOY] Step 2/2 → POST %s/api/infra/deploy | entity='%s' env=%s chart=%s@%s",
+                "[MARKETPLACE][REDEPLOY] → POST %s/api/infra/deploy | entity='%s' env=%s chart=%s@%s",
                 infra, item.name, req.environment, req.chart_name, req.chart_version,
             )
             if _DEBUG_INFRA:
@@ -671,7 +610,7 @@ def redeploy_marketplace_item(
             dep_resp.raise_for_status()
             infra_data = dep_resp.json()
             logger.info(
-                "[MARKETPLACE][REDEPLOY] ✓ Step 2/2 deploy succeeded for '%s' | status=%s deployment_id=%s namespace=%s public_url=%s",
+                "[MARKETPLACE][REDEPLOY] ✓ Deploy succeeded for '%s' | status=%s deployment_id=%s namespace=%s public_url=%s",
                 item.name,
                 infra_data.get("status"),
                 infra_data.get("deployment_id"),
@@ -681,13 +620,13 @@ def redeploy_marketplace_item(
             public_url_from_infra = infra_data.get("public_connection_url")
         except http_requests.exceptions.Timeout:
             logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ TIMEOUT on deploy step for '%s' (id=%d) → %s/api/infra/deploy",
+                "[MARKETPLACE][REDEPLOY] ✗ TIMEOUT for '%s' (id=%d) → %s/api/infra/deploy",
                 item.name, item.id, infra,
             )
-            raise HTTPException(status_code=504, detail="Infra API did not respond within 5 minutes (deploy step).")
+            raise HTTPException(status_code=504, detail="Infra API did not respond within 5 minutes.")
         except http_requests.exceptions.ConnectionError as exc:
             logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ CONNECTION ERROR on deploy step for '%s' (id=%d): %s",
+                "[MARKETPLACE][REDEPLOY] ✗ CONNECTION ERROR for '%s' (id=%d): %s",
                 item.name, item.id, exc,
             )
             raise HTTPException(status_code=502, detail=f"Could not reach the infra API server: {exc}")
@@ -698,17 +637,17 @@ def redeploy_marketplace_item(
             except Exception:
                 error_detail = raw_body or str(exc)
             logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ HTTP %d ERROR on deploy step for '%s' (id=%d) — full response body: %s",
+                "[MARKETPLACE][REDEPLOY] ✗ HTTP %d ERROR for '%s' (id=%d) — full response body: %s",
                 exc.response.status_code if exc.response is not None else -1,
                 item.name, item.id, raw_body,
             )
-            raise HTTPException(status_code=502, detail=f"Infra API error during redeploy: {error_detail}")
+            raise HTTPException(status_code=502, detail=f"Infra API error during upgrade: {error_detail}")
         except Exception as exc:
             logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ UNEXPECTED ERROR on deploy step for '%s' (id=%d): %s",
+                "[MARKETPLACE][REDEPLOY] ✗ UNEXPECTED ERROR for '%s' (id=%d): %s",
                 item.name, item.id, exc, exc_info=True,
             )
-            raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API (deploy step): {exc}")
+            raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API: {exc}")
     # ────────────────────────────────────────────────────────────────────────
 
     item.environment = req.environment

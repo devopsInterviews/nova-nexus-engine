@@ -47,6 +47,7 @@ import {
   AlertTriangle,
   Blocks,
   Calendar,
+  Check,
   ChevronRight,
   Clock,
   Cloud,
@@ -209,6 +210,76 @@ const EntityIcon = memo(function EntityIcon({
   );
 });
 
+/** Displays a connection URL with an inline copy-to-clipboard button. */
+function ConnectionUrlTile({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+
+  return (
+    <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
+      <ExternalLink size={14} className="mt-0.5 text-muted-foreground/60 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Connection URL</p>
+        <a href={url} target="_blank" rel="noreferrer"
+          className="text-sm text-primary hover:underline truncate block">{url}</a>
+      </div>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            >
+              {copied ? <Check size={13} className="text-[#00C986]" /> : <Copy size={13} />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {copied ? "Copied!" : "Copy URL"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
+/** Connection URL shown in the deploy-success overlay, with a copy button. */
+function SuccessUrlBlock({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+
+  return (
+    <div className="mt-3 px-3 py-2 bg-[#00C986]/10 border border-[#00C986]/30 rounded-xl">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[#007a52] dark:text-[#00C986]">
+          Connection URL
+        </p>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-[10px] text-[#007a52] dark:text-[#00C986] hover:opacity-80 transition-opacity"
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+      <p className="text-xs font-mono text-foreground break-all">{url}</p>
+    </div>
+  );
+}
+
 /**
  * ItemCard — consistent card layout with equal heights via flex-col structure.
  * The AUTO-DELETE banner has been removed to prevent height inconsistency.
@@ -217,6 +288,16 @@ const ItemCard = memo(function ItemCard({
   item, onClick,
 }: { item: MarketplaceItem; onClick: () => void }) {
   const st = getItemStyle(item);
+  const [urlCopied, setUrlCopied] = useState(false);
+
+  function copyUrl(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!item.url_to_connect) return;
+    navigator.clipboard.writeText(item.url_to_connect).then(() => {
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 1800);
+    });
+  }
 
   return (
     <motion.div
@@ -326,6 +407,29 @@ const ItemCard = memo(function ItemCard({
           <span className="font-semibold text-foreground">{item.unique_users}</span>
           users
         </span>
+        {item.url_to_connect && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={copyUrl}
+                  className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {urlCopied
+                    ? <Check size={11} className="text-[#00C986]" />
+                    : <Copy size={11} />}
+                  <span className={urlCopied ? "text-[#00C986] font-semibold" : ""}>
+                    {urlCopied ? "Copied!" : "URL"}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs max-w-[260px] break-all">
+                {item.url_to_connect}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </motion.div>
   );
@@ -544,12 +648,7 @@ const InfraLoadingOverlay = memo(function InfraLoadingOverlay({
                   {state.operation === "deploy" ? "Successfully Deployed! 🎉" : "Deletion Completed! ✓"}
                 </p>
                 {state.connectionUrl && (
-                  <div className="mt-3 px-3 py-2 bg-[#00C986]/10 border border-[#00C986]/30 rounded-xl">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#007a52] dark:text-[#00C986] mb-1">
-                      Connection URL
-                    </p>
-                    <p className="text-xs font-mono text-foreground break-all">{state.connectionUrl}</p>
-                  </div>
+                  <SuccessUrlBlock url={state.connectionUrl} />
                 )}
               </>
             )}
@@ -1287,14 +1386,7 @@ export default function Marketplace() {
                         </div>
                       )}
                       {item.url_to_connect && (
-                        <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
-                          <ExternalLink size={14} className="mt-0.5 text-muted-foreground/60 shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Connection URL</p>
-                            <a href={item.url_to_connect} target="_blank" rel="noreferrer"
-                              className="text-sm text-primary hover:underline truncate block">{item.url_to_connect}</a>
-                          </div>
-                        </div>
+                        <ConnectionUrlTile url={item.url_to_connect} />
                       )}
                       <InfoTile label="Created" icon={<Calendar size={14} />}
                         value={new Date(item.created_at).toLocaleDateString()} />
