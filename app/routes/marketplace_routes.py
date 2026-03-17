@@ -37,7 +37,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.database import get_db_session, SessionLocal
+from app.database import get_db_session
+import app.database as _database  # accessed at call-time so SessionLocal is never None
 from app.models import MarketplaceItem, MarketplaceUsage, User
 from app.routes.auth_routes import get_current_user
 from app.services.artifactory_client import (
@@ -405,11 +406,10 @@ def deploy_marketplace_item(
                 timeout=INFRA_API_TIMEOUT_SECONDS,
             )
 
-            if _DEBUG_INFRA:
-                logger.debug(
-                    "[MARKETPLACE][DEPLOY] Raw response HTTP %d: %s",
-                    infra_resp.status_code, infra_resp.text,
-                )
+            logger.debug(
+                "[MARKETPLACE][DEPLOY] Raw response HTTP %d: %s",
+                infra_resp.status_code, infra_resp.text,
+            )
 
             infra_resp.raise_for_status()
             infra_data = infra_resp.json()
@@ -420,6 +420,9 @@ def deploy_marketplace_item(
                 infra_data.get("deployment_id"),
                 infra_data.get("namespace"),
                 infra_data.get("public_connection_url"),
+            )
+            logger.info(
+                "[MARKETPLACE][DEPLOY] Full success response body: %s", infra_resp.text
             )
             public_url_from_infra = infra_data.get("public_connection_url")
         except http_requests.exceptions.Timeout:
@@ -442,19 +445,19 @@ def deploy_marketplace_item(
                 detail=f"Could not reach the infra API server: {exc}",
             )
         except http_requests.exceptions.HTTPError as exc:
-            error_body: str = ""
+            raw_body: str = exc.response.text if exc.response is not None else ""
             try:
-                error_body = exc.response.json().get("detail") or exc.response.text
+                error_detail = exc.response.json().get("detail") or raw_body
             except Exception:
-                error_body = str(exc)
+                error_detail = raw_body or str(exc)
             logger.error(
-                "[MARKETPLACE][DEPLOY] ✗ HTTP %d ERROR for '%s' (id=%d): %s",
+                "[MARKETPLACE][DEPLOY] ✗ HTTP %d ERROR for '%s' (id=%d) — full response body: %s",
                 exc.response.status_code if exc.response is not None else -1,
-                item.name, item.id, error_body,
+                item.name, item.id, raw_body,
             )
             raise HTTPException(
                 status_code=502,
-                detail=f"Infra API returned an error: {error_body}",
+                detail=f"Infra API returned an error: {error_detail}",
             )
         except Exception as exc:
             logger.error(
@@ -614,11 +617,10 @@ def redeploy_marketplace_item(
                 timeout=INFRA_API_TIMEOUT_SECONDS,
             )
 
-            if _DEBUG_INFRA:
-                logger.debug(
-                    "[MARKETPLACE][REDEPLOY] Deploy raw response HTTP %d: %s",
-                    dep_resp.status_code, dep_resp.text,
-                )
+            logger.debug(
+                "[MARKETPLACE][REDEPLOY] Deploy raw response HTTP %d: %s",
+                dep_resp.status_code, dep_resp.text,
+            )
 
             dep_resp.raise_for_status()
             infra_data = dep_resp.json()
@@ -629,6 +631,9 @@ def redeploy_marketplace_item(
                 infra_data.get("deployment_id"),
                 infra_data.get("namespace"),
                 infra_data.get("public_connection_url"),
+            )
+            logger.info(
+                "[MARKETPLACE][REDEPLOY] Full success response body: %s", dep_resp.text
             )
             public_url_from_infra = infra_data.get("public_connection_url")
         except http_requests.exceptions.Timeout:
@@ -644,17 +649,17 @@ def redeploy_marketplace_item(
             )
             raise HTTPException(status_code=502, detail=f"Could not reach the infra API server: {exc}")
         except http_requests.exceptions.HTTPError as exc:
-            error_body = ""
+            raw_body = exc.response.text if exc.response is not None else ""
             try:
-                error_body = exc.response.json().get("detail") or exc.response.text
+                error_detail = exc.response.json().get("detail") or raw_body
             except Exception:
-                error_body = str(exc)
+                error_detail = raw_body or str(exc)
             logger.error(
-                "[MARKETPLACE][REDEPLOY] ✗ HTTP %d ERROR on deploy step for '%s' (id=%d): %s",
+                "[MARKETPLACE][REDEPLOY] ✗ HTTP %d ERROR on deploy step for '%s' (id=%d) — full response body: %s",
                 exc.response.status_code if exc.response is not None else -1,
-                item.name, item.id, error_body,
+                item.name, item.id, raw_body,
             )
-            raise HTTPException(status_code=502, detail=f"Infra API error during redeploy: {error_body}")
+            raise HTTPException(status_code=502, detail=f"Infra API error during redeploy: {error_detail}")
         except Exception as exc:
             logger.error(
                 "[MARKETPLACE][REDEPLOY] ✗ UNEXPECTED ERROR on deploy step for '%s' (id=%d): %s",
@@ -1026,7 +1031,7 @@ def _run_ttl_expiry_sync() -> int:
     The infra API server independently tears down the k8s resources on its side;
     this only cleans up our database records.
     """
-    db: Session = SessionLocal()
+    db: Session = _database.SessionLocal()
     deleted = 0
     try:
         now = datetime.now(timezone.utc)
@@ -1267,7 +1272,7 @@ def _run_cluster_sync() -> None:
         )
 
     # ── Step 2: Cross-reference with DB ──────────────────────────────────────
-    db: Session = SessionLocal()
+    db: Session = _database.SessionLocal()
     try:
         deployed_items = (
             db.query(MarketplaceItem)
