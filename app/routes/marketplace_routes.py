@@ -110,6 +110,11 @@ class RedeployRequest(BaseModel):
     values_override: Optional[Dict[str, Any]] = None
 
 
+class CloneRequest(BaseModel):
+    """Optional body for the clone/fork endpoint."""
+    fork_name: Optional[str] = None   # desired name for the fork; defaults to "{source} - Fork"
+
+
 class UsageRequest(BaseModel):
     item_id: int
     action: str             # 'call', 'install', 'deploy'
@@ -175,17 +180,53 @@ class PingRequest(BaseModel):
 
 # ─── Helper: build infra API base URL ────────────────────────────────────────
 
+def _parse_mcp_sse_body(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Extract a JSON-RPC result from an SSE response body.
+
+    MCP servers that use the streamable-HTTP transport may respond with
+    Content-Type: text/event-stream.  The body is a series of SSE lines:
+
+        event: message
+        data: {"jsonrpc":"2.0","id":1,"result":{...}}
+
+    We scan all 'data:' lines, parse each as JSON, and return the first one
+    that contains a 'result' key (i.e. a successful JSON-RPC response).
+    Error frames (containing 'error') are also returned so callers can log them.
+    """
+    import json as _json
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload_str = line[len("data:"):].strip()
+        if not payload_str:
+            continue
+        try:
+            parsed = _json.loads(payload_str)
+            if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
+                return parsed
+        except ValueError:
+            continue
+    return None
+
+
 def _fetch_mcp_tools(url: str, item_name: str) -> List[Dict[str, Any]]:
     """
     Fetch the tool list from a running MCP server via JSON-RPC tools/list.
 
-    Uses the MCP streamable-HTTP transport: POST {url} with a standard
-    JSON-RPC 2.0 tools/list request. The url is expected to already include
-    the /mcp suffix (applied by _apply_mcp_url_suffix before deploy).
+    Uses the MCP streamable-HTTP transport (POST {url}).  Per the MCP spec
+    the client MUST advertise both application/json and text/event-stream in
+    the Accept header so the server can choose its preferred response format.
+    Both formats are handled:
+
+      • application/json   → parsed directly as JSON-RPC response
+      • text/event-stream  → SSE body is scanned for 'data:' lines that
+                             contain a JSON-RPC result object
 
     Returns a list of {"name": str, "description": str} dicts.
-    Returns an empty list on any error — callers should treat this as a
-    soft failure and never block the deploy flow on it.
+    Returns an empty list on any error — callers treat this as a soft failure
+    that never blocks the deploy flow.
     """
     MCP_FETCH_TIMEOUT = 15
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
@@ -199,15 +240,45 @@ def _fetch_mcp_tools(url: str, item_name: str) -> List[Dict[str, Any]]:
         resp = http_requests.post(
             url,
             json=payload,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                # MCP spec: client must accept both formats
+                "Accept": "application/json, text/event-stream",
+            },
             timeout=MCP_FETCH_TIMEOUT,
         )
+        content_type = resp.headers.get("Content-Type", "")
         logger.info(
-            "[MARKETPLACE][MCP-TOOLS] '%s' responded HTTP %d — body preview: %s",
-            item_name, resp.status_code, resp.text[:500],
+            "[MARKETPLACE][MCP-TOOLS] '%s' responded HTTP %d "
+            "(Content-Type: %s) — body preview: %s",
+            item_name, resp.status_code, content_type, resp.text[:500],
         )
         resp.raise_for_status()
-        data = resp.json()
+
+        # Decode response — handle both JSON and SSE transport
+        if "text/event-stream" in content_type:
+            logger.info(
+                "[MARKETPLACE][MCP-TOOLS] '%s' returned SSE — parsing data frames.",
+                item_name,
+            )
+            data = _parse_mcp_sse_body(resp.text)
+            if data is None:
+                logger.warning(
+                    "[MARKETPLACE][MCP-TOOLS] '%s' SSE body contained no parseable "
+                    "JSON-RPC frame — tools_exposed not updated.",
+                    item_name,
+                )
+                return []
+            if "error" in data:
+                logger.warning(
+                    "[MARKETPLACE][MCP-TOOLS] '%s' returned JSON-RPC error in SSE: %s — "
+                    "tools_exposed not updated.",
+                    item_name, data["error"],
+                )
+                return []
+        else:
+            data = resp.json()
+
         tools_raw = data.get("result", {}).get("tools", [])
         tools = [
             {"name": t.get("name", ""), "description": t.get("description", "")}
@@ -219,6 +290,7 @@ def _fetch_mcp_tools(url: str, item_name: str) -> List[Dict[str, Any]]:
             item_name, len(tools), [t["name"] for t in tools],
         )
         return tools
+
     except http_requests.exceptions.Timeout:
         logger.warning(
             "[MARKETPLACE][MCP-TOOLS] TIMEOUT (%ds) fetching tools from '%s' (url=%s) — "
@@ -646,6 +718,7 @@ def deploy_marketplace_item(
             "chart_version": req.chart_version,
             "owner_username": current_user.username,
             "target_environment": req.environment,
+            "deployment_type": "deploy",
         }
         if req.values_override:
             infra_payload["values_override"] = req.values_override
@@ -824,6 +897,7 @@ def redeploy_marketplace_item(
             "chart_version": req.chart_version,
             "owner_username": current_user.username,
             "target_environment": req.environment,
+            "deployment_type": "upgrade",
         }
         if req.values_override:
             deploy_payload["values_override"] = req.values_override
@@ -1013,12 +1087,17 @@ def update_marketplace_item(
 @router.post("/items/{item_id}/clone")
 def clone_marketplace_item(
     item_id: int,
+    req: CloneRequest = CloneRequest(),
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
     """
     Fork a BUILT or DEPLOYED item into a fresh BUILT copy owned by the current user.
     The clone starts as BUILT so it can be independently deployed to any environment.
+
+    An optional fork_name may be provided in the request body.  If omitted the
+    name defaults to "{source.name} - Fork".  The name is checked for global
+    uniqueness (case-insensitive) before the clone is created.
     """
     source = db.query(MarketplaceItem).filter_by(id=item_id).first()
     if not source:
@@ -1026,6 +1105,24 @@ def clone_marketplace_item(
     if source.deployment_status not in ("BUILT", "DEPLOYED"):
         raise HTTPException(
             status_code=400, detail="Only BUILT or DEPLOYED items can be cloned."
+        )
+
+    # Resolve and validate fork name
+    desired_name = (req.fork_name or "").strip() or f"{source.name} - Fork"
+    existing = (
+        db.query(MarketplaceItem)
+        .filter(func.lower(MarketplaceItem.name) == desired_name.lower())
+        .first()
+    )
+    if existing:
+        logger.warning(
+            "[MARKETPLACE] Fork of '%s' (id=%d) by '%s' rejected — "
+            "name '%s' already exists (id=%d).",
+            source.name, source.id, current_user.username, desired_name, existing.id,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"An item named \"{desired_name}\" already exists. Choose a different name.",
         )
 
     if source.item_type == "agent":
@@ -1062,7 +1159,7 @@ def clone_marketplace_item(
             )
 
     clone = MarketplaceItem(
-        name=f"{source.name} (Fork)",
+        name=desired_name,
         description=source.description,
         item_type=source.item_type,
         owner_id=current_user.id,

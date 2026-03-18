@@ -726,6 +726,11 @@ export default function Marketplace() {
   const [editLoading, setEditLoading] = useState(false);
   const editIconInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Fork dialog ────────────────────────────────────────────────────────────
+  const [forkTarget, setForkTarget] = useState<MarketplaceItem | null>(null);
+  const [forkName, setForkName] = useState("");
+  const [forkLoading, setForkLoading] = useState(false);
+
   // ── Delete confirmation ────────────────────────────────────────────────────
   const [deleteTarget, setDeleteTarget] = useState<MarketplaceItem | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -942,7 +947,6 @@ export default function Marketplace() {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({
-          name: editName || undefined,
           description: editDesc || undefined,
           how_to_use: editHowTo || undefined,
           bitbucket_repo: editRepo || undefined,
@@ -961,7 +965,7 @@ export default function Marketplace() {
       }
     } catch { toast.error("Network error."); }
     finally { setEditLoading(false); }
-  }, [editName, editDesc, editHowTo, editRepo, editIcon, authHeaders]);
+  }, [editDesc, editHowTo, editRepo, editIcon, authHeaders]);
 
   const handleDeploy = useCallback(async () => {
     if (!deployItem || !selectedChart) return;
@@ -1047,20 +1051,33 @@ export default function Marketplace() {
     } catch { toast.error("Network error."); }
   }, [token]);
 
-  const handleClone = useCallback(async (item: MarketplaceItem) => {
+  const openForkDialog = useCallback((item: MarketplaceItem) => {
+    setForkTarget(item);
+    setForkName(`${item.name} - Fork`);
+  }, []);
+
+  const handleConfirmFork = useCallback(async () => {
+    if (!forkTarget) return;
+    setForkLoading(true);
     try {
-      const r = await fetch(`/api/marketplace/items/${item.id}/clone`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/api/marketplace/items/${forkTarget.id}/clone`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ fork_name: forkName.trim() }),
+      });
       if (r.ok) {
         const d = await r.json();
         setItems(prev => [...prev, d]);
-        toast.success("Fork created — deploy it independently.");
+        toast.success(`Fork "${d.name}" created — deploy it independently.`);
+        setForkTarget(null);
         setDetailItem(null);
       } else {
         const e = await r.json();
         toast.error(e.detail || "Fork failed.");
       }
     } catch { toast.error("Network error."); }
-  }, [token]);
+    finally { setForkLoading(false); }
+  }, [forkTarget, forkName, authHeaders]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -1352,12 +1369,14 @@ export default function Marketplace() {
                       <EntityIcon icon={item.icon} item_type={item.item_type} size="xl" />
                     )}
                     <div className="flex-1 min-w-0">
-                      {editMode ? (
-                        <Input value={editName} onChange={e => setEditName(e.target.value)}
-                          className="text-xl font-black bg-white/[0.04] border-white/[0.1] mb-2" />
-                      ) : (
-                        <DialogTitle className="text-2xl font-black leading-tight">{item.name}</DialogTitle>
-                      )}
+                      <DialogTitle className="text-2xl font-black leading-tight">
+                        {item.name}
+                        {editMode && (
+                          <span className="ml-2 text-xs font-normal text-muted-foreground/60 align-middle">
+                            (name cannot be changed)
+                          </span>
+                        )}
+                      </DialogTitle>
                       <DialogDescription className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                         <span>by <strong className="text-foreground/60">{item.owner_name}</strong></span>
                         <span className={`font-bold px-2 py-0.5 rounded-full border ${st.badge}`}>{st.label}</span>
@@ -1543,7 +1562,7 @@ export default function Marketplace() {
                         </>)}
                         {(item.deployment_status === "BUILT" || item.deployment_status === "DEPLOYED") && (
                           <Button size="sm" variant="outline" className="gap-1.5"
-                            onClick={() => handleClone(item)}>
+                            onClick={() => openForkDialog(item)}>
                             <Copy size={13} /> Fork
                           </Button>
                         )}
@@ -1554,6 +1573,45 @@ export default function Marketplace() {
               </>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          FORK DIALOG
+          ══════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={!!forkTarget} onOpenChange={open => { if (!open) setForkTarget(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy size={16} /> Fork "{forkTarget?.name}"
+            </DialogTitle>
+            <DialogDescription>
+              Your fork will start as <strong>Built</strong> and can be deployed independently.
+              Choose a unique name for it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-1">
+            <Label htmlFor="fork-name-input">Fork name</Label>
+            <Input
+              id="fork-name-input"
+              value={forkName}
+              onChange={e => setForkName(e.target.value)}
+              placeholder={`${forkTarget?.name ?? ""} - Fork`}
+              onKeyDown={e => { if (e.key === "Enter" && forkName.trim()) handleConfirmFork(); }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter className="gap-2 mt-1">
+            <Button variant="outline" onClick={() => setForkTarget(null)}>Cancel</Button>
+            <Button
+              disabled={forkLoading || !forkName.trim()}
+              onClick={handleConfirmFork}
+              className="gap-1.5"
+            >
+              <Copy size={13} />
+              {forkLoading ? "Forking…" : "Fork"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
