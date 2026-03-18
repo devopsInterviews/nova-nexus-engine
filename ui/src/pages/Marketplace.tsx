@@ -721,7 +721,9 @@ export default function Marketplace() {
   const [editDesc, setEditDesc] = useState("");
   const [editHowTo, setEditHowTo] = useState("");
   const [editRepo, setEditRepo] = useState("");
+  const [editIcon, setEditIcon] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+  const editIconInputRef = useRef<HTMLInputElement>(null);
 
   // ── Delete confirmation ────────────────────────────────────────────────────
   const [deleteTarget, setDeleteTarget] = useState<MarketplaceItem | null>(null);
@@ -913,6 +915,7 @@ export default function Marketplace() {
     setEditDesc(item.description);
     setEditHowTo(item.how_to_use || "");
     setEditRepo(item.bitbucket_repo || "");
+    setEditIcon(item.icon ?? null);
     setEditMode(true);
   }, []);
 
@@ -927,6 +930,7 @@ export default function Marketplace() {
           description: editDesc || undefined,
           how_to_use: editHowTo || undefined,
           bitbucket_repo: editRepo || undefined,
+          ...(editIcon !== null ? { icon: editIcon } : {}),
         }),
       });
       if (r.ok) {
@@ -941,7 +945,7 @@ export default function Marketplace() {
       }
     } catch { toast.error("Network error."); }
     finally { setEditLoading(false); }
-  }, [editName, editDesc, editHowTo, editRepo, authHeaders]);
+  }, [editName, editDesc, editHowTo, editRepo, editIcon, authHeaders]);
 
   const handleDeploy = useCallback(async () => {
     if (!deployItem || !selectedChart) return;
@@ -1121,6 +1125,16 @@ export default function Marketplace() {
     reader.readAsDataURL(file);
   }, []);
 
+  const handleEditIconFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1_048_576) { toast.error("Image must be < 1 MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => setEditIcon(reader.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }, []);
+
   // ── Derived state ─────────────────────────────────────────────────────────
 
   const q = search.toLowerCase();
@@ -1294,7 +1308,33 @@ export default function Marketplace() {
                 {/* Header */}
                 <div className="px-7 pt-5 pb-4 border-b border-border/50">
                   <div className="flex items-start gap-4">
-                    <EntityIcon icon={item.icon} item_type={item.item_type} size="xl" />
+                    {editMode ? (
+                      <div className="relative shrink-0 group">
+                        <div
+                          onClick={() => editIconInputRef.current?.click()}
+                          title="Click to change icon"
+                          className="w-14 h-14 rounded-2xl border-2 border-dashed border-border/60 bg-muted/30 flex items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-all overflow-hidden"
+                        >
+                          {editIcon
+                            ? <img src={editIcon} alt="icon" className="w-full h-full object-cover" />
+                            : <div className="flex flex-col items-center gap-0.5 text-muted-foreground/50 group-hover:text-muted-foreground/80 transition-colors">
+                                <UploadCloud size={16} /><span className="text-[8px] font-medium">Icon</span>
+                              </div>}
+                        </div>
+                        <div className="absolute inset-0 rounded-2xl bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                          <UploadCloud size={14} className="text-white" />
+                        </div>
+                        <input
+                          ref={editIconInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleEditIconFile}
+                        />
+                      </div>
+                    ) : (
+                      <EntityIcon icon={item.icon} item_type={item.item_type} size="xl" />
+                    )}
                     <div className="flex-1 min-w-0">
                       {editMode ? (
                         <Input value={editName} onChange={e => setEditName(e.target.value)}
