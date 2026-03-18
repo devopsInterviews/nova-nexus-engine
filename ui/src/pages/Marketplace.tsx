@@ -48,6 +48,7 @@ import {
   Blocks,
   Calendar,
   Check,
+  ChevronDown,
   ChevronRight,
   Clock,
   Cloud,
@@ -85,7 +86,7 @@ interface MarketplaceItem {
   bitbucket_repo: string | null;
   how_to_use: string | null;
   url_to_connect: string | null;
-  tools_exposed: { name: string }[];
+  tools_exposed: { name: string; description?: string }[];
   deployment_status: "BUILT" | "DEPLOYED";
   version: string;
   environment: "dev" | "release";
@@ -744,6 +745,7 @@ export default function Marketplace() {
   const [versionFilter, setVersionFilter] = useState("");
   const [selectedVersion, setSelectedVersion] = useState("latest");
   const [deployLoading, setDeployLoading] = useState(false);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
 
   // ── Deploy — values_override entries ──────────────────────────────────────
   const [valuesOverrideEntries, setValuesOverrideEntries] = useState<OverrideEntry[]>([]);
@@ -820,13 +822,27 @@ export default function Marketplace() {
 
   // ── Chart loading ─────────────────────────────────────────────────────────
 
-  const loadCharts = useCallback(async (env: "dev" | "release") => {
+  const loadCharts = useCallback(async (env: "dev" | "release", itemName?: string) => {
     setAvailableCharts([]);
     setChartsLoading(true);
     try {
       const r = await fetch(`/api/marketplace/charts?environment=${env}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (r.ok) { const d = await r.json(); setAvailableCharts(d.charts ?? []); }
-      else setAvailableCharts([]);
+      if (r.ok) {
+        const d = await r.json();
+        setAvailableCharts(d.charts ?? []);
+        if (itemName && (d.charts ?? []).length > 0) {
+          try {
+            const sr = await fetch(
+              `/api/marketplace/suggest-chart?item_name=${encodeURIComponent(itemName)}&environment=${env}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (sr.ok) {
+              const sd = await sr.json();
+              if (sd.suggested_chart) setChartFilter(sd.suggested_chart);
+            }
+          } catch { /* soft failure — filter stays empty */ }
+        }
+      } else setAvailableCharts([]);
     } catch { setAvailableCharts([]); }
     finally { setChartsLoading(false); }
   }, [token]);
@@ -862,7 +878,7 @@ export default function Marketplace() {
     setSelectedVersion("latest");
     setValuesOverrideEntries([]);
     setIsDeployOpen(true);
-    loadCharts(initialEnv);
+    loadCharts(initialEnv, item.name);
   }, [loadCharts]);
 
   const handleDeployEnvChange = useCallback((env: "dev" | "release") => {
@@ -870,8 +886,8 @@ export default function Marketplace() {
     setSelectedChart("");
     setChartVersions([]);
     setSelectedVersion("latest");
-    loadCharts(env);
-  }, [loadCharts]);
+    loadCharts(env, deployItem?.name);
+  }, [loadCharts, deployItem]);
 
   const handleChartSelect = useCallback((chart: string) => {
     setSelectedChart(chart);
@@ -1296,7 +1312,7 @@ export default function Marketplace() {
       {/* ══════════════════════════════════════════════════════════════════════
           DETAIL MODAL (inlined JSX)
           ══════════════════════════════════════════════════════════════════════ */}
-      <Dialog open={!!detailSynced} onOpenChange={open => { if (!open) { setDetailItem(null); setEditMode(false); } }}>
+      <Dialog open={!!detailSynced} onOpenChange={open => { if (!open) { setDetailItem(null); setEditMode(false); setToolsExpanded(false); } }}>
         <DialogContent className="sm:max-w-[760px] max-h-[92vh] overflow-y-auto p-0">
           {detailSynced && (() => {
             const item = detailSynced;
@@ -1431,8 +1447,37 @@ export default function Marketplace() {
                       <InfoTile label="Created" icon={<Calendar size={14} />}
                         value={new Date(item.created_at).toLocaleDateString()} />
                       {(item.tools_exposed?.length ?? 0) > 0 && (
-                        <InfoTile label="Tools Exposed" icon={<Blocks size={14} />}
-                          value={item.tools_exposed.map(t => t.name).join(", ")} />
+                        <div className="col-span-2 bg-muted/30 border border-border/50 rounded-xl overflow-hidden">
+                          <button
+                            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors"
+                            onClick={() => setToolsExpanded(v => !v)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Blocks size={14} className="text-muted-foreground/60 shrink-0" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                                Tools Exposed
+                              </span>
+                              <span className="text-xs font-semibold text-secondary ml-1">
+                                {item.tools_exposed.length}
+                              </span>
+                            </div>
+                            {toolsExpanded
+                              ? <ChevronDown size={14} className="text-muted-foreground/60" />
+                              : <ChevronRight size={14} className="text-muted-foreground/60" />}
+                          </button>
+                          {toolsExpanded && (
+                            <div className="border-t border-border/40 divide-y divide-border/30">
+                              {item.tools_exposed.map((t, i) => (
+                                <div key={i} className="px-3 py-2 flex flex-col gap-0.5">
+                                  <span className="text-xs font-mono font-semibold text-foreground">{t.name}</span>
+                                  {t.description && (
+                                    <span className="text-xs text-muted-foreground leading-snug">{t.description}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}

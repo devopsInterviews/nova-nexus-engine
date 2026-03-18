@@ -175,6 +175,79 @@ class PingRequest(BaseModel):
 
 # ─── Helper: build infra API base URL ────────────────────────────────────────
 
+def _fetch_mcp_tools(url: str, item_name: str) -> List[Dict[str, Any]]:
+    """
+    Fetch the tool list from a running MCP server via JSON-RPC tools/list.
+
+    Uses the MCP streamable-HTTP transport: POST {url} with a standard
+    JSON-RPC 2.0 tools/list request. The url is expected to already include
+    the /mcp suffix (applied by _apply_mcp_url_suffix before deploy).
+
+    Returns a list of {"name": str, "description": str} dicts.
+    Returns an empty list on any error — callers should treat this as a
+    soft failure and never block the deploy flow on it.
+    """
+    MCP_FETCH_TIMEOUT = 15
+    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+
+    logger.info(
+        "[MARKETPLACE][MCP-TOOLS] Fetching tool list for '%s' → POST %s (timeout=%ds)",
+        item_name, url, MCP_FETCH_TIMEOUT,
+    )
+
+    try:
+        resp = http_requests.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            timeout=MCP_FETCH_TIMEOUT,
+        )
+        logger.info(
+            "[MARKETPLACE][MCP-TOOLS] '%s' responded HTTP %d — body preview: %s",
+            item_name, resp.status_code, resp.text[:500],
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        tools_raw = data.get("result", {}).get("tools", [])
+        tools = [
+            {"name": t.get("name", ""), "description": t.get("description", "")}
+            for t in tools_raw
+            if t.get("name")
+        ]
+        logger.info(
+            "[MARKETPLACE][MCP-TOOLS] ✓ '%s' — %d tool(s) discovered: %s",
+            item_name, len(tools), [t["name"] for t in tools],
+        )
+        return tools
+    except http_requests.exceptions.Timeout:
+        logger.warning(
+            "[MARKETPLACE][MCP-TOOLS] TIMEOUT (%ds) fetching tools from '%s' (url=%s) — "
+            "tools_exposed not updated. The MCP server may still be starting up.",
+            MCP_FETCH_TIMEOUT, item_name, url,
+        )
+    except http_requests.exceptions.ConnectionError as exc:
+        logger.warning(
+            "[MARKETPLACE][MCP-TOOLS] CONNECTION ERROR for '%s' (url=%s): %s — "
+            "tools_exposed not updated.",
+            item_name, url, exc,
+        )
+    except http_requests.exceptions.HTTPError as exc:
+        raw_body = exc.response.text if exc.response is not None else ""
+        logger.warning(
+            "[MARKETPLACE][MCP-TOOLS] HTTP %d error from '%s' (url=%s) — body: %s — "
+            "tools_exposed not updated.",
+            exc.response.status_code if exc.response is not None else -1,
+            item_name, url, raw_body,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[MARKETPLACE][MCP-TOOLS] Unexpected error fetching tools from '%s' (url=%s): %s — "
+            "tools_exposed not updated.",
+            item_name, url, exc, exc_info=True,
+        )
+    return []
+
+
 def _apply_mcp_url_suffix(url: str, item_type: str) -> str:
     """
     For MCP server deployments the SSE/streamable-HTTP endpoint lives at /mcp.
@@ -386,6 +459,146 @@ def get_chart_versions(
     return {"environment": environment, "chart_name": chart_name, "versions": versions}
 
 
+@router.get("/suggest-chart")
+def suggest_chart_for_item(item_name: str, environment: str = "dev"):
+    """
+    Suggest the Helm chart whose name most closely matches the given item name.
+
+    Used by the deploy dialog to pre-fill the chart filter field.
+    Returns empty (None) rather than guessing when the decision is ambiguous.
+
+    ── Scoring ────────────────────────────────────────────────────────────────
+    Both names are first sanitised into lowercase hyphen-slugs using
+    _normalize_name_for_helm so that "My Jira MCP!" and "my-jira-mcp" compare
+    identically.
+
+      Step 1 — Token Dice coefficient
+        score = 2 × |A ∩ B| / (|A| + |B|)
+        where A and B are the sets of hyphen-delimited tokens in each slug.
+        Range: 0.0 – 1.0.  Exact token-set match → 1.0.
+
+      Step 2 — Prefix bonus (+0.15, capped at 1.0)
+        Applied when one slug is a prefix of the other.  Rewards charts whose
+        name is literally a prefix/extension of the item name.
+
+      Step 3 — Substring bonus (+0.10, capped at 1.0)
+        Applied when one full slug appears inside the other as a substring
+        (and the prefix bonus was not already awarded).
+
+    ── Decision thresholds ────────────────────────────────────────────────────
+      MINIMUM_SCORE   = 0.50   The winner must reach at least this score.
+                               Below this, no chart is close enough to suggest.
+
+      CONFIDENCE_GAP  = 0.25   The winner must be at least 0.25 ahead of the
+                               runner-up. If two charts are similarly named,
+                               we return nothing — the user picks manually.
+
+      EXACT_THRESHOLD = 0.90   If the top score is ≥ 0.90 (near-exact or exact
+                               slug match), the gap check is skipped entirely:
+                               there is no meaningful ambiguity at this level.
+
+    All candidates are logged at DEBUG; the top-3 by score and the final
+    decision (with reason) are logged at INFO regardless of outcome.
+    """
+    MINIMUM_SCORE   = 0.50
+    CONFIDENCE_GAP  = 0.25
+    EXACT_THRESHOLD = 0.90
+
+    charts, error = get_marketplace_charts(environment)
+    if error:
+        logger.warning(
+            "[MARKETPLACE][SUGGEST] Chart list error (env=%s): %s — no suggestion returned.",
+            environment, error,
+        )
+    if not charts:
+        logger.info(
+            "[MARKETPLACE][SUGGEST] No charts available for env=%s — no suggestion returned.",
+            environment,
+        )
+        return {"suggested_chart": None, "score": 0.0}
+
+    normalized_item = _normalize_name_for_helm(item_name)
+    item_tokens = set(t for t in normalized_item.split("-") if t)
+
+    logger.info(
+        "[MARKETPLACE][SUGGEST] Scoring item='%s' (normalized='%s', tokens=%s) "
+        "against %d chart(s) in env=%s  "
+        "[min=%.2f  gap=%.2f  exact=%.2f]",
+        item_name, normalized_item, sorted(item_tokens),
+        len(charts), environment,
+        MINIMUM_SCORE, CONFIDENCE_GAP, EXACT_THRESHOLD,
+    )
+
+    # Collect (score, chart_name) for all candidates then sort.
+    scored: List[tuple] = []
+
+    for chart in charts:
+        normalized_chart = _normalize_name_for_helm(chart)
+        chart_tokens = set(t for t in normalized_chart.split("-") if t)
+
+        # ── Step 1: Dice on token sets ───────────────────────────────────────
+        if not item_tokens or not chart_tokens:
+            score = 0.0
+        elif normalized_chart == normalized_item:
+            score = 1.0
+        else:
+            intersection = item_tokens & chart_tokens
+            score = 2 * len(intersection) / (len(item_tokens) + len(chart_tokens))
+
+        # ── Step 2: Prefix bonus ─────────────────────────────────────────────
+        if normalized_item.startswith(normalized_chart) or normalized_chart.startswith(normalized_item):
+            score = min(1.0, score + 0.15)
+        # ── Step 3: Substring bonus (only if prefix didn't already fire) ─────
+        elif normalized_chart in normalized_item or normalized_item in normalized_chart:
+            score = min(1.0, score + 0.10)
+
+        logger.debug(
+            "[MARKETPLACE][SUGGEST]   chart='%s' (normalized='%s', tokens=%s) → score=%.3f",
+            chart, normalized_chart, sorted(chart_tokens), score,
+        )
+        scored.append((score, chart))
+
+    # Sort descending by score, then alphabetically for determinism on ties.
+    scored.sort(key=lambda x: (-x[0], x[1]))
+
+    # Log the top-3 candidates for easy debugging.
+    top3 = scored[:3]
+    logger.info(
+        "[MARKETPLACE][SUGGEST] Top candidates for '%s': %s",
+        item_name,
+        [(c, round(s, 3)) for s, c in top3],
+    )
+
+    best_score, best_chart = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0.0
+    gap = best_score - second_score
+
+    # ── Decision ─────────────────────────────────────────────────────────────
+    if best_score < MINIMUM_SCORE:
+        logger.info(
+            "[MARKETPLACE][SUGGEST] ✗ No suggestion — best='%s' score=%.3f < min=%.2f",
+            best_chart, best_score, MINIMUM_SCORE,
+        )
+        return {"suggested_chart": None, "score": round(best_score, 3)}
+
+    if best_score < EXACT_THRESHOLD and gap < CONFIDENCE_GAP:
+        logger.info(
+            "[MARKETPLACE][SUGGEST] ✗ Ambiguous — best='%s' (%.3f) vs runner-up='%s' (%.3f) "
+            "gap=%.3f < required=%.2f — no suggestion returned to avoid misleading the user.",
+            best_chart, best_score, scored[1][1], second_score, gap, CONFIDENCE_GAP,
+        )
+        return {"suggested_chart": None, "score": round(best_score, 3)}
+
+    logger.info(
+        "[MARKETPLACE][SUGGEST] ✓ Clear winner for '%s' → '%s' "
+        "(score=%.3f, gap=%.3f, runner-up='%s' at %.3f)",
+        item_name, best_chart, best_score, gap,
+        scored[1][1] if len(scored) > 1 else "none",
+        second_score,
+    )
+    return {"suggested_chart": best_chart, "score": round(best_score, 3)}
+
+
 @router.post("/deploy")
 def deploy_marketplace_item(
     req: DeployRequest,
@@ -419,10 +632,17 @@ def deploy_marketplace_item(
     public_url_from_infra: Optional[str] = None
 
     if infra:
+        sanitized_name = _sanitize_entity_name(item.name)
+        if sanitized_name != item.name:
+            logger.info(
+                "[MARKETPLACE][DEPLOY] entity_name sanitized: '%s' → '%s'",
+                item.name, sanitized_name,
+            )
+
         infra_payload: Dict[str, Any] = {
-            "entity_name": item.name,
+            "entity_name": sanitized_name,
             "entity_type": item.item_type,
-            "chart_name": req.chart_name or item.name,
+            "chart_name": req.chart_name or sanitized_name,
             "chart_version": req.chart_version,
             "owner_username": current_user.username,
             "target_environment": req.environment,
@@ -433,7 +653,7 @@ def deploy_marketplace_item(
         try:
             logger.info(
                 "[MARKETPLACE][DEPLOY] → POST %s/api/infra/deploy | entity='%s' env=%s chart=%s@%s",
-                infra, item.name, req.environment, req.chart_name, req.chart_version,
+                infra, sanitized_name, req.environment, req.chart_name, req.chart_version,
             )
             if _DEBUG_INFRA:
                 logger.debug("[MARKETPLACE][DEPLOY] Full payload: %s", infra_payload)
@@ -523,6 +743,21 @@ def deploy_marketplace_item(
     db.commit()
     db.refresh(item)
 
+    # For MCP servers, fetch the live tool list from the newly deployed URL and
+    # persist it so the marketplace card can display it immediately.
+    if item.item_type == "mcp_server" and item.url_to_connect:
+        tools = _fetch_mcp_tools(item.url_to_connect, item.name)
+        if tools:
+            item.tools_exposed = tools
+            db.commit()
+            db.refresh(item)
+        else:
+            logger.info(
+                "[MARKETPLACE][DEPLOY] tools_exposed not updated for '%s' (id=%d) — "
+                "fetch returned no tools (server may still be initialising).",
+                item.name, item.id,
+            )
+
     return {
         "status": "ok",
         "message": f"Deployed to {req.environment}",
@@ -575,10 +810,17 @@ def redeploy_marketplace_item(
     public_url_from_infra: Optional[str] = None
 
     if infra:
+        sanitized_name = _sanitize_entity_name(item.name)
+        if sanitized_name != item.name:
+            logger.info(
+                "[MARKETPLACE][REDEPLOY] entity_name sanitized: '%s' → '%s'",
+                item.name, sanitized_name,
+            )
+
         deploy_payload: Dict[str, Any] = {
-            "entity_name": item.name,
+            "entity_name": sanitized_name,
             "entity_type": item.item_type,
-            "chart_name": req.chart_name or item.chart_name or item.name,
+            "chart_name": req.chart_name or item.chart_name or sanitized_name,
             "chart_version": req.chart_version,
             "owner_username": current_user.username,
             "target_environment": req.environment,
@@ -667,6 +909,21 @@ def redeploy_marketplace_item(
 
     db.commit()
     db.refresh(item)
+
+    # Re-fetch tool list after upgrade — the new chart version may expose
+    # different tools.
+    if item.item_type == "mcp_server" and item.url_to_connect:
+        tools = _fetch_mcp_tools(item.url_to_connect, item.name)
+        if tools:
+            item.tools_exposed = tools
+            db.commit()
+            db.refresh(item)
+        else:
+            logger.info(
+                "[MARKETPLACE][REDEPLOY] tools_exposed not updated for '%s' (id=%d) — "
+                "fetch returned no tools (server may still be initialising).",
+                item.name, item.id,
+            )
 
     return {
         "status": "ok",
@@ -778,7 +1035,31 @@ def clone_marketplace_item(
             .count()
         )
         if user_count >= MARKETPLACE_MAX_AGENTS_PER_USER:
-            raise HTTPException(status_code=429, detail="Agent limit reached.")
+            logger.warning(
+                "[MARKETPLACE] User '%s' hit agent limit during fork (%d/%d) — fork of '%s' (id=%d) rejected.",
+                current_user.username, user_count, MARKETPLACE_MAX_AGENTS_PER_USER,
+                source.name, source.id,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=f"Agent limit reached ({MARKETPLACE_MAX_AGENTS_PER_USER} max). Delete one before forking.",
+            )
+    elif source.item_type == "mcp_server":
+        user_count = (
+            db.query(MarketplaceItem)
+            .filter_by(owner_id=current_user.id, item_type="mcp_server")
+            .count()
+        )
+        if user_count >= MARKETPLACE_MAX_MCP_PER_USER:
+            logger.warning(
+                "[MARKETPLACE] User '%s' hit MCP server limit during fork (%d/%d) — fork of '%s' (id=%d) rejected.",
+                current_user.username, user_count, MARKETPLACE_MAX_MCP_PER_USER,
+                source.name, source.id,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=f"MCP server limit reached ({MARKETPLACE_MAX_MCP_PER_USER} max). Delete one before forking.",
+            )
 
     clone = MarketplaceItem(
         name=f"{source.name} (Fork)",
@@ -1104,6 +1385,33 @@ def start_ttl_cleanup_thread() -> threading.Thread:
 
 
 # ─── Background Cluster Deployment Reconciliation ────────────────────────────
+
+def _sanitize_entity_name(raw_name: str) -> str:
+    """
+    Sanitize a marketplace item display name before sending it as entity_name
+    to the infra API.
+
+    Rules (applied in order):
+      1. Lowercase the entire string.
+      2. Replace every character that is not alphanumeric, a hyphen, or an
+         underscore with a single hyphen.  This covers spaces, @, #, !, dots,
+         slashes, brackets, etc.
+      3. Collapse runs of two or more consecutive hyphens into one hyphen.
+         (Underscores that were in the original name are preserved unchanged.)
+      4. Strip any leading or trailing hyphens / underscores.
+
+    Examples:
+      "My Jira MCP!"        → "my-jira-mcp"
+      "Data @Analysis #v2"  → "data-analysis-v2"
+      "code_review-agent"   → "code_review-agent"   (underscore kept)
+      "  --odd-- name--"    → "odd-name"
+    """
+    s = raw_name.lower()
+    s = re.sub(r"[^a-z0-9\-_]", "-", s)   # replace specials with dash
+    s = re.sub(r"-{2,}", "-", s)            # collapse consecutive dashes
+    s = s.strip("-_")
+    return s
+
 
 def _normalize_name_for_helm(name: str) -> str:
     """
