@@ -1496,7 +1496,7 @@ export default function Marketplace() {
                             </Button>
                           )}
                         </>)}
-                        {canManage && (item.deployment_status === "BUILT" || item.deployment_status === "DEPLOYED") && (
+                        {(item.deployment_status === "BUILT" || item.deployment_status === "DEPLOYED") && (
                           <Button size="sm" variant="outline" className="gap-1.5"
                             onClick={() => handleClone(item)}>
                             <Copy size={13} /> Fork
