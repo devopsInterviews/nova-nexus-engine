@@ -180,106 +180,195 @@ class PingRequest(BaseModel):
 
 # ─── Helper: build infra API base URL ────────────────────────────────────────
 
-def _parse_mcp_sse_body(text: str) -> Optional[Dict[str, Any]]:
+_MCP_BASE_HEADERS: Dict[str, str] = {
+    "Content-Type": "application/json",
+    # MCP spec: client must advertise both formats
+    "Accept": "application/json, text/event-stream",
+}
+_MCP_PROTOCOL_VERSION = "2024-11-05"
+_MCP_FETCH_TIMEOUT = 15
+
+
+def _parse_mcp_response(resp: http_requests.Response, label: str) -> Optional[Dict[str, Any]]:
     """
-    Extract a JSON-RPC result from an SSE response body.
+    Decode a JSON-RPC response from an MCP server.
 
-    MCP servers that use the streamable-HTTP transport may respond with
-    Content-Type: text/event-stream.  The body is a series of SSE lines:
+    Handles both response formats that the MCP streamable-HTTP transport
+    may use:
+      • application/json   → parsed directly
+      • text/event-stream  → body is scanned for 'data:' lines that contain
+                             a JSON-RPC object with a 'result' or 'error' key
 
-        event: message
-        data: {"jsonrpc":"2.0","id":1,"result":{...}}
-
-    We scan all 'data:' lines, parse each as JSON, and return the first one
-    that contains a 'result' key (i.e. a successful JSON-RPC response).
-    Error frames (containing 'error') are also returned so callers can log them.
+    Returns the parsed dict, or None if nothing useful was found.
+    Logs Content-Type and a body preview unconditionally.
     """
-    import json as _json
-    for line in text.splitlines():
-        line = line.strip()
-        if not line.startswith("data:"):
-            continue
-        payload_str = line[len("data:"):].strip()
-        if not payload_str:
-            continue
-        try:
-            parsed = _json.loads(payload_str)
-            if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
-                return parsed
-        except ValueError:
-            continue
-    return None
+    content_type = resp.headers.get("Content-Type", "")
+    logger.info(
+        "[MARKETPLACE][MCP-TOOLS] %s → HTTP %d (Content-Type: %s) body: %s",
+        label, resp.status_code, content_type, resp.text[:600],
+    )
+
+    if "text/event-stream" in content_type:
+        import json as _json
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if not line.startswith("data:"):
+                continue
+            payload_str = line[len("data:"):].strip()
+            if not payload_str:
+                continue
+            try:
+                parsed = _json.loads(payload_str)
+                if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
+                    return parsed
+            except ValueError:
+                continue
+        logger.warning(
+            "[MARKETPLACE][MCP-TOOLS] %s — SSE body had no parseable JSON-RPC frame.",
+            label,
+        )
+        return None
+
+    try:
+        return resp.json()
+    except Exception as exc:
+        logger.warning(
+            "[MARKETPLACE][MCP-TOOLS] %s — could not decode JSON body: %s", label, exc,
+        )
+        return None
 
 
 def _fetch_mcp_tools(url: str, item_name: str) -> List[Dict[str, Any]]:
     """
-    Fetch the tool list from a running MCP server via JSON-RPC tools/list.
+    Fetch the tool list from a running MCP server using the MCP
+    Streamable-HTTP transport (POST {url}).
 
-    Uses the MCP streamable-HTTP transport (POST {url}).  Per the MCP spec
-    the client MUST advertise both application/json and text/event-stream in
-    the Accept header so the server can choose its preferred response format.
-    Both formats are handled:
+    ── Protocol flow ───────────────────────────────────────────────────────────
+    Some MCP server implementations require a session to be established before
+    they will accept method calls.  We therefore use a two-step flow:
 
-      • application/json   → parsed directly as JSON-RPC response
-      • text/event-stream  → SSE body is scanned for 'data:' lines that
-                             contain a JSON-RPC result object
+      Step 1 — initialize
+        POST {url} with method="initialize".
+        If the server returns an Mcp-Session-Id response header we include it
+        in all subsequent requests.  If the server returns a JSON-RPC error
+        here we still proceed to tools/list — some servers skip initialization.
+
+      Step 2 — notifications/initialized  (fire-and-forget)
+        Notify the server that the client is ready.  We do not wait for or
+        inspect the response.
+
+      Step 3 — tools/list
+        POST {url} with method="tools/list" (and the session header if we
+        got one).
+
+    Both application/json and text/event-stream responses are handled at each
+    step via _parse_mcp_response().
 
     Returns a list of {"name": str, "description": str} dicts.
     Returns an empty list on any error — callers treat this as a soft failure
     that never blocks the deploy flow.
     """
-    MCP_FETCH_TIMEOUT = 15
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-
     logger.info(
-        "[MARKETPLACE][MCP-TOOLS] Fetching tool list for '%s' → POST %s (timeout=%ds)",
-        item_name, url, MCP_FETCH_TIMEOUT,
+        "[MARKETPLACE][MCP-TOOLS] Starting tool discovery for '%s' → %s",
+        item_name, url,
     )
 
     try:
-        resp = http_requests.post(
-            url,
-            json=payload,
-            headers={
-                "Content-Type": "application/json",
-                # MCP spec: client must accept both formats
-                "Accept": "application/json, text/event-stream",
+        # ── Step 1: initialize ───────────────────────────────────────────────
+        init_payload = {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": _MCP_PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "nova-nexus-portal", "version": "1.0"},
             },
-            timeout=MCP_FETCH_TIMEOUT,
-        )
-        content_type = resp.headers.get("Content-Type", "")
+        }
         logger.info(
-            "[MARKETPLACE][MCP-TOOLS] '%s' responded HTTP %d "
-            "(Content-Type: %s) — body preview: %s",
-            item_name, resp.status_code, content_type, resp.text[:500],
+            "[MARKETPLACE][MCP-TOOLS] [1/3] initialize → POST %s", url,
         )
-        resp.raise_for_status()
+        init_resp = http_requests.post(
+            url, json=init_payload, headers=_MCP_BASE_HEADERS,
+            timeout=_MCP_FETCH_TIMEOUT,
+        )
 
-        # Decode response — handle both JSON and SSE transport
-        if "text/event-stream" in content_type:
+        # Capture session ID — present when the server requires session binding
+        session_id = (
+            init_resp.headers.get("Mcp-Session-Id")
+            or init_resp.headers.get("mcp-session-id")
+        )
+        if session_id:
             logger.info(
-                "[MARKETPLACE][MCP-TOOLS] '%s' returned SSE — parsing data frames.",
+                "[MARKETPLACE][MCP-TOOLS] Session established: Mcp-Session-Id=%s", session_id,
+            )
+        else:
+            logger.info(
+                "[MARKETPLACE][MCP-TOOLS] No Mcp-Session-Id returned — server runs sessionless.",
+            )
+
+        request_headers = {**_MCP_BASE_HEADERS}
+        if session_id:
+            request_headers["Mcp-Session-Id"] = session_id
+
+        init_data = _parse_mcp_response(init_resp, f"[initialize] '{item_name}'")
+        if init_data and "error" in init_data:
+            logger.warning(
+                "[MARKETPLACE][MCP-TOOLS] initialize returned JSON-RPC error for '%s': %s "
+                "— proceeding to tools/list anyway.",
+                item_name, init_data["error"],
+            )
+
+        # ── Step 2: notifications/initialized (fire-and-forget) ─────────────
+        try:
+            notif_payload = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {},
+            }
+            logger.info(
+                "[MARKETPLACE][MCP-TOOLS] [2/3] notifications/initialized → POST %s", url,
+            )
+            http_requests.post(
+                url, json=notif_payload, headers=request_headers,
+                timeout=5,
+            )
+        except Exception as notif_exc:
+            # Non-critical — log and continue
+            logger.debug(
+                "[MARKETPLACE][MCP-TOOLS] notifications/initialized failed for '%s': %s — continuing.",
+                item_name, notif_exc,
+            )
+
+        # ── Step 3: tools/list ───────────────────────────────────────────────
+        tools_payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+        logger.info(
+            "[MARKETPLACE][MCP-TOOLS] [3/3] tools/list → POST %s", url,
+        )
+        tools_resp = http_requests.post(
+            url, json=tools_payload, headers=request_headers,
+            timeout=_MCP_FETCH_TIMEOUT,
+        )
+        tools_resp.raise_for_status()
+
+        tools_data = _parse_mcp_response(tools_resp, f"[tools/list] '{item_name}'")
+        if tools_data is None:
+            logger.warning(
+                "[MARKETPLACE][MCP-TOOLS] Could not parse tools/list response for '%s' — "
+                "tools_exposed not updated.",
                 item_name,
             )
-            data = _parse_mcp_sse_body(resp.text)
-            if data is None:
-                logger.warning(
-                    "[MARKETPLACE][MCP-TOOLS] '%s' SSE body contained no parseable "
-                    "JSON-RPC frame — tools_exposed not updated.",
-                    item_name,
-                )
-                return []
-            if "error" in data:
-                logger.warning(
-                    "[MARKETPLACE][MCP-TOOLS] '%s' returned JSON-RPC error in SSE: %s — "
-                    "tools_exposed not updated.",
-                    item_name, data["error"],
-                )
-                return []
-        else:
-            data = resp.json()
+            return []
 
-        tools_raw = data.get("result", {}).get("tools", [])
+        if "error" in tools_data:
+            logger.warning(
+                "[MARKETPLACE][MCP-TOOLS] tools/list JSON-RPC error for '%s': %s — "
+                "tools_exposed not updated.",
+                item_name, tools_data["error"],
+            )
+            return []
+
+        tools_raw = tools_data.get("result", {}).get("tools", [])
         tools = [
             {"name": t.get("name", ""), "description": t.get("description", "")}
             for t in tools_raw
@@ -293,9 +382,9 @@ def _fetch_mcp_tools(url: str, item_name: str) -> List[Dict[str, Any]]:
 
     except http_requests.exceptions.Timeout:
         logger.warning(
-            "[MARKETPLACE][MCP-TOOLS] TIMEOUT (%ds) fetching tools from '%s' (url=%s) — "
-            "tools_exposed not updated. The MCP server may still be starting up.",
-            MCP_FETCH_TIMEOUT, item_name, url,
+            "[MARKETPLACE][MCP-TOOLS] TIMEOUT (%ds) for '%s' (url=%s) — "
+            "tools_exposed not updated.",
+            _MCP_FETCH_TIMEOUT, item_name, url,
         )
     except http_requests.exceptions.ConnectionError as exc:
         logger.warning(
@@ -306,14 +395,14 @@ def _fetch_mcp_tools(url: str, item_name: str) -> List[Dict[str, Any]]:
     except http_requests.exceptions.HTTPError as exc:
         raw_body = exc.response.text if exc.response is not None else ""
         logger.warning(
-            "[MARKETPLACE][MCP-TOOLS] HTTP %d error from '%s' (url=%s) — body: %s — "
+            "[MARKETPLACE][MCP-TOOLS] HTTP %d error for '%s' (url=%s) — body: %s — "
             "tools_exposed not updated.",
             exc.response.status_code if exc.response is not None else -1,
             item_name, url, raw_body,
         )
     except Exception as exc:
         logger.warning(
-            "[MARKETPLACE][MCP-TOOLS] Unexpected error fetching tools from '%s' (url=%s): %s — "
+            "[MARKETPLACE][MCP-TOOLS] Unexpected error for '%s' (url=%s): %s — "
             "tools_exposed not updated.",
             item_name, url, exc, exc_info=True,
         )
