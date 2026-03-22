@@ -1,379 +1,523 @@
-# MCP Client 🚀
+# AI Portal
 
-A cutting-edge **Model Context Protocol (MCP) management platform** with a cyberpunk-inspired interface for managing AI servers, database connections, analytics, and user workflows.
-
-## 🌟 Overview
-
- Full-stack web application that bridges the gap between AI/ML models and enterprise systems. It provides a unified interface for managing MCP servers, executing database queries, monitoring system performance, and automating workflows through intelligent integrations.
-
-### Key Capabilities
-- 🤖 **MCP Server Management**: Connect and manage AI/ML model servers
-- 🗄️ **Database Integration**: Multi-database query execution and management
-- 📊 **Real-time Analytics**: System performance and user activity monitoring
-- 🔐 **Enterprise Authentication**: JWT-based security with role management
-- 🎯 **Workflow Automation**: CI/CD integrations and webhook processing
-- 🎨 **Modern UI**: Cyberpunk-themed responsive interface
-
-## 🏗️ Architecture
-
-### Backend (FastAPI + Python)
-```
-app/
-├── client.py              # Main FastAPI application
-├── models.py              # Database models (SQLAlchemy)
-├── database.py            # Database configuration
-├── auth.py                # Authentication utilities
-├── middleware/            # Request processing middleware
-│   └── analytics.py       # Request logging and metrics
-├── routes/                # API endpoint definitions
-│   ├── auth_routes.py     # Authentication endpoints
-│   ├── analytics_routes.py # System metrics APIs
-│   ├── users_routes.py    # User management
-│   └── db_routes.py       # Database operations
-└── services/              # Business logic services
-    └── analytics_service.py # Analytics processing
-```
-
-### Frontend (React + TypeScript)
-```
-ui/src/
-├── App.tsx                # Root application component
-├── components/            # Reusable UI components
-│   ├── auth/             # Authentication components
-│   ├── layout/           # Layout and navigation
-│   ├── analytics/        # Analytics tracking
-│   └── ui/               # Base UI components
-├── context/               # Global state management
-│   ├── auth-context.tsx  # Authentication state
-│   └── connection-context.tsx # Database connections
-├── pages/                 # Route components
-│   ├── Home.tsx          # Dashboard
-│   ├── Analytics.tsx     # System metrics
-│   ├── Users.tsx         # User management
-│   └── DevOps.tsx        # DevOps tools
-└── lib/                   # Utilities and services
-    └── api-service.ts     # API communication layer
-```
-
-## 🚀 Getting Started
-
-### Quick Start with Docker (Recommended) 🐳
-
-For the fastest development setup, use Docker Compose:
-
-```bash
-# Clone and setup
-git clone <repository-url>
-cd mcp-client
-cp .env.example .env
-
-# Start development environment
-docker-compose up --build
-```
-
-**Access the application:**
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000  
-- **API Documentation**: http://localhost:8000/docs
-
-📖 **See [DOCKER.md](./DOCKER.md) for comprehensive Docker setup instructions, including:**
-- Multiple deployment profiles (basic, full, nginx, mcp)
-- Helper scripts for easy management
-- Troubleshooting and development tips
-- Production deployment guidance
-
-### Manual Setup (Traditional)
-
-#### Prerequisites
-- **Python 3.8+** with FastAPI and SQLAlchemy
-- **Node.js 16+** with npm/yarn
-- **PostgreSQL** database
-- **MCP Server** (optional for full functionality)
-
-#### Backend Setup
-
-1. **Install Dependencies**
-```bash
-cd app/
-pip install -r requirements.txt
-```
-
-2. **Environment Configuration**
-```bash
-# Create .env file
-cp .env.example .env
-
-# Configure variables
-MCP_SERVER_URL=http://localhost:8050/mcp/
-DATABASE_URL=postgresql://user:password@localhost/mcp_client
-JWT_SECRET_KEY=your-secret-key-here
-ACCESS_TOKEN_EXPIRE_MINUTES=120
-```
-
-3. **Database Initialization**
-```bash
-# The app will automatically create tables on startup
-python -m uvicorn client:app --reload --host 0.0.0.0 --port 8000
-```
-
-#### Frontend Setup
-
-1. **Install Dependencies**
-```bash
-cd ui/
-npm install
-```
-
-2. **Environment Configuration**
-```bash
-# Create .env file
-VITE_API_BASE_URL=http://localhost:8000
-```
-
-3. **Start Development Server**
-```bash
-npm run dev
-```
-
-#### Access the Application
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-
-## 🔐 Authentication Flow
-
-### User Login Process
-1. **User Input**: User enters credentials in the cyberpunk-themed login screen
-2. **Frontend Validation**: React Hook Form validates input format
-3. **API Request**: AuthContext sends POST request to `/api/login`
-4. **Backend Verification**: Server validates credentials against User model
-5. **JWT Generation**: Server creates JWT token with 2-hour expiration
-6. **Token Storage**: Frontend stores token in localStorage
-7. **Session Setup**: User data cached in React Context
-8. **Protected Access**: Token included in all subsequent API requests
-
-### JWT Token Details
-- **Expiration**: 2 hours (configurable)
-- **Claims**: user_id, username, expiration
-- **Storage**: localStorage (frontend) + HTTP-only cookie option
-- **Validation**: Client-side expiration check + server verification
-
-### Session Management
-- **Auto-refresh**: Token validated every 5 minutes
-- **Graceful expiry**: Automatic logout when token expires
-- **Session restoration**: App remembers user on page refresh
-- **Security**: Automatic cleanup of invalid tokens
-
-## 📊 Analytics & Monitoring
-
-### Request Tracking
-Every HTTP request is automatically logged with:
-- **Performance Metrics**: Response time, request/response sizes
-- **User Context**: Authenticated user ID, IP address
-- **Error Tracking**: Status codes, error messages
-- **Activity Classification**: API categorization (auth, database, MCP, etc.)
-
-### Real-time Metrics
-The analytics system provides:
-- **System Uptime**: Availability percentage based on successful requests
-- **Response Times**: 95th percentile performance metrics
-- **Active Users**: Real-time user session tracking
-- **Error Rates**: HTTP error categorization and trends
-- **Page Views**: Frontend navigation and user journey tracking
-
-### Database Schema
-Key analytics tables:
-- **request_logs**: HTTP request performance data
-- **user_activities**: User action audit trail
-- **page_views**: Frontend page visit tracking
-- **system_metrics**: Real-time performance indicators
-
-## 🗄️ Database Management
-
-### Connection Profiles
-Users can create and manage database connections:
-- **Multi-Database Support**: PostgreSQL, MySQL, SQL Server
-- **Secure Storage**: Encrypted password storage
-- **Connection Testing**: Live connection validation
-- **User Isolation**: Private connection profiles per user
-
-### Query Execution
-- **SQL Editor**: Syntax highlighting and validation
-- **Result Display**: Tabular data presentation
-- **Export Options**: CSV, JSON data export
-- **Query History**: Saved queries and execution logs
-
-### Schema Exploration
-- **Table Listing**: Database schema browsing
-- **Column Details**: Data types and constraints
-- **Relationship Mapping**: Foreign key relationships
-- **Index Information**: Performance optimization insights
-
-## 🤖 MCP Integration
-
-### Model Context Protocol
-The application connects to MCP servers for:
-- **AI Model Access**: Language models and specialized AI tools
-- **Tool Execution**: Jenkins, Confluence, database tools
-- **Workflow Automation**: CI/CD pipeline integration
-- **Data Processing**: Intelligent data analysis and insights
-
-### Supported Tools
-- **Jenkins Integration**: Build monitoring and analysis
-- **Confluence Management**: Documentation automation
-- **Database Operations**: Schema analysis and data insights
-- **Code Analysis**: Automated code review and recommendations
-
-### Webhook Endpoints
-- **`/events/code-analysis`**: CI/CD code analysis results
-- **`/events/jira`**: JIRA ticket investigation automation
-- **`/events/jenkins`**: Jenkins build failure analysis
-
-## 👥 User Management
-
-### User Roles
-- **Admin Users**: Full system access, user management
-- **Regular Users**: Standard feature access, own data only
-- **Role-based Permissions**: Tab-specific access control
-
-### User Features
-- **Profile Management**: Personal information and preferences
-- **Password Security**: Bcrypt hashing with salt
-- **Activity Tracking**: Login history and action audit
-- **Session Management**: Active session monitoring
-
-### Admin Capabilities
-- **User CRUD**: Create, update, delete user accounts
-- **Permission Assignment**: Role and access management
-- **Activity Monitoring**: User behavior analytics
-- **System Health**: Overall platform monitoring
-
-## 🎨 User Interface
-
-### Cyberpunk Theme
-- **Color Scheme**: Dark backgrounds with neon accents
-- **Typography**: Futuristic fonts and spacing
-- **Animations**: Smooth transitions with Framer Motion
-- **Visual Effects**: Glowing borders and gradient effects
-
-### Responsive Design
-- **Mobile-First**: Touch-friendly interface
-- **Tablet Optimization**: Adaptive layouts
-- **Desktop Experience**: Full-featured interface
-- **Accessibility**: Screen reader and keyboard support
-
-### Navigation
-- **Sidebar Menu**: Collapsible navigation with active states
-- **Breadcrumbs**: Clear navigation hierarchy
-- **Quick Actions**: Contextual action buttons
-- **Search**: Global search functionality
-
-## 🔧 Development Guide
-
-### Adding New Features
-
-#### Backend API Endpoints
-1. **Create Route Module**: Add new file in `app/routes/`
-2. **Define Pydantic Models**: Request/response schemas
-3. **Implement Business Logic**: Database operations and processing
-4. **Add Authentication**: Protect endpoints with `get_current_user`
-5. **Include Router**: Add to main app in `client.py`
-
-#### Frontend Components
-1. **Create Component**: Add to appropriate `components/` subdirectory
-2. **Define TypeScript Types**: Interfaces for props and data
-3. **Implement Logic**: State management and API integration
-4. **Add Styling**: Tailwind CSS with cyberpunk theme
-5. **Update Navigation**: Add routes and menu items
-
-#### Database Models
-1. **Define Model Class**: Add to `app/models.py`
-2. **Add Relationships**: Foreign keys and associations
-3. **Create Migration**: Update database schema
-4. **Add API Endpoints**: CRUD operations
-5. **Update Frontend**: UI for new data
-
-### Testing Strategy
-- **Backend Tests**: pytest with test database
-- **Frontend Tests**: Jest + React Testing Library
-- **Integration Tests**: Full workflow testing
-- **E2E Tests**: Cypress for user journey testing
-
-### Performance Optimization
-- **Database Indexing**: Optimize query performance
-- **API Caching**: Redis for frequently accessed data
-- **Frontend Optimization**: Code splitting and lazy loading
-- **CDN Integration**: Static asset delivery
-
-## 🚀 Deployment
-
-### Production Environment
-- **Backend**: Docker containerization with Gunicorn
-- **Frontend**: Static build served by nginx
-- **Database**: PostgreSQL with connection pooling
-- **Monitoring**: Prometheus + Grafana for metrics
-
-### CI/CD Pipeline
-- **Code Analysis**: Automatic security and quality scans
-- **Testing**: Automated test execution
-- **Building**: Docker image creation
-- **Deployment**: Rolling updates with health checks
-
-### Security Considerations
-- **HTTPS**: TLS encryption for all communications
-- **Input Validation**: Comprehensive data sanitization
-- **SQL Injection**: Parameterized queries with SQLAlchemy
-- **XSS Prevention**: Output encoding and CSP headers
-
-## 📈 Analytics Dashboard
-
-### System Overview
-- **Uptime Metrics**: System availability tracking
-- **Performance Trends**: Response time analysis
-- **User Activity**: Login patterns and feature usage
-- **Error Monitoring**: Error rates and categorization
-
-### Business Intelligence
-- **Usage Analytics**: Feature adoption and user engagement
-- **Performance Insights**: Bottleneck identification
-- **Capacity Planning**: Resource utilization trends
-- **ROI Tracking**: System value and efficiency metrics
-
-## 🤝 Contributing
-
-### Development Workflow
-1. **Fork Repository**: Create personal copy
-2. **Feature Branch**: Create branch for new feature
-3. **Development**: Implement changes with tests
-4. **Pull Request**: Submit for code review
-5. **Merge**: Deploy after approval
-
-### Code Standards
-- **Python**: Black formatting, flake8 linting
-- **TypeScript**: ESLint + Prettier formatting
-- **Documentation**: Comprehensive inline comments
-- **Testing**: Minimum 80% code coverage
-
-### Issue Reporting
-- **Bug Reports**: Include reproduction steps
-- **Feature Requests**: Describe use case and value
-- **Security Issues**: Private disclosure process
-- **Performance**: Include profiling data
-
-## 📞 Support
-
-### Documentation
-- **API Reference**: OpenAPI documentation at `/docs`
-- **User Guide**: Frontend help and tutorials
-- **Developer Docs**: Architecture and integration guides
-- **Troubleshooting**: Common issues and solutions
-
-### Community
-- **GitHub Issues**: Bug reports and feature requests
-- **Discussions**: Community questions and ideas
-- **Wiki**: User-contributed documentation
-- **Changelog**: Release notes and updates
+An internal enterprise AI platform that connects language models, tools, data, and teams in one place. It gives engineers a governed, self-service layer for deploying AI Agents and MCP Servers, running AI-assisted binary analysis, querying databases with natural language, and administering the platform — all from a single web UI.
 
 ---
 
-**MCP Client** - Bridging AI and Enterprise Systems with Style 🚀✨
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+  - [Docker (recommended)](#docker-recommended)
+  - [Manual setup](#manual-setup)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+  - [Helm / Kubernetes](#helm--kubernetes)
+- [Authentication](#authentication)
+- [Database Schema](#database-schema)
+- [API Reference](#api-reference)
+
+---
+
+## Overview
+
+The AI portal is a full-stack web application — FastAPI backend, React/TypeScript frontend — served as a single Docker container. It is designed to run inside a private Kubernetes cluster and acts as the central control plane for an organisation's AI tooling.
+
+**Core goals:**
+
+- Let any engineer deploy and share AI Agents and MCP Servers without DevOps involvement for every change.
+- Provide AI-assisted tooling for reverse engineers (IDA Pro ↔ LLM), database analysts, and DevOps teams.
+- Enforce access control through tab-based RBAC tied to OIDC group membership, so teams only see what they need.
+- Give administrators full visibility into usage, deployments, and permissions from one interface.
+
+---
+
+## Features
+
+### AI Marketplace
+
+The internal App Store for AI Agents and MCP Servers.
+
+- Create, deploy, redeploy, clone, and delete Agents and MCP Servers.
+- Helm chart discovery and version selection from Artifactory (dev and release registries).
+- Per-user creation limits configurable via environment variables; admins are unrestricted.
+- Dev deployments have a configurable TTL (default 10 days) with automatic expiry via a background cleanup thread.
+- A background cluster-sync thread reconciles the DB state against live Helm releases every 10 minutes and warns on drift.
+- Public `/api/marketplace/ping` endpoint for deployed agents and MCP servers to self-report call metrics — no authentication required.
+- Agents and MCP Servers can be forked by any user.
+- MCP Server tool lists are auto-discovered from the live deployment endpoint after each deploy.
+
+### Binary File Research (IDA MCP)
+
+Connects IDA Pro workstations to a language model via the Model Context Protocol.
+
+- Each user provisions their own dedicated MCP server pod in Kubernetes from the portal.
+- Available server versions are pulled from an Artifactory Docker registry.
+- Full lifecycle management: deploy, upgrade, undeploy, version tracking.
+- Admin view showing all users' active deployments.
+- Deployment state machine: `NEW → DEPLOYING → DEPLOYED → UNDEPLOYED / ERROR`.
+- Full audit trail of every deploy and undeploy event.
+- In-cluster nginx reverse proxy (IDA Proxy) routes external traffic to individual IDA workstations; port mappings are stored in Kubernetes ConfigMaps and optionally synced to Bitbucket for ArgoCD GitOps.
+
+### Business Intelligence
+
+AI-assisted database querying and schema exploration.
+
+- Save multiple named database connection profiles (PostgreSQL, MySQL, and others).
+- Natural language → SQL using a configurable LLM backend.
+- Column suggestion from saved schema metadata, with AI-ranked relevance scoring.
+- Sync database schemas to internal tables for schema-aware completions.
+- dbt manifest upload and AI-assisted iterative SQL query generation with lineage awareness.
+- Query result display with export.
+
+### Analytics Dashboard
+
+System-level observability for administrators.
+
+- Active sessions, daily/weekly active users, login counts.
+- HTTP request traffic over time with p95 response time.
+- Top pages and feature usage breakdown.
+- Error categorisation and rate trends.
+- MCP server health status monitoring.
+- Portal database health and connection status.
+- Per-user activity breakdown over a 30-day sliding window.
+
+### SSO / OIDC Integration
+
+- Authentik OIDC provider out of the box (configurable to any compliant provider).
+- Authorization Code flow; `openid email profile groups` scopes.
+- Group membership synced at every login; groups mapped directly to tab permissions.
+- Groups can be granted admin access, giving all members full portal access.
+- Local accounts and SSO accounts coexist — users are disambiguated by `auth_provider` field.
+
+### Administration
+
+- User Management: create local users, change passwords, delete non-admin users, view login history and active sessions in real time.
+- Permissions: per-tab access control for individual users and SSO groups. Configure which users or groups can access each portal section.
+- Groups: read-only view of all SSO groups and their currently granted tabs.
+- Database Tables: browse and preview internal portal database tables with pagination.
+
+### DevOps Integrations
+
+Dedicated tabs for Bitbucket, Jenkins, Jira, and Logs.
+
+### MCP Connections & Tests
+
+- Connect to external MCP servers, list available tools, and execute them interactively.
+- Save and replay test configurations for both MCP clients and MCP servers.
+
+---
+
+## Architecture
+
+```
+nova-nexus-engine/
+├── app/                         # Python FastAPI backend
+│   ├── client.py                # Application entrypoint; router registration, startup hooks
+│   ├── models.py                # SQLAlchemy ORM models
+│   ├── database.py              # Session management, schema migrations
+│   ├── auth.py                  # JWT utilities, password hashing
+│   ├── llm_client.py            # OpenAI-compatible LLM client
+│   ├── prompts.py               # LLM prompt templates
+│   ├── middleware/
+│   │   └── analytics_middleware.py  # Request logging on every HTTP call
+│   ├── routes/
+│   │   ├── auth_routes.py           # Login, /me, logout, profile
+│   │   ├── users_routes.py          # User CRUD, role management
+│   │   ├── permissions_routes.py    # Tab permissions, admin groups
+│   │   ├── marketplace_routes.py    # Marketplace lifecycle + public ping
+│   │   ├── research_routes.py       # IDA MCP deploy/upgrade/status
+│   │   ├── db_routes.py             # DB connections, SQL, dbt
+│   │   ├── analytics_routes.py      # System metrics APIs
+│   │   ├── mcp_routes.py            # External MCP server connections
+│   │   ├── sso_routes.py            # OIDC flow, group sync
+│   │   ├── test_routes.py           # MCP test execution
+│   │   └── internal_data_routes.py  # Internal table inspection
+│   └── services/
+│       ├── analytics_service.py     # Metrics aggregation, MCP health monitoring
+│       ├── artifactory_client.py    # Docker/Helm/PyPI version discovery with TTL cache
+│       ├── bitbucket_client.py      # GitOps: writes proxy port mappings to Bitbucket
+│       ├── dbt_analysis_service.py  # dbt manifest parsing, dependency graph, iterative SQL
+│       ├── k8s_controller.py        # In-cluster Kubernetes pod lifecycle controller
+│       └── sso_service.py           # OIDC token exchange, user/group upsert
+│
+├── ui/                          # React 18 + TypeScript frontend (Vite)
+│   └── src/
+│       ├── App.tsx              # Root router and provider hierarchy
+│       ├── pages/               # One file per route
+│       │   ├── Home.tsx         # Feature overview dashboard
+│       │   ├── Marketplace.tsx  # AI Marketplace
+│       │   ├── Research.tsx     # IDA MCP bridge
+│       │   ├── BI.tsx           # Business Intelligence
+│       │   ├── Analytics.tsx    # System analytics
+│       │   ├── Users.tsx        # Administration (users, permissions, groups, tables)
+│       │   ├── DevOps.tsx       # DevOps integrations
+│       │   ├── Tests.tsx        # MCP test runner
+│       │   └── Settings.tsx     # User preferences
+│       ├── components/
+│       │   ├── layout/          # AppSidebar, AppHeader, GlobalCommandPalette
+│       │   ├── admin/           # PermissionsManager, TableDataPreview
+│       │   ├── bi/              # ConnectDBTab, SQLBuilderTab, SqlBuilderDbtTab, SyncTablesTab
+│       │   ├── devops/          # BitbucketTab, JenkinsTab, JiraTab, LogsTab
+│       │   └── tests/           # McpClientTestTab, McpServerTestTab
+│       ├── context/
+│       │   ├── auth-context.tsx       # JWT state, allowed_tabs, user profile
+│       │   └── connection-context.tsx # Active DB connection profile
+│       └── lib/
+│           └── api-service.ts   # Typed API client layer
+│
+├── mcp-server/                  # Standalone MCP server (Confluence + DB introspection tools)
+│
+├── charts/                      # Helm chart for Kubernetes deployment
+│   └── mcp-client/
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       └── templates/           # Deployment, Service, Ingress, PostgreSQL, IDA Proxy, RBAC
+│
+├── Dockerfile                   # Multi-stage build: Node 20 → Python 3.13 → minimal image
+├── docker-compose.yml           # Dev stack: PostgreSQL 15 + app
+├── main.py                      # Uvicorn entrypoint
+├── requirements.txt
+└── .env.example                 # Full environment variable reference
+```
+
+### Request flow
+
+```
+Browser → React SPA (served as static files from FastAPI)
+              │
+              └─ /api/* → FastAPI routes
+                              │
+                    ┌─────────┴───────────┐
+                    │                     │
+              Auth middleware        Tab RBAC check
+              (JWT validation)       (TabPermission lookup)
+                    │
+              Route handler → SQLAlchemy → PostgreSQL
+                    │
+              Optional external calls:
+                - Infra API (Helm deploy/delete)
+                - Artifactory (chart/image versions)
+                - Kubernetes API (IDA MCP pod management)
+                - LLM API (SQL generation, analysis)
+                - Bitbucket API (GitOps port mappings)
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend language | Python 3.13 |
+| Backend framework | FastAPI + Uvicorn (ASGI) |
+| ORM | SQLAlchemy 2.x |
+| Database | PostgreSQL 15 |
+| Auth | JWT HS256 (`python-jose`), bcrypt (`passlib`) |
+| SSO | OIDC / Authentik (`httpx`, `PyJWT`) |
+| Kubernetes | `kubernetes` Python client (in-cluster) |
+| Artifactory | REST API with TTL-cached responses |
+| LLM | Any OpenAI-compatible API (`httpx`) |
+| MCP | `mcp` Python SDK |
+| Frontend language | TypeScript 5 |
+| Frontend framework | React 18 |
+| Build tool | Vite 5 + SWC |
+| UI library | shadcn/ui (Radix UI) + Tailwind CSS 3 |
+| State management | TanStack Query v5, React Context |
+| Routing | React Router v6 |
+| Forms | React Hook Form v7 + Zod |
+| Animations | Framer Motion |
+| Charts | Recharts |
+| Icons | Lucide React |
+| Toasts | Sonner |
+| Container | Docker (multi-stage, non-root `appuser`) |
+| Orchestration | Kubernetes + Helm 3 |
+
+---
+
+## Getting Started
+
+### Docker (recommended)
+
+The fastest way to run the portal locally. A single container serves both the frontend and backend.
+
+```bash
+git clone <repository-url>
+cd nova-nexus-engine
+cp .env.example .env
+# Edit .env — set JWT_SECRET_KEY and ADMIN_PASSWORD at minimum
+docker-compose up --build
+```
+
+The application will be available at `http://localhost:8000`. The API documentation (OpenAPI) is at `http://localhost:8000/docs`.
+
+Default credentials (configured via `ADMIN_PASSWORD` in `.env`):
+
+```
+Username: admin
+Password: <value of ADMIN_PASSWORD>
+```
+
+### Manual setup
+
+#### Prerequisites
+
+- Python 3.13
+- Node.js 20+
+- PostgreSQL 15
+
+#### Backend
+
+```bash
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit DATABASE_URL, JWT_SECRET_KEY, ADMIN_PASSWORD
+
+# Start the server (tables are created automatically on first run)
+python main.py
+```
+
+The API will be available at `http://localhost:8000`.
+
+#### Frontend
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+The dev server will be available at `http://localhost:5173` and proxies `/api` requests to the backend.
+
+#### Frontend production build
+
+```bash
+cd ui
+npm run build
+# Built assets land in ui/dist/ and are served by FastAPI from /static
+```
+
+---
+
+## Configuration
+
+All configuration is through environment variables. Copy `.env.example` to `.env` and adjust as needed.
+
+### Required
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string — e.g. `postgresql://user:pass@host/dbname` |
+| `JWT_SECRET_KEY` | Secret used to sign portal JWTs. Use a long random string in production. |
+| `ADMIN_PASSWORD` | Password for the auto-created `admin` account on first run. |
+
+### Authentication & SSO
+
+| Variable | Default | Description |
+|---|---|---|
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `120` | JWT lifetime in minutes. |
+| `SSO_ENABLED` | `false` | Enable Authentik OIDC login. |
+| `OIDC_ISSUER_URL` | — | OIDC provider base URL (e.g. `https://auth.company.internal/application/o/portal`). |
+| `OIDC_CLIENT_ID` | — | OAuth2 client ID registered in Authentik. |
+| `OIDC_CLIENT_SECRET` | — | OAuth2 client secret. |
+| `OIDC_REDIRECT_URI` | — | Callback URL — must match the provider configuration. |
+| `OIDC_SCOPES` | `openid email profile groups` | Space-separated OIDC scopes. |
+| `DEFAULT_ALLOWED_TABS` | `Home,Settings` | Tabs that every authenticated user can access without an explicit permission grant. |
+
+### LLM
+
+| Variable | Description |
+|---|---|
+| `LLM_API_URL` | Base URL of any OpenAI-compatible API (e.g. your internal vLLM or LiteLLM proxy). |
+| `LLM_MODEL` | Model name to use for completions. |
+| `LLM_API_KEY` | API key (can be a dummy value for private deployments). |
+| `LLM_SSL_VERIFY` | Set to `false` to disable TLS verification for self-signed certs. |
+
+### Marketplace
+
+| Variable | Default | Description |
+|---|---|---|
+| `MARKETPLACE_MAX_AGENTS_PER_USER` | `5` | Maximum number of Agents a non-admin user can create. |
+| `MARKETPLACE_MAX_MCP_PER_USER` | `5` | Maximum number of MCP Servers a non-admin user can create. |
+| `MARKETPLACE_DEV_TTL_DAYS` | `10` | Days before a dev-environment deployment is automatically expired. |
+| `INFRA_CHARTS_API_SERVER` | — | Base URL of the infra API used for Helm deploy/undeploy calls. |
+| `ARTIFACTORY_MARKETPLACE_HELM_REPO_DEV` | — | Artifactory Helm repo name for dev charts. |
+| `ARTIFACTORY_MARKETPLACE_HELM_REPO_RELEASE` | — | Artifactory Helm repo name for release charts. |
+
+### IDA MCP Research
+
+| Variable | Description |
+|---|---|
+| `INFRA_API_SERVER` | Base URL of the infra API for MCP pod provisioning. |
+| `ARTIFACTORY_PYPI_REPO` | Artifactory PyPI repo for IDA plugin version discovery. |
+| `ARTIFACTORY_PYPI_PACKAGE` | Package name to query for available versions. |
+| `BITBUCKET_IDA_MCP_REPO` | Link to the IDA plugin Bitbucket repository shown to users. |
+| `PIP_INSTALL_CMD_BASE` | Install command shown in the UI for the IDA plugin. |
+
+### External links
+
+| Variable | Description |
+|---|---|
+| `OPENWEBUI_URL` | URL of the internal OpenWebUI instance linked from the home page. |
+| `CONFLUENCE_URL` | URL of the company Confluence shown as documentation link. |
+| `DEVELOPER_AUTH_PORTAL_URL` | URL of the developer portal for generating LLM API keys. |
+
+### Application
+
+| Variable | Default | Description |
+|---|---|---|
+| `APP_ENVIRONMENT` | — | Display label shown in the header (e.g. `Production`, `Staging`). |
+| `APP_VERSION` | — | Version string shown in the header. |
+| `LOG_LEVEL` | `INFO` | Logging verbosity. Set to `DEBUG` for full request/response payloads on infra calls. |
+| `CLIENT_HOST` | `0.0.0.0` | Uvicorn bind address. |
+| `CLIENT_PORT` | `8000` | Uvicorn bind port. |
+
+---
+
+## Deployment
+
+### Helm / Kubernetes
+
+The portal ships with a Helm chart under `charts/mcp-client/`.
+
+```bash
+helm install ai-portal charts/mcp-client \
+  --namespace ai-portal \
+  --create-namespace \
+  -f my-values.yaml
+```
+
+The chart provisions:
+
+| Resource | Description |
+|---|---|
+| `Deployment` | Main portal application |
+| `Service` | ClusterIP for the portal |
+| `Ingress` | Optional ingress with TLS |
+| PostgreSQL `Deployment + PVC + Secret + Service` | Optional in-cluster PostgreSQL (can be disabled in favour of an external managed DB) |
+| IDA Proxy `Deployment + Service + ConfigMaps` | Nginx reverse proxy that routes external connections to individual IDA Pro workstations |
+| `ServiceAccount + Role + RoleBinding` | RBAC for the in-cluster Kubernetes controller that manages MCP server pods |
+
+Key `values.yaml` sections:
+
+```yaml
+image:
+  repository: your-registry/nova-nexus-engine
+  tag: latest
+
+env:
+  JWT_SECRET_KEY: ""
+  ADMIN_PASSWORD: ""
+  DATABASE_URL: ""
+  SSO_ENABLED: "true"
+  OIDC_ISSUER_URL: ""
+  OIDC_CLIENT_ID: ""
+  OIDC_CLIENT_SECRET: ""
+  OIDC_REDIRECT_URI: ""
+  LLM_API_URL: ""
+  LLM_MODEL: ""
+  INFRA_CHARTS_API_SERVER: ""
+
+postgres:
+  enabled: true          # set false to use an external DB
+
+idaMcp:
+  enabled: true
+
+idaProxy:
+  enabled: true
+```
+
+See `charts/mcp-client/values.yaml` for the full schema with comments.
+
+### Docker image build
+
+```bash
+docker build -t nova-nexus-engine:latest .
+```
+
+The multi-stage build:
+1. **Stage 1 (Node 20 Alpine):** Installs frontend dependencies and runs `vite build`.
+2. **Stage 2 (Python 3.13 slim):** Installs Python dependencies; copies the built UI assets.
+3. **Final image:** Minimal image running as non-root `appuser` on port 8000.
+
+---
+
+## Authentication
+
+### Local login
+
+1. User submits username and password to `POST /api/login`.
+2. The backend verifies the bcrypt hash and issues a signed JWT (HS256, configurable expiry, default 2 hours).
+3. The frontend stores the token in `localStorage` and includes it as `Authorization: Bearer <token>` on all API calls.
+4. On expiry the user is automatically redirected to the login screen.
+
+### SSO / OIDC (Authentik)
+
+1. User clicks "Login with SSO" — the frontend redirects to `GET /api/login` which builds the Authentik authorization URL and redirects the browser.
+2. After authentication, Authentik redirects to `GET /api/callback` with an authorization code.
+3. The backend exchanges the code for tokens, validates the `id_token` against the OIDC JWKS, and extracts user and group claims.
+4. The user record is upserted (`auth_provider = 'sso'`); their group memberships are synced to `sso_groups` and `user_group_association`.
+5. The portal issues its own JWT and sends it to the frontend — from this point the flow is identical to local login.
+
+### Tab-based RBAC
+
+Every protected route is guarded by `require_tab_permission(tab_name)`. This dependency queries `tab_permissions` for a matching `user_id` or any of the user's `group_id`s. Admins (`is_admin = true`) bypass all tab checks. Certain tabs are always accessible to all authenticated users via `DEFAULT_ALLOWED_TABS`.
+
+---
+
+## Database Schema
+
+| Table | Description |
+|---|---|
+| `users` | Core user accounts. Stores username, bcrypt hash, email, `is_admin`, `auth_provider`, login stats. |
+| `sso_groups` | OIDC groups synced from the identity provider. `is_admin` flag grants full portal access to all members. |
+| `user_group_association` | Many-to-many join between users and groups. |
+| `user_sessions` | Active portal sessions for real-time online status tracking. |
+| `tab_permissions` | Each row grants a specific `tab_name` to a `user_id` or `group_id`. |
+| `database_connections` | Saved DB connection profiles (host, port, database, user, encrypted password). |
+| `marketplace_items` | Agent and MCP Server records. Tracks name, type, owner, deployment status, environment, Helm chart, TTL. |
+| `marketplace_usage` | Call/tool_use events for marketplace items. Used for usage count and unique user metrics. |
+| `ida_mcp_connections` | Per-user IDA MCP deployment state. State machine: `NEW → DEPLOYING → DEPLOYED → UNDEPLOYED / ERROR`. |
+| `ida_mcp_deploy_audit` | Immutable audit log of every deploy and undeploy event for IDA MCP servers. |
+| `request_logs` | HTTP request performance log (path, method, status, duration, user, IP). |
+| `page_views` | Frontend page navigation events for analytics. |
+| `user_activities` | Detailed user action audit trail. |
+| `system_metrics` | Point-in-time system performance snapshots. |
+| `mcp_server_status` | Health status and last-seen timestamps for connected MCP servers. |
+| `test_configurations` | Saved MCP test setups. |
+| `test_executions` | Stored test run results. |
+| `database_sessions` | Query session tracking for the BI module. |
+
+Schema migrations are handled inline at startup in `app/database.py` (`_run_schema_migrations`). There is no separate migration tool.
+
+---
+
+## API Reference
+
+Interactive API documentation (Swagger UI) is available at `/docs` when the application is running. ReDoc is available at `/redoc`.
+
+Key API groups:
+
+| Prefix | Description |
+|---|---|
+| `POST /api/login` | Local authentication |
+| `GET /api/callback` | OIDC callback |
+| `GET /api/me` | Current user profile and allowed tabs |
+| `/api/users` | User CRUD and role management |
+| `/api/permissions` | Tab permission configuration |
+| `/api/admin-groups` | Admin group management |
+| `/api/marketplace/*` | Marketplace item lifecycle |
+| `/api/research/*` | IDA MCP deployment and management |
+| `/api/analytics/*` | System metrics and dashboards |
+| `/api/sso/*` | SSO group sync and OIDC config |
+| `/api/internal/*` | Internal database table inspection |
+
+---
+
+*The AI portal is an internal platform — contributions and issue reports are handled through the internal Bitbucket and Jira workflow.*
