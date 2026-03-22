@@ -132,7 +132,7 @@ function FeatureTeaserCard({
 
   return (
     <motion.div
-      className={`relative rounded-2xl border ${feature.borderColor} cursor-pointer`}
+      className={`relative rounded-2xl border ${feature.borderColor} cursor-pointer h-full flex flex-col`}
       style={{ background: "hsl(var(--surface) / 0.8)" }}
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}
@@ -141,10 +141,10 @@ function FeatureTeaserCard({
       onClick={() => hasAccess && onNavigate(feature.route)}
     >
       {/* Primary gradient top stripe */}
-      <div className="h-1.5 w-full bg-gradient-primary rounded-t-2xl" />
+      <div className="h-1.5 w-full bg-gradient-primary rounded-t-2xl shrink-0" />
 
-      {/* Fixed-height inner area so both panels share the same space */}
-      <div className="relative p-6" style={{ minHeight: 260 }}>
+      {/* Content area fills the remaining card height */}
+      <div className="relative p-6 flex-1" style={{ minHeight: 260 }}>
 
         {/* ── Main content panel ── */}
         <motion.div
@@ -323,6 +323,7 @@ export default function Home() {
           {features.map((feature, i) => (
             <motion.div
               key={feature.id}
+              className="h-full"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35 + i * 0.1 }}

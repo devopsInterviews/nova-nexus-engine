@@ -508,36 +508,37 @@ def create_marketplace_item(
                    " Choose a different name.",
         )
 
-    if req.item_type == "agent":
-        user_count = (
-            db.query(MarketplaceItem)
-            .filter_by(owner_id=current_user.id, item_type="agent")
-            .count()
-        )
-        if user_count >= MARKETPLACE_MAX_AGENTS_PER_USER:
-            logger.warning(
-                "[MARKETPLACE] User %s hit agent limit (%d/%d)",
-                current_user.username, user_count, MARKETPLACE_MAX_AGENTS_PER_USER,
+    if not current_user.is_admin:
+        if req.item_type == "agent":
+            user_count = (
+                db.query(MarketplaceItem)
+                .filter_by(owner_id=current_user.id, item_type="agent")
+                .count()
             )
-            raise HTTPException(
-                status_code=429,
-                detail=f"Agent limit reached ({MARKETPLACE_MAX_AGENTS_PER_USER} max).",
+            if user_count >= MARKETPLACE_MAX_AGENTS_PER_USER:
+                logger.warning(
+                    "[MARKETPLACE] User %s hit agent limit (%d/%d)",
+                    current_user.username, user_count, MARKETPLACE_MAX_AGENTS_PER_USER,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Agent limit reached ({MARKETPLACE_MAX_AGENTS_PER_USER} max).",
+                )
+        elif req.item_type == "mcp_server":
+            user_count = (
+                db.query(MarketplaceItem)
+                .filter_by(owner_id=current_user.id, item_type="mcp_server")
+                .count()
             )
-    elif req.item_type == "mcp_server":
-        user_count = (
-            db.query(MarketplaceItem)
-            .filter_by(owner_id=current_user.id, item_type="mcp_server")
-            .count()
-        )
-        if user_count >= MARKETPLACE_MAX_MCP_PER_USER:
-            logger.warning(
-                "[MARKETPLACE] User %s hit MCP server limit (%d/%d)",
-                current_user.username, user_count, MARKETPLACE_MAX_MCP_PER_USER,
-            )
-            raise HTTPException(
-                status_code=429,
-                detail=f"MCP server limit reached ({MARKETPLACE_MAX_MCP_PER_USER} max).",
-            )
+            if user_count >= MARKETPLACE_MAX_MCP_PER_USER:
+                logger.warning(
+                    "[MARKETPLACE] User %s hit MCP server limit (%d/%d)",
+                    current_user.username, user_count, MARKETPLACE_MAX_MCP_PER_USER,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"MCP server limit reached ({MARKETPLACE_MAX_MCP_PER_USER} max).",
+                )
 
     item = MarketplaceItem(
         name=req.name,
@@ -1214,38 +1215,39 @@ def clone_marketplace_item(
             detail=f"An item named \"{desired_name}\" already exists. Choose a different name.",
         )
 
-    if source.item_type == "agent":
-        user_count = (
-            db.query(MarketplaceItem)
-            .filter_by(owner_id=current_user.id, item_type="agent")
-            .count()
-        )
-        if user_count >= MARKETPLACE_MAX_AGENTS_PER_USER:
-            logger.warning(
-                "[MARKETPLACE] User '%s' hit agent limit during fork (%d/%d) — fork of '%s' (id=%d) rejected.",
-                current_user.username, user_count, MARKETPLACE_MAX_AGENTS_PER_USER,
-                source.name, source.id,
+    if not current_user.is_admin:
+        if source.item_type == "agent":
+            user_count = (
+                db.query(MarketplaceItem)
+                .filter_by(owner_id=current_user.id, item_type="agent")
+                .count()
             )
-            raise HTTPException(
-                status_code=429,
-                detail=f"Agent limit reached ({MARKETPLACE_MAX_AGENTS_PER_USER} max). Delete one before forking.",
+            if user_count >= MARKETPLACE_MAX_AGENTS_PER_USER:
+                logger.warning(
+                    "[MARKETPLACE] User '%s' hit agent limit during fork (%d/%d) — fork of '%s' (id=%d) rejected.",
+                    current_user.username, user_count, MARKETPLACE_MAX_AGENTS_PER_USER,
+                    source.name, source.id,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Agent limit reached ({MARKETPLACE_MAX_AGENTS_PER_USER} max). Delete one before forking.",
+                )
+        elif source.item_type == "mcp_server":
+            user_count = (
+                db.query(MarketplaceItem)
+                .filter_by(owner_id=current_user.id, item_type="mcp_server")
+                .count()
             )
-    elif source.item_type == "mcp_server":
-        user_count = (
-            db.query(MarketplaceItem)
-            .filter_by(owner_id=current_user.id, item_type="mcp_server")
-            .count()
-        )
-        if user_count >= MARKETPLACE_MAX_MCP_PER_USER:
-            logger.warning(
-                "[MARKETPLACE] User '%s' hit MCP server limit during fork (%d/%d) — fork of '%s' (id=%d) rejected.",
-                current_user.username, user_count, MARKETPLACE_MAX_MCP_PER_USER,
-                source.name, source.id,
-            )
-            raise HTTPException(
-                status_code=429,
-                detail=f"MCP server limit reached ({MARKETPLACE_MAX_MCP_PER_USER} max). Delete one before forking.",
-            )
+            if user_count >= MARKETPLACE_MAX_MCP_PER_USER:
+                logger.warning(
+                    "[MARKETPLACE] User '%s' hit MCP server limit during fork (%d/%d) — fork of '%s' (id=%d) rejected.",
+                    current_user.username, user_count, MARKETPLACE_MAX_MCP_PER_USER,
+                    source.name, source.id,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"MCP server limit reached ({MARKETPLACE_MAX_MCP_PER_USER} max). Delete one before forking.",
+                )
 
     clone = MarketplaceItem(
         name=desired_name,
