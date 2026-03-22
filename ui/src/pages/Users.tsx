@@ -6,13 +6,16 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Eye, Info, LayoutDashboard, Search, UsersRound } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useConnectionContext } from '@/context/connection-context';
 import { analyticsService } from '@/lib/api-service';
 import { PermissionsManager } from '@/components/admin/PermissionsManager';
 import TableDataPreview from '@/components/admin/TableDataPreview';
+import { navigationItems } from '@/components/layout/AppSidebar';
 
 interface User {
   id: number;
@@ -79,6 +82,50 @@ const UsersPage: React.FC = () => {
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState<string | null>(null);
   // Internal DB only (BI toggle removed per requirements)
+
+  // Groups tab state
+  interface Group { id: number; name: string; }
+  interface TabPermissions { [tab: string]: { users: number[]; groups: number[] }; }
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupPermissions, setGroupPermissions] = useState<TabPermissions>({});
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [groupSearch, setGroupSearch] = useState('');
+  const [groupsFetched, setGroupsFetched] = useState(false);
+
+  const getTabDisplayName = (title: string) =>
+    navigationItems.find(n => n.title === title)?.displayLabel ?? title;
+
+  const fetchGroupsData = async () => {
+    if (groupsFetched) return;
+    setGroupsLoading(true);
+    setGroupsError(null);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const [gRes, pRes] = await Promise.all([
+        fetch('/api/sso/groups', { headers }),
+        fetch('/api/permissions', { headers }),
+      ]);
+      const gData = gRes.ok ? await gRes.json() : { groups: [] };
+      const pData = pRes.ok ? await pRes.json() : { status: 'error', data: {} };
+      setGroups(gData.groups || []);
+      setGroupPermissions(pData.status === 'success' ? pData.data : {});
+      setGroupsFetched(true);
+    } catch {
+      setGroupsError('Failed to load groups data.');
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  // Tabs granted to a given group
+  const tabsForGroup = (groupId: number): string[] =>
+    Object.entries(groupPermissions)
+      .filter(([, perms]) => perms.groups?.includes(groupId))
+      .map(([tab]) => tab)
+      .sort();
 
   const fetchUsers = async () => {
     try {
@@ -252,9 +299,10 @@ const UsersPage: React.FC = () => {
         <p className="text-sm text-muted-foreground mt-1">Manage users, permissions, and system data.</p>
       </div>
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">User Management</TabsTrigger>
           <TabsTrigger value="permissions" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">Permissions</TabsTrigger>
+          <TabsTrigger value="groups" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white" onClick={fetchGroupsData}>Groups</TabsTrigger>
           <TabsTrigger value="tables" className="data-[state=active]:bg-gradient-primary data-[state=active]:text-white">Database Tables</TabsTrigger>
         </TabsList>
         
@@ -405,6 +453,148 @@ const UsersPage: React.FC = () => {
 
       <TabsContent value="permissions">
         <PermissionsManager />
+      </TabsContent>
+
+      <TabsContent value="groups">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UsersRound className="w-5 h-5 text-indigo-400" />
+              <span>Groups</span>
+              {groups.length > 0 && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300">
+                  {groups.length} total
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Read-only notice */}
+            <div className="flex items-start gap-3 rounded-lg border border-border/50 bg-muted/30 px-4 py-3 mb-5">
+              <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                This view is <strong className="text-foreground/80">read-only</strong>. It shows which portal tabs each SSO group has been granted access to.
+                To add or remove permissions, go to the <strong className="text-foreground/80">Permissions</strong> tab.
+              </p>
+            </div>
+
+            {groupsError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{groupsError}</AlertDescription>
+              </Alert>
+            )}
+
+            {groupsLoading ? (
+              <div className="flex items-center justify-center p-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                <span className="ml-3 text-muted-foreground">Loading groups…</span>
+              </div>
+            ) : groups.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground text-sm border border-dashed rounded-lg">
+                No SSO groups found. Groups are synced from your identity provider (Authentik / LDAP).
+              </div>
+            ) : (
+              <>
+                <div className="relative max-w-xs mb-4">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter groups…"
+                    className="pl-9 h-9"
+                    value={groupSearch}
+                    onChange={e => setGroupSearch(e.target.value)}
+                  />
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Group Name</TableHead>
+                      <TableHead>Tabs Granted</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {groups
+                      .filter(g => !groupSearch || g.name.toLowerCase().includes(groupSearch.toLowerCase()))
+                      .map(group => {
+                        const count = tabsForGroup(group.id).length;
+                        return (
+                          <TableRow key={group.id}>
+                            <TableCell className="font-medium flex items-center gap-2">
+                              <UsersRound className="w-4 h-4 text-indigo-400 shrink-0" />
+                              {group.name}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20">
+                                {count} {count === 1 ? 'tab' : 'tabs'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1.5"
+                                onClick={() => setSelectedGroup(group)}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                View Tabs
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                  </TableBody>
+                </Table>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Group tab-access dialog */}
+        <Dialog open={!!selectedGroup} onOpenChange={open => !open && setSelectedGroup(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UsersRound className="w-5 h-5 text-indigo-400" />
+                {selectedGroup?.name}
+              </DialogTitle>
+              <DialogDescription>
+                Portal tabs this group has been granted access to.
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Read-only banner inside dialog */}
+            <div className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                Read-only view. To change permissions, use the <strong className="text-foreground/80">Permissions</strong> tab.
+              </span>
+            </div>
+
+            <div className="mt-2">
+              {selectedGroup && tabsForGroup(selectedGroup.id).length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
+                  No tabs have been granted to this group yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {selectedGroup && tabsForGroup(selectedGroup.id).map(tab => (
+                    <div
+                      key={tab}
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border/50 bg-surface/30"
+                    >
+                      <LayoutDashboard className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium">{getTabDisplayName(tab)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSelectedGroup(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </TabsContent>
 
       <TabsContent value="tables">
