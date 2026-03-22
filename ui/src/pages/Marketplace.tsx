@@ -1885,7 +1885,7 @@ export default function Marketplace() {
           state={infraOp}
           onClose={() => {
             setInfraOp(prev => ({ ...prev, status: "idle" }));
-            if (infraOp.status === "success") fetchItems();
+            fetchItems();
           }}
         />
       )}
