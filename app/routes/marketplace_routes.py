@@ -549,7 +549,7 @@ def create_marketplace_item(
         tools_exposed=req.tools_exposed or [],
         # Start as BUILT — Create = Build in the current workflow
         deployment_status="BUILT",
-        version=None,
+        version="",
         environment="dev",
         ttl_days=MARKETPLACE_DEV_TTL_DAYS if MARKETPLACE_TTL_ENABLED else None,
     )
@@ -864,7 +864,13 @@ def deploy_marketplace_item(
         except http_requests.exceptions.HTTPError as exc:
             raw_body: str = exc.response.text if exc.response is not None else ""
             try:
-                error_detail = exc.response.json().get("detail") or raw_body
+                body_json = exc.response.json()
+                error_detail = (
+                    body_json.get("detail")
+                    or body_json.get("message")
+                    or body_json.get("error")
+                    or raw_body
+                )
             except Exception:
                 error_detail = raw_body or str(exc)
             logger.error(
@@ -874,7 +880,7 @@ def deploy_marketplace_item(
             )
             raise HTTPException(
                 status_code=502,
-                detail=f"Infra API returned an error: {error_detail}",
+                detail=f"Infra API error: {error_detail}",
             )
         except Exception as exc:
             logger.error(
@@ -1037,7 +1043,13 @@ def redeploy_marketplace_item(
         except http_requests.exceptions.HTTPError as exc:
             raw_body = exc.response.text if exc.response is not None else ""
             try:
-                error_detail = exc.response.json().get("detail") or raw_body
+                body_json = exc.response.json()
+                error_detail = (
+                    body_json.get("detail")
+                    or body_json.get("message")
+                    or body_json.get("error")
+                    or raw_body
+                )
             except Exception:
                 error_detail = raw_body or str(exc)
             logger.error(
@@ -1045,7 +1057,7 @@ def redeploy_marketplace_item(
                 exc.response.status_code if exc.response is not None else -1,
                 item.name, item.id, raw_body,
             )
-            raise HTTPException(status_code=502, detail=f"Infra API error during upgrade: {error_detail}")
+            raise HTTPException(status_code=502, detail=f"Infra API error: {error_detail}")
         except Exception as exc:
             logger.error(
                 "[MARKETPLACE][REDEPLOY] ✗ UNEXPECTED ERROR for '%s' (id=%d): %s",
@@ -1259,7 +1271,7 @@ def clone_marketplace_item(
         url_to_connect=None,
         tools_exposed=source.tools_exposed,
         deployment_status="BUILT",
-        version=None,
+        version="",
         environment="dev",
         chart_name=source.chart_name,
         chart_version=source.chart_version,

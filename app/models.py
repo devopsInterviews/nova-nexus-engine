@@ -990,7 +990,7 @@ class MarketplaceItem(Base):
 
     # Lifecycle status
     deployment_status = Column(String(50), default="CREATED", nullable=False)
-    version = Column(String(50), default=None, nullable=True)
+    version = Column(String(50), default="", nullable=False)
     environment = Column(String(50), default="dev", nullable=False)  # 'dev' or 'release'
     # Artifactory chart name selected during last deploy (e.g. "jira-integration-mcp")
     chart_name = Column(String(255), nullable=True)
