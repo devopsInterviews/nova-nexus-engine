@@ -28,7 +28,7 @@ import logging
 import re
 import threading
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Set
 
 import requests as http_requests
@@ -54,6 +54,7 @@ router = APIRouter(prefix="/api/marketplace", tags=["Marketplace"])
 MARKETPLACE_MAX_AGENTS_PER_USER: int = int(os.getenv("MARKETPLACE_MAX_AGENTS_PER_USER", "5"))
 MARKETPLACE_MAX_MCP_PER_USER: int = int(os.getenv("MARKETPLACE_MAX_MCP_PER_USER", "5"))
 MARKETPLACE_DEV_TTL_DAYS: int = int(os.getenv("MARKETPLACE_DEV_TTL_DAYS", "10"))
+MARKETPLACE_TTL_ENABLED: bool = os.getenv("MARKETPLACE_TTL_ENABLED", "false").lower() == "true"
 INFRA_CHARTS_API_SERVER: Optional[str] = os.getenv("INFRA_CHARTS_API_SERVER")
 
 # 5-minute timeout for infra API calls (deploy/delete can take a while)
@@ -63,9 +64,10 @@ INFRA_API_TIMEOUT_SECONDS: int = 300
 _DEBUG_INFRA = os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG"
 
 logger.info(
-    "[MARKETPLACE] Config — max_agents=%d, max_mcp=%d, dev_ttl=%d days, infra_api=%s",
+    "[MARKETPLACE] Config — max_agents=%d, max_mcp=%d, ttl_enabled=%s, dev_ttl=%d days, infra_api=%s",
     MARKETPLACE_MAX_AGENTS_PER_USER,
     MARKETPLACE_MAX_MCP_PER_USER,
+    MARKETPLACE_TTL_ENABLED,
     MARKETPLACE_DEV_TTL_DAYS,
     INFRA_CHARTS_API_SERVER or "not set",
 )
@@ -460,19 +462,14 @@ def get_marketplace_config():
         "max_agents_per_user": MARKETPLACE_MAX_AGENTS_PER_USER,
         "max_mcp_per_user": MARKETPLACE_MAX_MCP_PER_USER,
         "dev_ttl_days": MARKETPLACE_DEV_TTL_DAYS,
+        "ttl_enabled": MARKETPLACE_TTL_ENABLED,
     }
 
 
 @router.get("/items")
 def get_marketplace_items(db: Session = Depends(get_db_session)):
-    """
-    Fetch all marketplace items with usage stats.
-    Auto-seeds rich mock data on first run so the UI is immediately testable.
-    """
+    """Fetch all marketplace items with usage stats."""
     items = db.query(MarketplaceItem).all()
-    if not items:
-        _seed_mock_data(db)
-        items = db.query(MarketplaceItem).all()
     return [_enrich_item(item, db) for item in items]
 
 
@@ -552,9 +549,9 @@ def create_marketplace_item(
         tools_exposed=req.tools_exposed or [],
         # Start as BUILT — Create = Build in the current workflow
         deployment_status="BUILT",
-        version="1.0.0",
+        version=None,
         environment="dev",
-        ttl_days=MARKETPLACE_DEV_TTL_DAYS,
+        ttl_days=MARKETPLACE_DEV_TTL_DAYS if MARKETPLACE_TTL_ENABLED else None,
     )
     db.add(item)
     db.commit()
@@ -891,8 +888,9 @@ def deploy_marketplace_item(
     item.environment = req.environment
     item.chart_name = req.chart_name or item.name
     item.chart_version = req.chart_version
+    item.version = req.chart_version
     item.deployed_at = datetime.now(timezone.utc)
-    item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
+    item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if (MARKETPLACE_TTL_ENABLED and req.environment == "dev") else None
     if public_url_from_infra:
         final_url = _apply_mcp_url_suffix(public_url_from_infra, item.item_type)
         item.url_to_connect = final_url
@@ -1059,8 +1057,9 @@ def redeploy_marketplace_item(
     item.environment = req.environment
     item.chart_name = req.chart_name or item.chart_name
     item.chart_version = req.chart_version
+    item.version = req.chart_version
     item.deployed_at = datetime.now(timezone.utc)
-    item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if req.environment == "dev" else None
+    item.ttl_days = MARKETPLACE_DEV_TTL_DAYS if (MARKETPLACE_TTL_ENABLED and req.environment == "dev") else None
     if public_url_from_infra:
         final_url = _apply_mcp_url_suffix(public_url_from_infra, item.item_type)
         item.url_to_connect = final_url
@@ -1260,11 +1259,11 @@ def clone_marketplace_item(
         url_to_connect=None,
         tools_exposed=source.tools_exposed,
         deployment_status="BUILT",
-        version=source.version,
+        version=None,
         environment="dev",
         chart_name=source.chart_name,
         chart_version=source.chart_version,
-        ttl_days=MARKETPLACE_DEV_TTL_DAYS,
+        ttl_days=MARKETPLACE_DEV_TTL_DAYS if MARKETPLACE_TTL_ENABLED else None,
         deployed_at=None,
     )
     db.add(clone)
@@ -1902,122 +1901,3 @@ def start_cluster_sync_thread() -> threading.Thread:
     return thread
 
 
-# ─── Mock Data Seeding ───────────────────────────────────────────────────────
-
-_AVATAR_BASE = "https://api.dicebear.com/7.x/bottts/svg"
-
-def _seed_mock_data(db: Session) -> None:
-    """Seed rich mock data so the UI is immediately testable on a fresh DB."""
-    first_user = db.query(User).first()
-    if not first_user:
-        logger.warning("[MARKETPLACE] Cannot seed — no users in DB yet.")
-        return
-
-    owner_id = first_user.id
-    now = datetime.now(timezone.utc)
-
-    items_to_add = [
-        MarketplaceItem(
-            name="Data Analysis Agent",
-            description="Analyzes complex datasets and returns natural language summaries with statistical insights, trend detection, and anomaly flagging.",
-            item_type="agent", owner_id=owner_id,
-            icon=f"{_AVATAR_BASE}?seed=DataAgent&backgroundColor=b6e3f4",
-            bitbucket_repo="https://bitbucket.company.internal/projects/AI/repos/data-agent",
-            how_to_use="Ask: 'summarize the latest sales data' or 'find anomalies in the weekly report'.",
-            url_to_connect="http://data-agent.release.svc.cluster.local",
-            tools_exposed=[], deployment_status="DEPLOYED", version="2.1.0",
-            environment="release", chart_name="data-analysis-agent", chart_version="2.1.0",
-            ttl_days=None, deployed_at=now - timedelta(days=5),
-        ),
-        MarketplaceItem(
-            name="Jira Integration MCP",
-            description="Exposes tools to create, update, search, and comment on Jira issues directly from any LLM chat session or portal workflow.",
-            item_type="mcp_server", owner_id=owner_id,
-            icon=f"{_AVATAR_BASE}?seed=JiraMCP&backgroundColor=c0aede",
-            bitbucket_repo="https://bitbucket.company.internal/projects/MCP/repos/jira-mcp",
-            how_to_use="Enable in Research tab. Say 'create a P1 bug for the login failure' or 'list open tickets for sprint 42'.",
-            url_to_connect="http://jira-mcp.mcp-gateway.company.internal",
-            tools_exposed=[{"name": "create_ticket"}, {"name": "update_ticket"}, {"name": "search_tickets"}],
-            deployment_status="DEPLOYED", version="2.0.1", environment="release",
-            chart_name="jira-integration-mcp", chart_version="2.0.1",
-            ttl_days=None, deployed_at=now - timedelta(days=30),
-        ),
-        MarketplaceItem(
-            name="K8s Ops Agent",
-            description="Monitors Kubernetes cluster health, surfaces failing pods, and can apply Helm rollbacks on command — your AI SRE companion.",
-            item_type="agent", owner_id=owner_id,
-            icon=f"{_AVATAR_BASE}?seed=K8sAgent&backgroundColor=d1f4cc",
-            bitbucket_repo="https://bitbucket.company.internal/projects/OPS/repos/k8s-agent",
-            how_to_use="Ask 'check the prod cluster', 'list failing pods in namespace X', or 'roll back payments to v1.3'.",
-            url_to_connect="http://k8s-agent.dev.svc.cluster.local",
-            tools_exposed=[], deployment_status="DEPLOYED", version="0.9.4",
-            environment="dev", chart_name="k8s-ops-agent", chart_version="0.9.4",
-            # 8 days ago → only 2 days left on a 10-day TTL (shows red warning)
-            ttl_days=10, deployed_at=now - timedelta(days=8),
-        ),
-        MarketplaceItem(
-            name="GitHub Actions MCP",
-            description="Trigger workflows, inspect run logs, download artifacts, and manage GitHub Actions pipelines from natural language.",
-            item_type="mcp_server", owner_id=owner_id,
-            icon=f"{_AVATAR_BASE}?seed=GithubMCP&backgroundColor=ffd5dc",
-            bitbucket_repo="https://bitbucket.company.internal/projects/MCP/repos/gh-actions-mcp",
-            how_to_use="Say 'trigger the nightly build' or 'show last 5 failed CI runs for the backend repo'.",
-            url_to_connect="",
-            tools_exposed=[{"name": "trigger_workflow"}, {"name": "list_runs"}, {"name": "get_run_logs"}],
-            deployment_status="BUILT", version="1.0.0",
-            environment="dev", chart_name=None, chart_version=None,
-            ttl_days=10, deployed_at=None,
-        ),
-        MarketplaceItem(
-            name="Vault Secrets MCP",
-            description="Securely fetches secrets from HashiCorp Vault and injects them into your workflows — no more hardcoded credentials.",
-            item_type="mcp_server", owner_id=owner_id,
-            icon=f"{_AVATAR_BASE}?seed=VaultMCP&backgroundColor=fffdd0",
-            bitbucket_repo="https://bitbucket.company.internal/projects/MCP/repos/vault-mcp",
-            how_to_use="Ask 'get the DB password for prod' or 'rotate the API keys for service X'.",
-            url_to_connect="http://vault-mcp.dev.svc.cluster.local",
-            tools_exposed=[{"name": "get_secret"}, {"name": "rotate_secret"}],
-            deployment_status="DEPLOYED", version="1.3.0",
-            environment="dev", chart_name="vault-secrets-mcp", chart_version="1.3.0",
-            # 6 days ago → 4 days left (orange warning)
-            ttl_days=10, deployed_at=now - timedelta(days=6),
-        ),
-        MarketplaceItem(
-            name="Slack Notifier Agent",
-            description="Sends intelligent notifications, summaries, and alerts to Slack channels based on events across your systems.",
-            item_type="agent", owner_id=owner_id,
-            icon=f"{_AVATAR_BASE}?seed=SlackAgent&backgroundColor=e0c3fc",
-            bitbucket_repo="https://bitbucket.company.internal/projects/AI/repos/slack-agent",
-            how_to_use="Ask 'send a daily standup summary to #engineering' or 'alert #on-call about this incident'.",
-            url_to_connect="",
-            tools_exposed=[], deployment_status="BUILT", version="1.1.0",
-            environment="dev", chart_name=None, chart_version=None,
-            ttl_days=10, deployed_at=None,
-        ),
-    ]
-
-    try:
-        for item in items_to_add:
-            db.add(item)
-        db.flush()
-
-        jira = next(i for i in items_to_add if i.name == "Jira Integration MCP")
-        data = next(i for i in items_to_add if i.name == "Data Analysis Agent")
-        k8s = next(i for i in items_to_add if i.name == "K8s Ops Agent")
-
-        for record in [
-            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=jira.id, action="deploy"),
-            MarketplaceUsage(user_id=owner_id, item_id=data.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=data.id, action="call"),
-            MarketplaceUsage(user_id=owner_id, item_id=k8s.id, action="call"),
-        ]:
-            db.add(record)
-
-        db.commit()
-        logger.info("[MARKETPLACE] Seeded %d mock items.", len(items_to_add))
-    except Exception as exc:
-        db.rollback()
-        logger.warning("[MARKETPLACE] Seeding failed: %s", exc)

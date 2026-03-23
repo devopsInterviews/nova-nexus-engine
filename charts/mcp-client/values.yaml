@@ -184,7 +184,10 @@ marketPlace:
   # Per-user creation limits
   maxAgentsPerUser: 5
   maxMcpServersPerUser: 5
-  # TTL (in days) for dev-environment deployments (0 = never auto-expire)
+  # Enable the TTL mechanism for dev-environment deployments.
+  # When false (default), entities have no expiry and TTL is not shown in the UI.
+  ttlEnabled: false
+  # TTL (in days) for dev-environment deployments — only used when ttlEnabled is true.
   devTtlDays: 10
   # Artifactory Helm repository names for chart discovery.
   # Charts live at: {repo}/{APP_NAME}/{VERSION}/{APP_NAME}-{VERSION}.tgz

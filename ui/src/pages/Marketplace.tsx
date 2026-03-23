@@ -121,6 +121,7 @@ interface MarketplaceConfig {
   max_agents_per_user: number;
   max_mcp_per_user: number;
   dev_ttl_days: number;
+  ttl_enabled: boolean;
 }
 
 // ─── Status / style helpers ────────────────────────────────────────────────────
@@ -361,9 +362,11 @@ const ItemCard = memo(function ItemCard({
           <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.envPill}`}>
             {item.environment === "release" ? "RELEASE" : "DEV"}
           </span>
-          <span className="text-[10px] font-mono text-muted-foreground/50 bg-muted/30 border border-border/30 px-1.5 py-0.5 rounded">
-            <Tag size={7} className="inline mr-0.5 opacity-60" />v{item.version}
-          </span>
+          {item.version && (
+            <span className="text-[10px] font-mono text-muted-foreground/50 bg-muted/30 border border-border/30 px-1.5 py-0.5 rounded">
+              <Tag size={7} className="inline mr-0.5 opacity-60" />v{item.version}
+            </span>
+          )}
         </div>
 
         {/* TTL info (no banner — just inline badge) */}
@@ -463,11 +466,13 @@ function StatusFilterButton({
 
 function StatusLegend({
   devTtlDays,
+  ttlEnabled,
   items,
   statusFilter,
   onFilterChange,
 }: {
   devTtlDays: number;
+  ttlEnabled: boolean;
   items: MarketplaceItem[];
   statusFilter: StatusFilter;
   onFilterChange: (f: StatusFilter) => void;
@@ -484,7 +489,7 @@ function StatusLegend({
     { key: "all",      dot: "bg-muted-foreground/50",       label: "All" },
     { key: "built",    dot: "bg-[#FFE64C]",                 label: "Built" },
     { key: "deployed", dot: "bg-[#FFB24C]",                 label: "Dev Deployed" },
-    { key: "expiring", dot: "bg-[#F16C6C] animate-pulse",   label: "Expiring" },
+    ...(ttlEnabled ? [{ key: "expiring" as StatusFilter, dot: "bg-[#F16C6C] animate-pulse", label: "Expiring" }] : []),
     { key: "release",  dot: "bg-[#00C986]",                 label: "Release" },
   ];
 
@@ -514,7 +519,10 @@ function StatusLegend({
         {/* Legend sub-labels */}
         <div className="flex-1" />
         <div className="hidden md:flex items-center gap-3 text-[10px] text-muted-foreground/50">
-          <span>Built=ready · Dev≤{devTtlDays}d TTL · Expiring≤7d · Release=persistent</span>
+          {ttlEnabled
+            ? <span>Built=ready · Dev≤{devTtlDays}d TTL · Expiring≤7d · Release=persistent</span>
+            : <span>Built=ready · Dev deployed · Release=persistent</span>
+          }
         </div>
       </div>
     </div>
@@ -710,7 +718,7 @@ export default function Marketplace() {
 
   // ── Core state ─────────────────────────────────────────────────────────────
   const [items, setItems] = useState<MarketplaceItem[]>([]);
-  const [config, setConfig] = useState<MarketplaceConfig>({ max_agents_per_user: 5, max_mcp_per_user: 5, dev_ttl_days: 10 });
+  const [config, setConfig] = useState<MarketplaceConfig>({ max_agents_per_user: 5, max_mcp_per_user: 5, dev_ttl_days: 10, ttl_enabled: false });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -1271,6 +1279,7 @@ export default function Marketplace() {
       {/* Status Legend / Filter */}
       <StatusLegend
         devTtlDays={config.dev_ttl_days}
+        ttlEnabled={config.ttl_enabled}
         items={items}
         statusFilter={statusFilter}
         onFilterChange={setStatusFilter}
@@ -1442,14 +1451,16 @@ export default function Marketplace() {
                       <InfoTile label="Chart" icon={<PackageSearch size={14} />}
                         value={item.chart_name ?? "Not deployed yet"}
                         sub={item.chart_version ? `version ${item.chart_version}` : undefined} />
-                      <InfoTile label="TTL / Persistence" icon={<Clock size={14} />}
-                        value={item.environment === "release" ? "Persistent (no TTL)" : `Dev · ${item.ttl_days ?? config.dev_ttl_days}d TTL`}
-                        valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-[#F16C6C]" : ""}
-                        sub={item.environment === "release"
-                          ? "Release deployments never expire"
-                          : item.ttl_remaining_days !== null
-                            ? `${item.ttl_remaining_days} days remaining`
-                            : undefined} />
+                      {config.ttl_enabled && (
+                        <InfoTile label="TTL / Persistence" icon={<Clock size={14} />}
+                          value={item.environment === "release" ? "Persistent (no TTL)" : `Dev · ${item.ttl_days ?? config.dev_ttl_days}d TTL`}
+                          valueCls={item.ttl_remaining_days !== null && item.ttl_remaining_days <= 7 ? "text-[#F16C6C]" : ""}
+                          sub={item.environment === "release"
+                            ? "Release deployments never expire"
+                            : item.ttl_remaining_days !== null
+                              ? `${item.ttl_remaining_days} days remaining`
+                              : undefined} />
+                      )}
                       {item.bitbucket_repo && (
                         <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
                           <Github size={14} className="mt-0.5 text-muted-foreground/60 shrink-0" />
@@ -1552,7 +1563,7 @@ export default function Marketplace() {
                             onClick={() => { setDetailItem(null); openDeploy(item, true, item.environment as "dev" | "release"); }}>
                             <RefreshCw size={13} /> Upgrade
                           </Button>
-                          {item.environment === "dev" && (
+                          {config.ttl_enabled && item.environment === "dev" && (
                             <Button size="sm" variant="outline"
                               className="gap-1.5 border-[#55C5E2]/40 text-[#1a7a96] dark:text-[#55C5E2] hover:bg-[#55C5E2] hover:text-white hover:border-[#55C5E2]"
                               onClick={() => handleExtendTTL(item)}>
@@ -1715,7 +1726,7 @@ export default function Marketplace() {
                   </button>
                 ))}
               </div>
-              {deployEnv === "dev" && (
+              {config.ttl_enabled && deployEnv === "dev" && (
                 <p className="text-xs text-[#935900] dark:text-[#FFB24C] mt-2 flex items-center gap-1.5">
                   <Clock size={10} /> Auto-expires after {config.dev_ttl_days} days
                 </p>
@@ -1851,7 +1862,7 @@ export default function Marketplace() {
                   <span className={`font-bold ${deployEnv === "dev" ? "text-[#935900] dark:text-[#FFB24C]" : "text-[#007a52] dark:text-[#00C986]"}`}>
                     {deployEnv.toUpperCase()}
                   </span>.
-                  {deployEnv === "dev" && (
+                  {config.ttl_enabled && deployEnv === "dev" && (
                     <span className="text-xs block mt-1 text-muted-foreground">
                       Auto-expires in {config.dev_ttl_days} days.
                     </span>

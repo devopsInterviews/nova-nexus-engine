@@ -71,6 +71,8 @@ spec:
               value: "{{ .Values.marketPlace.maxAgentsPerUser | default 5 }}"
             - name: MARKETPLACE_MAX_MCP_PER_USER
               value: "{{ .Values.marketPlace.maxMcpServersPerUser | default 5 }}"
+            - name: MARKETPLACE_TTL_ENABLED
+              value: "{{ .Values.marketPlace.ttlEnabled | default false }}"
             - name: MARKETPLACE_DEV_TTL_DAYS
               value: "{{ .Values.marketPlace.devTtlDays | default 10 }}"
             - name: ARTIFACTORY_MARKETPLACE_HELM_REPO_DEV
