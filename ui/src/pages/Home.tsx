@@ -144,10 +144,11 @@ function FeatureTeaserCard({
       <div className="h-1.5 w-full bg-gradient-primary rounded-t-2xl shrink-0" />
 
       {/* Content area fills the remaining card height */}
-      <div className="relative p-6 flex-1" style={{ minHeight: 260 }}>
+      <div className="relative p-6 flex-1 flex flex-col" style={{ minHeight: 260 }}>
 
         {/* ── Main content panel ── */}
         <motion.div
+          className="flex flex-col h-full"
           animate={{ opacity: hovered ? 0 : 1, y: hovered ? -6 : 0 }}
           transition={{ duration: 0.18 }}
           style={{ pointerEvents: hovered ? "none" : "auto" }}
@@ -159,7 +160,7 @@ function FeatureTeaserCard({
           <h3 className="text-lg font-bold text-foreground mb-2">{feature.title}</h3>
           <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
 
-          <div className="mt-4">
+          <div className="mt-auto pt-4">
             {hasAccess ? (
               <Button
                 size="sm"
