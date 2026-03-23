@@ -96,7 +96,7 @@ export function AppLayout() {
     ██║ ╚═╝ ██║╚██████╗██║        ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║╚██████╔╝███████╗
     ╚═╝     ╚═╝ ╚═════╝╚═╝         ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
     
-    🚀 Welcome to the future of AI Portal!
+    🚀 Welcome to the future of CorteX!
     💡 Try the Konami Code: ↑↑↓↓←→←→BA
     🎨 Built with love and cyberpunk vibes
     `);

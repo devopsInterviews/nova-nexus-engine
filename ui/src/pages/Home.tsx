@@ -236,7 +236,7 @@ export default function Home() {
       title: "Binary File Research",
       tagline: "Want to use LLM to research binary files?",
       description:
-        "Connect your IDA Pro workstation to the AI Portal and ask the LLM anything about your binaries. Reverse-engineering meets generative AI.",
+        "Connect your IDA Pro workstation to CorteX and ask the LLM anything about your binaries. Reverse-engineering meets generative AI.",
       icon: Search,
       tab: "Research",
       route: "/research",
@@ -280,7 +280,7 @@ export default function Home() {
               Your AI platform for intelligent workflows and connected systems.
             </p>
             <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-              Connecting models, tools, data, and teams — all in one place.
+              Connecting models, tools, data, and teams. All in one place.
             </p>
           </motion.div>
         </div>
@@ -315,7 +315,7 @@ export default function Home() {
         >
           <h2 className="text-2xl font-bold text-foreground">What can you do here?</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Hover over a card to peek inside. Click to open — or request access if you don't have it yet.
+            Hover over a card to peek inside. Click to open or request access if you don't have it yet.
           </p>
         </motion.div>
 
@@ -359,7 +359,7 @@ export default function Home() {
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Visit the company documentation to find guides, tutorials, and API references
-                for everything the AI Portal has to offer.
+                for everything CorteX has to offer.
               </p>
               <Button
                 className="w-full bg-gradient-primary text-white border-0 hover:opacity-90 group"

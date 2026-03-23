@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, User, Lock, Zap, AlertCircle, CheckCircle, Bot, X, Building2 } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, Brain, AlertCircle, CheckCircle, Bot, X, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -319,7 +319,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-start mb-4">
-                <h2 className="text-xl font-bold gradient-text">AI Portal Control System </h2>
+                <h2 className="text-xl font-bold gradient-text">CorteX Control System</h2>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -423,8 +423,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, loading = fal
               transition={{ delay: 0.5 }}
             >
               <CardTitle className="text-3xl font-bold gradient-text mb-2 flex items-center justify-center gap-2 mt-4">
-                <Zap className="w-8 h-8 text-primary" />
-                AI Portal
+                <Brain className="w-8 h-8 text-primary" />
+                CorteX
               </CardTitle>
               <CardDescription className="text-muted-foreground mt-3">
                 Your unified platform for AI engagement and intelligent workflows

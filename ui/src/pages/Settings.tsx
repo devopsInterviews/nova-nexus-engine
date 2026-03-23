@@ -52,7 +52,7 @@ export default function Settings() {
         transition={{ delay: 0.1 }}
       >
         <h1 className="text-3xl font-bold gradient-text mb-1">Personal Settings</h1>
-        <p className="text-muted-foreground">Manage your personal AI Portal preferences</p>
+        <p className="text-muted-foreground">Manage your personal CorteX preferences</p>
       </motion.div>
 
       {/* ── Appearance ──────────────────────────────────────────────────── */}
@@ -125,7 +125,7 @@ export default function Settings() {
 
             {/* Built by line */}
             <p className="text-sm text-muted-foreground text-center">
-              AI Portal — built with ❤️ by the DevOps Team
+              CorteX — built with ❤️ by the DevOps Team
             </p>
 
             {/* Documentation */}

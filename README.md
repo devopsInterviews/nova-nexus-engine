@@ -1,4 +1,4 @@
-# AI Portal
+# CorteX
 
 An internal enterprise AI platform that connects language models, tools, data, and teams in one place. It gives engineers a governed, self-service layer for deploying AI Agents and MCP Servers, running AI-assisted binary analysis, querying databases with natural language, and administering the platform — all from a single web UI.
 

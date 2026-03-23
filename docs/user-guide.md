@@ -1,10 +1,10 @@
-# AI Portal — User Guide
+# CorteX — User Guide
 
 ---
 
 ## What is this?
 
-The AI Portal is your team's internal hub for working with AI — without needing to set anything up yourself.
+CorteX is your team's internal hub for working with AI — without needing to set anything up yourself.
 
 Think of it as a layer that connects AI models to the tools your team already uses: disassemblers, databases, IDEs, chat interfaces, CI/CD pipelines. Instead of every engineer reinventing how to wire up an LLM to their workflow, the portal makes it repeatable, governed, and shareable.
 

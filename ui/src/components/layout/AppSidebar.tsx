@@ -4,7 +4,7 @@ import {
   Activity, 
   Database,
   Cpu,
-  Zap,
+  Brain,
   CheckSquare,
   Users,
   Search,
@@ -165,7 +165,7 @@ export function AppSidebar() {
             whileHover={{ scale: 1.1, rotate: 5 }}
             transition={{ type: "spring", stiffness: 400, damping: 10 }}
           >
-            <Zap className="w-5 h-5 text-primary-foreground" />
+            <Brain className="w-5 h-5 text-primary-foreground" />
           </motion.div>
           
           {open && (
@@ -175,7 +175,7 @@ export function AppSidebar() {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
             >
-              <h1 className="text-xl font-bold gradient-text">AI Portal</h1>
+              <h1 className="text-xl font-bold gradient-text">CorteX</h1>
             </motion.div>
           )}
         </div>
@@ -269,7 +269,7 @@ export function AppSidebar() {
           {open ? (
             <div className="flex flex-col items-center gap-1 text-center">
               <CompanyLogo size={118} />
-              <p className="text-xs font-semibold text-foreground/80 leading-tight">AI Portal</p>
+              <p className="text-xs font-semibold text-foreground/80 leading-tight">CorteX</p>
               <p className="text-[10px] text-muted-foreground/60">
                 {appConfig.environment.toUpperCase()} · v{appConfig.version}
               </p>
@@ -283,7 +283,7 @@ export function AppSidebar() {
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs">
-                AI Portal · {appConfig.environment} · v{appConfig.version}
+                CorteX · {appConfig.environment} · v{appConfig.version}
               </TooltipContent>
             </Tooltip>
           )}
