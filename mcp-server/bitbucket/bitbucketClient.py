@@ -17,10 +17,10 @@ Capabilities
 from __future__ import annotations
 
 import asyncio
+import difflib
 import requests
-from urllib.parse import quote
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from atlassian import Bitbucket
 
@@ -471,122 +471,100 @@ class BitbucketClient:
         src_path: Optional[str] = None,
     ) -> str:
         """
-        Retrieve the unified diff for a pull request as plain text.
+        Produce a unified diff for a pull request without using Bitbucket's
+        ``/diff`` endpoint.
 
-        Always uses the standard JSON ``/diff`` endpoint (with an optional
-        ``/{path}`` suffix for single-file diffs) and converts the response to
-        a unified-diff string.  This avoids the 406 errors caused by sending
-        ``Accept: text/plain`` — the Bitbucket Server /diff endpoint only
-        speaks ``application/json``.
+        Background
+        ----------
+        The Bitbucket Server ``/diff`` REST endpoint returns HTTP 406 on many
+        older versions and reverse-proxy setups regardless of the Accept header
+        sent.  This implementation avoids the endpoint entirely: it fetches the
+        raw file content at the PR's ``fromRef`` and ``toRef`` commits using the
+        basic ``/raw/{path}`` endpoint (which works on every Bitbucket version)
+        and computes the diff locally with Python's ``difflib.unified_diff``.
 
         :param project:       Bitbucket project key.
         :param repo:          Repository slug.
         :param pr_id:         Pull request ID.
-        :param file_path:     Restrict diff to this file path (optional).
-        :param context_lines: Context lines around each hunk (default 10).
+        :param file_path:     Restrict diff to this single file (optional).
+                              When omitted, all changed files in the PR are diffed.
+        :param context_lines: Context lines around each change (default 10).
         :param src_path:      Original path for renamed / moved files.
-        :returns:             Unified-diff text (standard ``---/+++/@@`` format).
-        :raises requests.HTTPError: On any HTTP error from Bitbucket.
+        :returns:             Standard unified-diff text.
         """
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Accept": "application/json",
-        }
-        params: Dict[str, str] = {"contextLines": str(context_lines)}
+        # ── 1. Resolve the exact commits from the PR metadata ─────────────────
+        pr = await self.get_pull_request(project, repo, pr_id)
+        from_commit: str = pr.get("fromRef", {}).get("latestCommit", "")
+        to_commit: str   = pr.get("toRef",   {}).get("latestCommit", "")
 
-        if file_path:
-            # Single-file diff: /diff/{path}
-            encoded_path = quote(file_path.lstrip("/"), safe="/")
-            api_path = (
-                f"/rest/api/1.0/projects/{project}/repos/{repo}"
-                f"/pull-requests/{pr_id}/diff/{encoded_path}"
-            )
-            if src_path:
-                params["srcPath"] = src_path
-        else:
-            # Full PR diff: /diff  (returns all changed files as JSON)
-            api_path = (
-                f"/rest/api/1.0/projects/{project}/repos/{repo}"
-                f"/pull-requests/{pr_id}/diff"
-            )
-
-        url = f"{self.base_url}{api_path}"
-        logger.debug("Fetching PR diff: %s  params=%s", url, params)
-
-        resp = await asyncio.to_thread(
-            requests.get,
-            url,
-            headers=headers,
-            params=params,
-            verify=self.verify_ssl,
-            timeout=60,
-        )
-        resp.raise_for_status()
-
-        try:
-            payload = resp.json()
-        except ValueError as exc:
+        if not from_commit or not to_commit:
             raise ValueError(
-                f"Bitbucket returned non-JSON for diff endpoint: {resp.text[:200]}"
-            ) from exc
+                f"Could not resolve commit SHAs from PR #{pr_id} metadata."
+            )
 
-        return self._json_diff_to_text(payload)
-
-    @staticmethod
-    def _json_diff_to_text(payload: dict) -> str:
-        """
-        Convert the Bitbucket Server JSON diff payload into a standard
-        unified-diff string.
-
-        Supports both the full-PR diff response (``diffs`` array at root) and
-        the single-file diff response (same structure, one entry in ``diffs``).
-
-        Bitbucket Server JSON structure::
-
-            {
-              "diffs": [
-                {
-                  "source": {"toString": "old/path"},
-                  "destination": {"toString": "new/path"},
-                  "hunks": [
-                    {
-                      "sourceLine": 10,  "sourceSpan": 5,
-                      "destinationLine": 10, "destinationSpan": 7,
-                      "segments": [
-                        {"type": "CONTEXT", "lines": [{"line": "..."}]},
-                        {"type": "REMOVED", "lines": [{"line": "..."}]},
-                        {"type": "ADDED",   "lines": [{"line": "..."}]}
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-        """
-        output: List[str] = []
-
-        for diff in payload.get("diffs", []):
-            src_path = (diff.get("source") or {}).get("toString", "/dev/null")
-            dst_path = (diff.get("destination") or {}).get("toString", "/dev/null")
-
-            output.append(f"--- a/{src_path}")
-            output.append(f"+++ b/{dst_path}")
-
-            for hunk in diff.get("hunks", []):
-                src_line = hunk.get("sourceLine", 1)
-                src_span = hunk.get("sourceSpan", 0)
-                dst_line = hunk.get("destinationLine", 1)
-                dst_span = hunk.get("destinationSpan", 0)
-                output.append(
-                    f"@@ -{src_line},{src_span} +{dst_line},{dst_span} @@"
+        # ── 2. Build list of (old_path, new_path, change_type) to diff ────────
+        if file_path:
+            old_path = src_path or file_path
+            entries: List[Tuple[str, str, str]] = [(old_path, file_path, "MODIFY")]
+        else:
+            changed = await self.list_pull_request_files(project, repo, pr_id)
+            entries = [
+                (
+                    f.get("srcPath") or f.get("path", ""),
+                    f.get("path", ""),
+                    f.get("type", "MODIFY"),
                 )
-                for segment in hunk.get("segments", []):
-                    seg_type = segment.get("type", "CONTEXT")
-                    prefix = {"ADDED": "+", "REMOVED": "-"}.get(seg_type, " ")
-                    for seg_line in segment.get("lines", []):
-                        output.append(f"{prefix}{seg_line.get('line', '')}")
+                for f in changed
+                if f.get("path")
+            ]
 
-        return "\n".join(output)
+        # ── 3. Fetch old/new content concurrently and build the diff ──────────
+        diff_parts: List[str] = []
+
+        async def _diff_one(old_p: str, new_p: str, change_type: str) -> str:
+            old_lines: List[str] = []
+            new_lines: List[str] = []
+
+            async def _fetch(path: str, ref: str) -> List[str]:
+                try:
+                    content = await asyncio.to_thread(
+                        self.client.get_content_of_file,
+                        project,
+                        repo,
+                        path,
+                        ref,
+                        None,
+                    )
+                    if isinstance(content, (bytes, bytearray)):
+                        content = content.decode("utf-8", errors="replace")
+                    return content.splitlines(keepends=True)
+                except Exception as exc:
+                    logger.debug(
+                        "Could not fetch %s@%s for diff: %s", path, ref[:8], exc
+                    )
+                    return []
+
+            if change_type != "ADD":
+                old_lines = await _fetch(old_p, from_commit)
+            if change_type != "DELETE":
+                new_lines = await _fetch(new_p, to_commit)
+
+            patch = list(
+                difflib.unified_diff(
+                    old_lines,
+                    new_lines,
+                    fromfile=f"a/{old_p}",
+                    tofile=f"b/{new_p}",
+                    n=context_lines,
+                )
+            )
+            return "".join(patch)
+
+        # Run all file diffs concurrently
+        results = await asyncio.gather(*[_diff_one(o, n, t) for o, n, t in entries])
+        diff_parts = [r for r in results if r]
+
+        return "\n".join(diff_parts) if diff_parts else "(no changes)"
 
     # --------------------------------------------------------------------- #
     #  PR comments
