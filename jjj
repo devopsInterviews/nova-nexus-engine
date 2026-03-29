@@ -1,0 +1,64 @@
+[2026-03-29 13:57:55,578] ERROR __main__: get_pull_request_diff failed for PR #1: 406 Client Error: Not Acceptable for url: https://proxy.domain.com/proxy/https/bitbucket.domain.com/rest/api/1.0/projects/AI/repos/workshop-example-app/pull-requests/1/diff/src/App.jsx?contextLines=10
+[03/29/26 13:57:55] Error calling tool 'get_pull_request_diff'                  
+                    ╭─────────── Traceback (most recent call last) ────────────╮
+                    │ /app/server.py:555 in get_pull_request_diff              │
+                    │                                                          │
+                    │   552 │   """                                            │
+                    │   553 │   client = get_bitbucket_client()                │
+                    │   554 │   try:                                           │
+                    │ ❱ 555 │   │   diff_text = await client.get_pull_request_ │
+                    │   556 │   │   │   project=project,                       │
+                    │   557 │   │   │   repo=repo,                             │
+                    │   558 │   │   │   pr_id=pr_id,                           │
+                    │                                                          │
+                    │ /app/bitbucketClient.py:519 in get_pull_request_diff     │
+                    │                                                          │
+                    │   516 │   │   │   │   verify=self.verify_ssl,            │
+                    │   517 │   │   │   │   timeout=60,                        │
+                    │   518 │   │   │   )                                      │
+                    │ ❱ 519 │   │   │   resp.raise_for_status()                │
+                    │   520 │   │   │                                          │
+                    │   521 │   │   │   # Bitbucket Server returns JSON for th │
+                    │   522 │   │   │   # If the server honours Accept: text/p │
+                    │                                                          │
+                    │ /usr/local/lib/python3.13/site-packages/requests/models. │
+                    │ py:1028 in raise_for_status                              │
+                    │                                                          │
+                    │   1025 │   │   │   )                                     │
+                    │   1026 │   │                                             │
+                    │   1027 │   │   if http_error_msg:                        │
+                    │ ❱ 1028 │   │   │   raise HTTPError(http_error_msg, respo │
+                    │   1029 │                                                 │
+                    │   1030 │   def close(self):                              │
+                    │   1031 │   │   """Releases the connection back to the po │
+                    ╰──────────────────────────────────────────────────────────╯
+                    HTTPError: 406 Client Error: Not Acceptable for url:        
+                    https://proxy.domain.com/proxy/https/bitbucket.
+                    domain.com/rest/api/1.0/projects/AI/repos/workshop-example
+                    -app/pull-requests/1/diff/src/App.jsx?contextLines=10       
+                                                                                
+                    The above exception was the direct cause of the following   
+                    exception:                                                  
+                                                                                
+                    ╭─────────── Traceback (most recent call last) ────────────╮
+                    │ /usr/local/lib/python3.13/site-packages/fastmcp/tools/to │
+                    │ ol_manager.py:160 in call_tool                           │
+                    │                                                          │
+                    │ /usr/local/lib/python3.13/site-packages/fastmcp/tools/to │
+                    │ ol.py:383 in run                                         │
+                    │                                                          │
+                    │ /app/server.py:572 in get_pull_request_diff              │
+                    │                                                          │
+                    │   569 │   │   }                                          │
+                    │   570 │   except Exception as e:                         │
+                    │   571 │   │   logger.error("get_pull_request_diff failed │
+                    │ ❱ 572 │   │   raise ValueError(f"Failed to get diff for  │
+                    │   573                                                    │
+                    │   574 @mcp.tool()                                        │
+                    │   575 async def get_pull_request_comments(               │
+                    ╰──────────────────────────────────────────────────────────╯
+                    ValueError: Failed to get diff for PR #1: 406 Client Error: 
+                    Not Acceptable for url:                                     
+                    https://proxy.domain.com/proxy/https/bitbucket.
+                    domain.com/rest/api/1.0/projects/AI/repos/workshop-example
+                    -app/pull-requests/1/diff/src/App.jsx?contextLines=10       
