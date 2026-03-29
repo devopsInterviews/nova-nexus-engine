@@ -1,0 +1,73 @@
+[2026-03-29 09:10:02,120] ERROR __main__: get_pull_request_diff failed for PR #1: An error occurred while processing the request. Check the server logs for more information.
+[03/29/26 09:10:02] Error calling tool 'get_pull_request_diff'                  
+                    ╭─────────── Traceback (most recent call last) ────────────╮
+                    │ /app/server.py:404 in get_pull_request_diff              │
+                    │                                                          │
+                    │   401 │   """                                            │
+                    │   402 │   client = get_bitbucket_client()                │
+                    │   403 │   try:                                           │
+                    │ ❱ 404 │   │   diff_text = await client.get_pull_request_ │
+                    │   405 │   │   │   project, repo, pr_id, file_path, conte │
+                    │   406 │   │   )                                          │
+                    │   407 │   │   return {                                   │
+                    │                                                          │
+                    │ /app/bitbucketClient.py:422 in get_pull_request_diff     │
+                    │                                                          │
+                    │   419 │   │   │   params["path"] = file_path             │
+                    │   420 │   │                                              │
+                    │   421 │   │   try:                                       │
+                    │ ❱ 422 │   │   │   diff_text = await asyncio.to_thread(   │
+                    │   423 │   │   │   │   self.client.get,                   │
+                    │   424 │   │   │   │   api_path,                          │
+                    │   425 │   │   │   │   params=params,                     │
+                    │                                                          │
+                    │                 ... 3 frames hidden ...                  │
+                    │                                                          │
+                    │ /usr/local/lib/python3.13/site-packages/atlassian/rest_c │
+                    │ lient.py:445 in request                                  │
+                    │                                                          │
+                    │    442 │   │   if self.advanced_mode or advanced_mode:   │
+                    │    443 │   │   │   return response                       │
+                    │    444 │   │                                             │
+                    │ ❱  445 │   │   self.raise_for_status(response)           │
+                    │    446 │   │   return response                           │
+                    │    447 │                                                 │
+                    │    448 │   # both True                                   │
+                    │                                                          │
+                    │ /usr/local/lib/python3.13/site-packages/atlassian/rest_c │
+                    │ lient.py:994 in raise_for_status                         │
+                    │                                                          │
+                    │    991 │   │   │   │   log.error(e)                      │
+                    │    992 │   │   │   │   response.raise_for_status()       │
+                    │    993 │   │   │   else:                                 │
+                    │ ❱  994 │   │   │   │   raise HTTPError(error_msg, respon │
+                    │    995 │   │   else:                                     │
+                    │    996 │   │   │   response.raise_for_status()           │
+                    │    997                                                   │
+                    ╰──────────────────────────────────────────────────────────╯
+                    HTTPError: An error occurred while processing the request.  
+                    Check the server logs for more information.                 
+                                                                                
+                    The above exception was the direct cause of the following   
+                    exception:                                                  
+                                                                                
+                    ╭─────────── Traceback (most recent call last) ────────────╮
+                    │ /usr/local/lib/python3.13/site-packages/fastmcp/tools/to │
+                    │ ol_manager.py:160 in call_tool                           │
+                    │                                                          │
+                    │ /usr/local/lib/python3.13/site-packages/fastmcp/tools/to │
+                    │ ol.py:383 in run                                         │
+                    │                                                          │
+                    │ /app/server.py:415 in get_pull_request_diff              │
+                    │                                                          │
+                    │   412 │   │   }                                          │
+                    │   413 │   except Exception as e:                         │
+                    │   414 │   │   logger.error("get_pull_request_diff failed │
+                    │ ❱ 415 │   │   raise ValueError(f"Failed to get diff for  │
+                    │   416                                                    │
+                    │   417                                                    │
+                    │   418 @mcp.tool()                                        │
+                    ╰──────────────────────────────────────────────────────────╯
+                    ValueError: Failed to get diff for PR #1: An error occurred 
+                    while processing the request. Check the server logs for more
+                    information.                                                
