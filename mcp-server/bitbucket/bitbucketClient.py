@@ -519,30 +519,42 @@ class BitbucketClient:
             ]
 
         # ── 3. Fetch old/new content concurrently and build the diff ──────────
-        diff_parts: List[str] = []
+
+        def _fetch_raw_sync(path: str, ref: str) -> List[str]:
+            """
+            Fetch raw file bytes via a plain requests.get call.
+
+            We deliberately avoid the atlassian library here because it
+            hard-codes ``Accept: application/json`` on every request; the
+            Bitbucket ``/raw/{path}`` endpoint (and some reverse-proxies)
+            respond with 406 to that header.  A bare GET with only the
+            Authorization header always works.
+            """
+            url = (
+                f"{self.base_url}/rest/api/1.0/projects/{project}"
+                f"/repos/{repo}/raw/{path.lstrip('/')}"
+            )
+            resp = requests.get(
+                url,
+                params={"at": ref},
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                verify=self.verify_ssl,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            text = resp.content.decode("utf-8", errors="replace")
+            return text.splitlines(keepends=True)
+
+        async def _fetch(path: str, ref: str) -> List[str]:
+            try:
+                return await asyncio.to_thread(_fetch_raw_sync, path, ref)
+            except Exception as exc:
+                logger.debug("Could not fetch %s@%s for diff: %s", path, ref[:8], exc)
+                return []
 
         async def _diff_one(old_p: str, new_p: str, change_type: str) -> str:
             old_lines: List[str] = []
             new_lines: List[str] = []
-
-            async def _fetch(path: str, ref: str) -> List[str]:
-                try:
-                    content = await asyncio.to_thread(
-                        self.client.get_content_of_file,
-                        project,
-                        repo,
-                        path,
-                        ref,
-                        None,
-                    )
-                    if isinstance(content, (bytes, bytearray)):
-                        content = content.decode("utf-8", errors="replace")
-                    return content.splitlines(keepends=True)
-                except Exception as exc:
-                    logger.debug(
-                        "Could not fetch %s@%s for diff: %s", path, ref[:8], exc
-                    )
-                    return []
 
             if change_type != "ADD":
                 old_lines = await _fetch(old_p, from_commit)
@@ -560,7 +572,6 @@ class BitbucketClient:
             )
             return "".join(patch)
 
-        # Run all file diffs concurrently
         results = await asyncio.gather(*[_diff_one(o, n, t) for o, n, t in entries])
         diff_parts = [r for r in results if r]
 
