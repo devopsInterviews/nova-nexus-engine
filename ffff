@@ -1,9 +1,0 @@
-Cluster sync thread unhandled error: 'NoneType' object is not callable
-Traceback (most recent call last):
-  File "/app/app/routes/marketplace_routes.py", line 1379, in _target
-    _run_cluster_sync()
-    ~~~~~~~~~~~~~~~~~^^
-  File "/app/app/routes/marketplace_routes.py", line 1270, in _run_cluster_sync
-    db: Session = SessionLocal()
-                  ~~~~~~~~~~~~^^
-TypeError: 'NoneType' object is not callable

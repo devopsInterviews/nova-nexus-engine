@@ -1,1 +1,0 @@
-2026-03-23 14:42:13 - ERROR - Request failed: IntegrityError('(psycopg2.errors.NotNullViolation) null value in column "version" of relation "marketplace_items" violates not-null constraint\nDETAIL:  Failing row contains (65, aa, aaa, agent, 1, null, aa, aa, null, [], BUILT, null, dev, null, null, 10, null, 2026-03-23 14:42:13.789928+00, null, null).\n')

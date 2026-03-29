@@ -1,3 +1,0 @@
-2026-03-18 15:03:36 - INFO - [MARKETPLACE][MCP-TOOLS] 'bitbucket-mcp' responded HTTP 406 — body preview: {"jsonrpc":"2.0","id":"server-error","error":{"code":-32600,"message":"Not Acceptable: Client must accept both application/json and text/event-stream"}}
-2026-03-18 15:03:36 - WARNING - [MARKETPLACE][MCP-TOOLS] HTTP 406 error from 'bitbucket-mcp' (url=https://mcpservers.domain.com/bitbucket-mcp-dev/mcp) — body: {"jsonrpc":"2.0","id":"server-error","error":{"code":-32600,"message":"Not Acceptable: Client must accept both application/json and text/event-stream"}} — tools_exposed not updated.
-2026-03-18 15:03:36 - INFO - [MARKETPLACE][REDEPLOY] tools_exposed not updated for 'bitbucket-mcp' (id=33) — fetch returned no tools (server may still be initialising).

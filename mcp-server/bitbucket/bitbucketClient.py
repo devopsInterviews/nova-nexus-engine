@@ -700,11 +700,25 @@ class BitbucketClient:
         """
         List *all* comments (top-level + inline) on a pull request.
 
+        The ``/comments`` endpoint on Bitbucket Server **requires** a ``path``
+        query parameter (it is file-scoped).  To retrieve every comment without
+        knowing which files were touched we use the ``/activities`` endpoint
+        instead, which returns the full activity stream, and filter it to only
+        ``COMMENTED`` actions.
+
         Each returned dict contains at least ``id``, ``text``, ``author``,
         ``createdDate``, and optionally ``anchor`` for inline comments.
         """
-        api_path = f"{self._pr_base(project, repo)}/{pr_id}/comments"
-        return await self._paginate_get(api_path)
+        api_path = f"{self._pr_base(project, repo)}/{pr_id}/activities"
+        activities = await self._paginate_get(api_path)
+
+        comments: List[Dict[str, Any]] = []
+        for activity in activities:
+            if activity.get("action") == "COMMENTED":
+                comment = activity.get("comment")
+                if isinstance(comment, dict):
+                    comments.append(comment)
+        return comments
 
     # --------------------------------------------------------------------- #
     #  PR activities
