@@ -471,42 +471,61 @@ class BitbucketClient:
         src_path: Optional[str] = None,
     ) -> str:
         """
-        Produce a unified diff for a pull request without using Bitbucket's
-        ``/diff`` endpoint.
+        Produce a unified diff for a pull request without touching any
+        ``/diff`` or ``/raw`` endpoint.
 
-        Background
-        ----------
-        The Bitbucket Server ``/diff`` REST endpoint returns HTTP 406 on many
-        older versions and reverse-proxy setups regardless of the Accept header
-        sent.  This implementation avoids the endpoint entirely: it fetches the
-        raw file content at the PR's ``fromRef`` and ``toRef`` commits using the
-        basic ``/raw/{path}`` endpoint (which works on every Bitbucket version)
-        and computes the diff locally with Python's ``difflib.unified_diff``.
+        Strategy
+        --------
+        Both the Bitbucket Server ``/diff`` endpoint and the ``/raw/{path}``
+        endpoint return HTTP 406 in many proxy / older-server setups.
 
-        :param project:       Bitbucket project key.
-        :param repo:          Repository slug.
-        :param pr_id:         Pull request ID.
-        :param file_path:     Restrict diff to this single file (optional).
-                              When omitted, all changed files in the PR are diffed.
-        :param context_lines: Context lines around each change (default 10).
-        :param src_path:      Original path for renamed / moved files.
-        :returns:             Standard unified-diff text.
+        This implementation uses **only** endpoints that are proven to work:
+        - ``/pull-requests/{id}``           → PR metadata (same as get_pull_request tool)
+        - ``/pull-requests/{id}/changes``   → changed files  (same as list_pull_request_files tool)
+        - ``/browse/{path}?at={commit}``    → file content as paginated JSON lines
+                                              (JSON endpoint, same Accept: application/json
+                                               pattern as every other working tool)
+
+        The diff itself is computed locally with ``difflib.unified_diff``.
         """
-        # ── 1. Resolve the exact commits from the PR metadata ─────────────────
+        repo_base = self._repo_base(project, repo)
+
+        # ── 1. Resolve commit SHAs from PR metadata ───────────────────────────
+        logger.info(
+            "get_pull_request_diff: fetching PR metadata  project=%s repo=%s pr=%d",
+            project, repo, pr_id,
+        )
         pr = await self.get_pull_request(project, repo, pr_id)
-        from_commit: str = pr.get("fromRef", {}).get("latestCommit", "")
-        to_commit: str   = pr.get("toRef",   {}).get("latestCommit", "")
+        from_ref  = pr.get("fromRef", {})
+        to_ref    = pr.get("toRef",   {})
+
+        # Prefer the exact commit SHA; fall back to the branch ref so the
+        # browse endpoint still works on servers that omit latestCommit.
+        from_commit: str = (
+            from_ref.get("latestCommit")
+            or from_ref.get("id", "")
+        )
+        to_commit: str = (
+            to_ref.get("latestCommit")
+            or to_ref.get("id", "")
+        )
+        logger.info(
+            "get_pull_request_diff: from=%s  to=%s", from_commit[:12], to_commit[:12],
+        )
 
         if not from_commit or not to_commit:
             raise ValueError(
-                f"Could not resolve commit SHAs from PR #{pr_id} metadata."
+                f"Could not resolve refs from PR #{pr_id} metadata: "
+                f"fromRef={from_ref}  toRef={to_ref}"
             )
 
-        # ── 2. Build list of (old_path, new_path, change_type) to diff ────────
+        # ── 2. Build file list ────────────────────────────────────────────────
         if file_path:
-            old_path = src_path or file_path
-            entries: List[Tuple[str, str, str]] = [(old_path, file_path, "MODIFY")]
+            entries: List[Tuple[str, str, str]] = [
+                (src_path or file_path, file_path, "MODIFY")
+            ]
         else:
+            logger.info("get_pull_request_diff: fetching changed files")
             changed = await self.list_pull_request_files(project, repo, pr_id)
             entries = [
                 (
@@ -517,49 +536,64 @@ class BitbucketClient:
                 for f in changed
                 if f.get("path")
             ]
+        logger.info("get_pull_request_diff: %d file(s) to diff", len(entries))
 
-        # ── 3. Fetch old/new content concurrently and build the diff ──────────
-
-        def _fetch_raw_sync(path: str, ref: str) -> List[str]:
+        # ── 3. File-content helper via /browse/{path} ─────────────────────────
+        async def _browse_lines(path: str, ref: str) -> List[str]:
             """
-            Fetch raw file bytes via a plain requests.get call.
+            Fetch file content using the /browse endpoint, which returns JSON
+            with a ``lines`` array.  Paginates automatically.
 
-            We deliberately avoid the atlassian library here because it
-            hard-codes ``Accept: application/json`` on every request; the
-            Bitbucket ``/raw/{path}`` endpoint (and some reverse-proxies)
-            respond with 406 to that header.  A bare GET with only the
-            Authorization header always works.
+            This is the same JSON-over-HTTP pattern used by all other working
+            tools (get_pull_request, list_pull_request_files, etc.) so it is
+            not subject to the 406 issues of /diff or /raw.
             """
-            url = (
-                f"{self.base_url}/rest/api/1.0/projects/{project}"
-                f"/repos/{repo}/raw/{path.lstrip('/')}"
-            )
-            resp = requests.get(
-                url,
-                params={"at": ref},
-                headers={"Authorization": f"Bearer {self.access_token}"},
-                verify=self.verify_ssl,
-                timeout=30,
-            )
-            resp.raise_for_status()
-            text = resp.content.decode("utf-8", errors="replace")
-            return text.splitlines(keepends=True)
+            api_path = f"{repo_base}/browse/{path.lstrip('/')}"
+            all_lines: List[str] = []
+            start = 0
 
-        async def _fetch(path: str, ref: str) -> List[str]:
+            while True:
+                params = {"at": ref, "limit": "5000", "start": str(start)}
+                logger.debug(
+                    "browse  %s%s  params=%s", self.base_url, api_path, params
+                )
+                resp = await self._async_get(api_path, params)
+
+                if not isinstance(resp, dict):
+                    logger.warning(
+                        "browse returned non-dict for %s@%s: %r", path, ref[:12], resp
+                    )
+                    break
+
+                for line_obj in resp.get("lines", []):
+                    all_lines.append(line_obj.get("text", "") + "\n")
+
+                if resp.get("isLastPage", True):
+                    break
+                start = resp.get("nextPageStart", start + 5000)
+
+            return all_lines
+
+        async def _safe_browse(path: str, ref: str, label: str) -> List[str]:
             try:
-                return await asyncio.to_thread(_fetch_raw_sync, path, ref)
+                return await _browse_lines(path, ref)
             except Exception as exc:
-                logger.debug("Could not fetch %s@%s for diff: %s", path, ref[:8], exc)
+                logger.warning(
+                    "get_pull_request_diff: could not fetch %s (%s@%s): %s",
+                    label, path, ref[:12], exc,
+                )
                 return []
 
+        # ── 4. Diff each file concurrently ────────────────────────────────────
         async def _diff_one(old_p: str, new_p: str, change_type: str) -> str:
-            old_lines: List[str] = []
-            new_lines: List[str] = []
-
-            if change_type != "ADD":
-                old_lines = await _fetch(old_p, from_commit)
-            if change_type != "DELETE":
-                new_lines = await _fetch(new_p, to_commit)
+            old_lines: List[str] = (
+                [] if change_type == "ADD"
+                else await _safe_browse(old_p, from_commit, f"old:{old_p}")
+            )
+            new_lines: List[str] = (
+                [] if change_type == "DELETE"
+                else await _safe_browse(new_p, to_commit, f"new:{new_p}")
+            )
 
             patch = list(
                 difflib.unified_diff(
@@ -572,9 +606,14 @@ class BitbucketClient:
             )
             return "".join(patch)
 
-        results = await asyncio.gather(*[_diff_one(o, n, t) for o, n, t in entries])
+        results = await asyncio.gather(
+            *[_diff_one(o, n, t) for o, n, t in entries]
+        )
         diff_parts = [r for r in results if r]
 
+        logger.info(
+            "get_pull_request_diff: done, %d file(s) with changes", len(diff_parts)
+        )
         return "\n".join(diff_parts) if diff_parts else "(no changes)"
 
     # --------------------------------------------------------------------- #
