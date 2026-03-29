@@ -5,12 +5,16 @@ FastMCP-based Bitbucket Server MCP gateway.
 
 Exposes a rich set of tools for interacting with Bitbucket Server:
 
-File operations
+Repository operations
+    - ``list_repositories``         – list all repos in a project
+    - ``get_repository_info``       – metadata, default branch, clone URLs
+    - ``list_bitbucket_files``      – list files in a repo directory
     - ``get_bitbucket_file``        – fetch decoded / base64 file content
     - ``get_file_content``          – fetch raw file content (text)
-    - ``list_bitbucket_files``      – list files in a repo directory
+    - ``search_repository``         – search code / config / patterns
 
 Pull-request operations
+    - ``list_pull_requests``        – list PRs (open / merged / declined)
     - ``get_pull_request``          – PR title, description, author, state, reviewers, branches
     - ``list_pull_request_files``   – changed files in a PR
     - ``get_pull_request_diff``     – unified diff (full or per-file)
@@ -23,9 +27,6 @@ Pull-request operations
     - ``post_pr_comment``           – post a general comment
     - ``post_inline_pr_comment``    – comment on a specific file + line
     - ``add_pull_request_task``     – create a review task
-
-Repository operations
-    - ``search_repository``         – search code / config / patterns
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from fastmcp.server.dependencies import get_http_headers
 
 from appConfig import configure_logging, settings
 from bitbucketClient import BitbucketClient
+from usageTracker import UsageTrackingMiddleware
 
 logger = logging.getLogger(__name__)
 configure_logging()
@@ -66,6 +68,34 @@ async def combined_lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=combined_lifespan)
+
+# ------------------------------------------------------------------ #
+#  Usage-tracking middleware (optional — requires portal env vars)    #
+# ------------------------------------------------------------------ #
+
+if settings.portal_base_url and settings.mcp_server_marketplace_name:
+    _portal_ping_url = (
+        f"{settings.portal_base_url.rstrip('/')}/api/marketplace/ping"
+    )
+    _portal_ssl = str(settings.portal_ssl_verify).strip().lower() in {
+        "true", "1", "yes", "y", "on",
+    }
+    app.add_middleware(
+        UsageTrackingMiddleware,
+        portal_ping_url=_portal_ping_url,
+        entity_name=settings.mcp_server_marketplace_name,
+        ssl_verify=_portal_ssl,
+    )
+    logger.info(
+        "Usage tracking enabled  entity='%s'  portal=%s",
+        settings.mcp_server_marketplace_name,
+        settings.portal_base_url,
+    )
+else:
+    logger.info(
+        "Usage tracking disabled "
+        "(set PORTAL_BASE_URL and MCP_SERVER_MARKETPLACE_NAME to enable)"
+    )
 
 
 # ------------------------------------------------------------------ #
@@ -248,6 +278,80 @@ async def list_bitbucket_files(
 
 
 @mcp.tool()
+async def list_repositories(
+    project: str,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """
+    List all repositories in a Bitbucket project.
+
+    :param project: Bitbucket project key.
+    :param limit:   Maximum number of repos to return (default 100).
+
+    :returns: ``{status, project, repos: [{slug, name, description, state, defaultBranch, cloneUrls}, …]}``.
+    """
+    client = get_bitbucket_client()
+    try:
+        raw = await client.list_repositories(project, limit)
+        repos = [
+            {
+                "slug": r.get("slug", ""),
+                "name": r.get("name", ""),
+                "description": r.get("description", ""),
+                "state": r.get("state", ""),
+                "forkable": r.get("forkable", False),
+                "cloneUrls": [
+                    {"name": lnk.get("name", ""), "href": lnk.get("href", "")}
+                    for lnk in r.get("links", {}).get("clone", [])
+                ],
+            }
+            for r in raw
+        ]
+        return {"status": "success", "project": project, "repos": repos}
+    except Exception as e:
+        logger.error("list_repositories failed for project %s: %s", project, e)
+        raise ValueError(f"Failed to list repositories for project '{project}': {e}") from e
+
+
+@mcp.tool()
+async def get_repository_info(
+    project: str,
+    repo: str,
+) -> Dict[str, Any]:
+    """
+    Fetch metadata for a specific Bitbucket repository: name, slug, description,
+    clone URLs, default branch, and links.
+
+    :param project: Bitbucket project key.
+    :param repo:    Repository slug.
+
+    :returns: ``{status, project, repo, name, description, state, defaultBranch, cloneUrls}``.
+    """
+    client = get_bitbucket_client()
+    try:
+        info = await client.get_repository_info(project, repo)
+        default_branch = await client.get_default_branch(project, repo)
+        return {
+            "status": "success",
+            "project": project,
+            "repo": repo,
+            "name": info.get("name", ""),
+            "description": info.get("description", ""),
+            "state": info.get("state", ""),
+            "forkable": info.get("forkable", False),
+            "defaultBranch": default_branch,
+            "cloneUrls": [
+                {"name": lnk.get("name", ""), "href": lnk.get("href", "")}
+                for lnk in info.get("links", {}).get("clone", [])
+            ],
+            "links": info.get("links", {}),
+        }
+    except Exception as e:
+        logger.error("get_repository_info failed for %s/%s: %s", project, repo, e)
+        raise ValueError(f"Failed to get repository info for '{project}/{repo}': {e}") from e
+
+
+@mcp.tool()
 async def search_repository(
     project: str,
     repo: str,
@@ -282,6 +386,48 @@ async def search_repository(
 # ================================================================== #
 #                   PULL-REQUEST TOOLS                                #
 # ================================================================== #
+
+@mcp.tool()
+async def list_pull_requests(
+    project: str,
+    repo: str,
+    state: str = "OPEN",
+    limit: int = 25,
+) -> Dict[str, Any]:
+    """
+    List pull requests for a repository.
+
+    :param project: Bitbucket project key.
+    :param repo:    Repository slug.
+    :param state:   ``OPEN`` (default), ``MERGED``, ``DECLINED``, or ``ALL``.
+    :param limit:   Maximum number of PRs to return (default 25).
+
+    :returns: ``{status, prs: [{id, title, state, author, fromBranch, toBranch, createdDate}, …]}``.
+    """
+    client = get_bitbucket_client()
+    try:
+        raw = await client.list_pull_requests(project, repo, state, limit)
+        prs = [
+            {
+                "id": pr.get("id"),
+                "title": pr.get("title", ""),
+                "state": pr.get("state", ""),
+                "author": pr.get("author", {}).get("user", {}).get(
+                    "displayName",
+                    pr.get("author", {}).get("user", {}).get("name", ""),
+                ),
+                "fromBranch": pr.get("fromRef", {}).get("displayId", ""),
+                "toBranch": pr.get("toRef", {}).get("displayId", ""),
+                "createdDate": pr.get("createdDate"),
+                "updatedDate": pr.get("updatedDate"),
+            }
+            for pr in raw
+        ]
+        return {"status": "success", "prs": prs}
+    except Exception as e:
+        logger.error("list_pull_requests failed for %s/%s: %s", project, repo, e)
+        raise ValueError(f"Failed to list pull requests for '{project}/{repo}': {e}") from e
+
 
 @mcp.tool()
 async def get_pull_request(

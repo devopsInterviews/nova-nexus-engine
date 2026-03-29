@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -12,6 +14,18 @@ class Settings(BaseSettings):
     bitbucket_base_url:       str        = Field(..., validation_alias="BITBUCKET_BASE_URL")
     bitbucket_ssl_verify:     str        = Field(..., validation_alias="BITBUCKET_SSL_VERIFY")
 
+    # ── AI Portal usage tracking (optional) ──────────────────────────────────
+    # Set both variables to enable per-tool call reporting to the marketplace.
+    #
+    # PORTAL_BASE_URL              — base URL of the AI Portal
+    #                                e.g. https://portal.company.internal
+    # MCP_SERVER_MARKETPLACE_NAME  — exact name of this MCP server as
+    #                                registered in the marketplace DB
+    # PORTAL_SSL_VERIFY            — set to "false" to skip TLS verification
+    #                                when calling the portal (default: true)
+    portal_base_url:              Optional[str] = Field(None, validation_alias="PORTAL_BASE_URL")
+    mcp_server_marketplace_name:  Optional[str] = Field(None, validation_alias="MCP_SERVER_MARKETPLACE_NAME")
+    portal_ssl_verify:            str           = Field("true", validation_alias="PORTAL_SSL_VERIFY")
 
     class Config:
         env_file = ".env"

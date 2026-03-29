@@ -122,6 +122,52 @@ class BitbucketClient:
         return all_values
 
     # --------------------------------------------------------------------- #
+    #  Repository information
+    # --------------------------------------------------------------------- #
+
+    async def list_repositories(
+        self,
+        project: str,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        List all repositories in a Bitbucket project.
+
+        :param project: Bitbucket project key.
+        :param limit:   Maximum number of repositories to return.
+        :returns:       List of repository dicts.
+        """
+        api_path = f"/rest/api/1.0/projects/{project}/repos"
+        return await self._paginate_get(api_path, {"limit": str(limit)}, limit=limit)
+
+    async def get_repository_info(
+        self,
+        project: str,
+        repo: str,
+    ) -> Dict[str, Any]:
+        """
+        Fetch metadata for a specific repository.
+
+        :param project: Bitbucket project key.
+        :param repo:    Repository slug.
+        :returns:       Repository metadata dict.
+        """
+        api_path = f"{self._repo_base(project, repo)}"
+        return await self._async_get(api_path)
+
+    async def get_default_branch(
+        self,
+        project: str,
+        repo: str,
+    ) -> str:
+        """
+        Return the default branch display name (e.g. ``main``, ``master``).
+        """
+        api_path = f"{self._repo_base(project, repo)}/default-branch"
+        resp = await self._async_get(api_path)
+        return (resp or {}).get("displayId", "master")
+
+    # --------------------------------------------------------------------- #
     #  Health / connectivity
     # --------------------------------------------------------------------- #
 
@@ -393,12 +439,24 @@ class BitbucketClient:
         raw_changes = await self._paginate_get(api_path)
         files: List[Dict[str, Any]] = []
         for change in raw_changes:
-            p = change.get("path", {}).get("toString", "")
+            path_obj = change.get("path") or {}
+            # Bitbucket Server returns the path as an object with a ``toString``
+            # string field (not a Python method).  Fall back to joining components
+            # when the shorthand key is absent.
+            p: str = (
+                path_obj.get("toString")
+                or "/".join(path_obj.get("components", []))
+                or path_obj.get("name", "")
+            )
             ctype = change.get("type", "MODIFY")
-            src = change.get("srcPath", {})
+            src_obj = change.get("srcPath") or {}
             entry: Dict[str, Any] = {"path": p, "type": ctype}
-            if src:
-                entry["srcPath"] = src.get("toString", "")
+            if src_obj:
+                entry["srcPath"] = (
+                    src_obj.get("toString")
+                    or "/".join(src_obj.get("components", []))
+                    or src_obj.get("name", "")
+                )
             files.append(entry)
         return files
 
@@ -413,45 +471,112 @@ class BitbucketClient:
         src_path: Optional[str] = None,
     ) -> str:
         """
-        Retrieve the raw diff for a pull request, or for a single file in that PR.
+        Retrieve the raw unified diff for a pull request, or for a single file
+        in that PR.
+
+        For the full PR diff, the Bitbucket Server ``.diff`` endpoint is used
+        which returns plain-text output directly.
+
+        For a single-file diff, the ``/diff/{path}`` JSON endpoint is called and
+        its hunks are reassembled into a standard unified-diff string so that the
+        caller always receives plain text regardless of the Bitbucket version.
+
+        :param project:       Bitbucket project key.
+        :param repo:          Repository slug.
+        :param pr_id:         Pull request ID.
+        :param file_path:     Optional path of a single file to diff.
+        :param context_lines: Number of context lines around each hunk (default 10).
+        :param src_path:      Original path for renamed / moved files.
+        :returns:             Unified-diff text.
+        :raises requests.HTTPError: On any HTTP error from Bitbucket.
         """
-
-        params: Dict[str, str] = {
-            "contextLines": str(context_lines),
-        }
-
-        if file_path:
-            # Bitbucket Server/Data Center single-file PR diff endpoint
-            encoded_path = quote(file_path.lstrip("/"), safe="")
-            api_path = (
-                f"/rest/api/latest/projects/{project}/repos/{repo}"
-                f"/pull-requests/{pr_id}/diff/{encoded_path}"
-            )
-            if src_path:
-                params["srcPath"] = src_path
-        else:
-            # Full raw PR diff endpoint
-            api_path = (
-                f"/rest/api/latest/projects/{project}/repos/{repo}"
-                f"/pull-requests/{pr_id}.diff"
-            )
-
-        url = f"{self.base_url}{api_path}"
         headers = {
-            "Authorization": f"Bearer {self.client._token}",
+            "Authorization": f"Bearer {self.access_token}",
             "Accept": "text/plain",
         }
 
-        resp = await asyncio.to_thread(
-            requests.get,
-            url,
-            headers=headers,
-            params=params,
-            verify=self.client.verify_ssl,
-            timeout=60,
-        )
-        resp.raise_for_status()
-        return resp.text
+        if file_path:
+            encoded_path = quote(file_path.lstrip("/"), safe="/")
+            api_path = (
+                f"/rest/api/1.0/projects/{project}/repos/{repo}"
+                f"/pull-requests/{pr_id}/diff/{encoded_path}"
+            )
+            params: Dict[str, str] = {"contextLines": str(context_lines)}
+            if src_path:
+                params["srcPath"] = src_path
+
+            url = f"{self.base_url}{api_path}"
+            logger.debug("Fetching single-file PR diff: %s  params=%s", url, params)
+
+            resp = await asyncio.to_thread(
+                requests.get,
+                url,
+                headers=headers,
+                params=params,
+                verify=self.verify_ssl,
+                timeout=60,
+            )
+            resp.raise_for_status()
+
+            # Bitbucket Server returns JSON for the /diff/{path} endpoint.
+            # If the server honours Accept: text/plain we get the raw diff
+            # directly; otherwise we reassemble the unified diff from the JSON.
+            content_type = resp.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                return self._json_diff_to_text(resp.json(), file_path, src_path)
+            return resp.text
+
+        else:
+            # Full PR diff – the .diff suffix forces plain-text output.
+            api_path = (
+                f"/rest/api/1.0/projects/{project}/repos/{repo}"
+                f"/pull-requests/{pr_id}.diff"
+            )
+            params = {"contextLines": str(context_lines)}
+            url = f"{self.base_url}{api_path}"
+            logger.debug("Fetching full PR diff: %s  params=%s", url, params)
+
+            resp = await asyncio.to_thread(
+                requests.get,
+                url,
+                headers=headers,
+                params=params,
+                verify=self.verify_ssl,
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.text
+
+    @staticmethod
+    def _json_diff_to_text(payload: dict, file_path: str, src_path: Optional[str] = None) -> str:
+        """
+        Convert the Bitbucket Server JSON diff payload (``/diff/{path}``)
+        into a standard unified-diff string.
+
+        The JSON structure has a ``diffs`` array; each element has ``hunks``
+        which in turn have ``segments`` (``ADDED``, ``REMOVED``, ``CONTEXT``).
+        """
+        lines: List[str] = []
+        old_path = src_path or file_path
+        new_path = file_path
+
+        for diff in payload.get("diffs", []):
+            lines.append(f"--- a/{old_path}")
+            lines.append(f"+++ b/{new_path}")
+            for hunk in diff.get("hunks", []):
+                src_line = hunk.get("sourceLine", 1)
+                src_span = hunk.get("sourceSpan", 0)
+                dst_line = hunk.get("destinationLine", 1)
+                dst_span = hunk.get("destinationSpan", 0)
+                lines.append(
+                    f"@@ -{src_line},{src_span} +{dst_line},{dst_span} @@"
+                )
+                for segment in hunk.get("segments", []):
+                    seg_type = segment.get("type", "CONTEXT")
+                    prefix = {"ADDED": "+", "REMOVED": "-"}.get(seg_type, " ")
+                    for seg_line in segment.get("lines", []):
+                        lines.append(f"{prefix}{seg_line.get('line', '')}")
+        return "\n".join(lines)
 
     # --------------------------------------------------------------------- #
     #  PR comments
