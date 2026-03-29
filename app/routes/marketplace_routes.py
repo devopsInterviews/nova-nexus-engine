@@ -35,7 +35,7 @@ import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast, String
 
 from app.database import get_db_session
 import app.database as _database  # accessed at call-time so SessionLocal is never None
@@ -442,9 +442,23 @@ def _infra_url() -> Optional[str]:
 def _enrich_item(item: MarketplaceItem, db: Session) -> Dict[str, Any]:
     item_dict = item.to_dict()
     usage_count = db.query(MarketplaceUsage).filter_by(item_id=item.id).count()
+
+    # Count distinct callers across both authentication paths:
+    #   • Portal users (authenticated)  → user_id is set, user_identifier may be None
+    #   • External callers via /ping    → user_id is NULL, user_identifier holds the
+    #                                     free-text identity extracted from their JWT
+    # COALESCE(CAST(user_id AS TEXT), user_identifier) collapses both into one
+    # token per row so a single COUNT(DISTINCT …) covers everything.
+    caller_token = func.coalesce(
+        cast(MarketplaceUsage.user_id, String),
+        MarketplaceUsage.user_identifier,
+    )
     unique_users = (
-        db.query(func.count(func.distinct(MarketplaceUsage.user_id)))
-        .filter(MarketplaceUsage.item_id == item.id)
+        db.query(func.count(func.distinct(caller_token)))
+        .filter(
+            MarketplaceUsage.item_id == item.id,
+            caller_token.isnot(None),
+        )
         .scalar()
         or 0
     )
