@@ -58,7 +58,7 @@ MARKETPLACE_TTL_ENABLED: bool = os.getenv("MARKETPLACE_TTL_ENABLED", "false").lo
 INFRA_CHARTS_API_SERVER: Optional[str] = os.getenv("INFRA_CHARTS_API_SERVER")
 
 # 5-minute timeout for infra API calls (deploy/delete can take a while)
-INFRA_API_TIMEOUT_SECONDS: int = 300
+INFRA_API_TIMEOUT_SECONDS: int = 500
 
 # When LOG_LEVEL=DEBUG the full request payload and response body are logged
 _DEBUG_INFRA = os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG"

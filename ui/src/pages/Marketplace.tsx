@@ -226,6 +226,20 @@ function pickError(d: Record<string, unknown> | null, fallback: string): string 
   );
 }
 
+/**
+ * Return a readable fallback message for common HTTP error status codes.
+ * Used when the response body is not JSON (e.g. a proxy returns an HTML error page).
+ */
+function httpFallback(status: number, operation: "deploy" | "delete"): string {
+  if (status === 504 || status === 524)
+    return "The operation timed out — the infra server took too long to respond. Check the server logs and try again.";
+  if (status === 502 || status === 503)
+    return "Could not reach the infra API server. It may be temporarily unavailable — please try again shortly.";
+  if (status === 401 || status === 403)
+    return "Not authorised to perform this action.";
+  return `${operation === "deploy" ? "Deploy" : "Delete"} failed (HTTP ${status}).`;
+}
+
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
 
 const EntityIcon = memo(function EntityIcon({
@@ -1075,7 +1089,7 @@ export default function Marketplace() {
         setInfraOp(prev => ({
           ...prev,
           status: "error",
-          message: pickError(d, `Deploy failed (HTTP ${r.status}).`),
+          message: pickError(d, httpFallback(r.status, "deploy")),
         }));
       }
     } catch (err: unknown) {
@@ -1181,7 +1195,7 @@ export default function Marketplace() {
         }
       } else {
         const e = await safeJson(r);
-        const msg = pickError(e, `Delete failed (HTTP ${r.status}).`);
+        const msg = pickError(e, httpFallback(r.status, "delete"));
         if (isDeployed && !dbOnly) {
           setInfraOp(prev => ({ ...prev, status: "error", message: msg }));
         } else {
