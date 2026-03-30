@@ -198,6 +198,34 @@ function ttlCls(r: number | null) {
   return "bg-[#FFB24C]/10 text-[#935900] border-[#FFB24C]/40 dark:bg-[#FFB24C]/15 dark:text-[#FFB24C] dark:border-[#FFB24C]/30";
 }
 
+/**
+ * Safely read a fetch Response as JSON.
+ * Returns null if the body is empty, HTML, or otherwise not parseable —
+ * which happens when a proxy (nginx, ALB, etc.) returns an error page
+ * instead of the app's JSON.
+ */
+async function safeJson(r: Response): Promise<Record<string, unknown> | null> {
+  let text = "";
+  try { text = await r.text(); } catch { return null; }
+  if (!text.trim()) return null;
+  try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+}
+
+/**
+ * Extract a human-readable error string from a parsed JSON body.
+ * FastAPI uses `detail`, but some proxies/services use `message` or `error`.
+ * Falls back to `fallback` when the body is null or none of the fields are present.
+ */
+function pickError(d: Record<string, unknown> | null, fallback: string): string {
+  if (!d) return fallback;
+  return (
+    (typeof d.detail === "string" && d.detail) ||
+    (typeof d.message === "string" && d.message) ||
+    (typeof d.error === "string" && d.error) ||
+    fallback
+  );
+}
+
 // ─── Sub-components (OUTSIDE main component) ──────────────────────────────────
 
 const EntityIcon = memo(function EntityIcon({
@@ -946,8 +974,8 @@ export default function Marketplace() {
         resetCreate();
         fetchItems();
       } else {
-        const e = await r.json();
-        toast.error(e.detail || "Failed to publish entity.");
+        const e = await safeJson(r);
+        toast.error(pickError(e, "Failed to publish entity."));
       }
     } catch { toast.error("Network error."); }
     finally { setCreateLoading(false); }
@@ -982,8 +1010,8 @@ export default function Marketplace() {
         setEditMode(false);
         toast.success("Changes saved.");
       } else {
-        const e = await r.json();
-        toast.error(e.detail || "Save failed.");
+        const e = await safeJson(r);
+        toast.error(pickError(e, "Save failed."));
       }
     } catch { toast.error("Network error."); }
     finally { setEditLoading(false); }
@@ -1031,20 +1059,23 @@ export default function Marketplace() {
         }),
         signal: controller.signal,
       });
-      const d = await r.json();
+      const d = await safeJson(r);
       if (r.ok) {
-        setItems(prev => prev.map(i => i.id === deployItem.id ? d.item : i));
+        const updated = d?.item as MarketplaceItem | undefined;
+        if (updated) setItems(prev => prev.map(i => i.id === deployItem.id ? updated : i));
         setInfraOp(prev => ({
           ...prev,
           status: "success",
-          message: d.message || "Deployment successful",
-          connectionUrl: d.connection_url || d.item?.url_to_connect || undefined,
+          message: (typeof d?.message === "string" && d.message) || "Deployment successful",
+          connectionUrl:
+            (typeof d?.connection_url === "string" ? d.connection_url : undefined) ||
+            (updated?.url_to_connect ?? undefined),
         }));
       } else {
         setInfraOp(prev => ({
           ...prev,
           status: "error",
-          message: d.detail || "Deploy failed.",
+          message: pickError(d, `Deploy failed (HTTP ${r.status}).`),
         }));
       }
     } catch (err: unknown) {
@@ -1067,8 +1098,8 @@ export default function Marketplace() {
         toast.success(`TTL extended — ${item.ttl_days ?? "default"} more days added.`);
         setDetailItem(null);
       } else {
-        const e = await r.json();
-        toast.error(e.detail || "Extend TTL failed.");
+        const e = await safeJson(r);
+        toast.error(pickError(e, "Extend TTL failed."));
       }
     } catch { toast.error("Network error."); }
   }, [token]);
@@ -1094,8 +1125,8 @@ export default function Marketplace() {
         setForkTarget(null);
         setDetailItem(null);
       } else {
-        const e = await r.json();
-        toast.error(e.detail || "Fork failed.");
+        const e = await safeJson(r);
+        toast.error(pickError(e, "Fork failed."));
       }
     } catch { toast.error("Network error."); }
     finally { setForkLoading(false); }
@@ -1149,11 +1180,12 @@ export default function Marketplace() {
           );
         }
       } else {
-        const e = await r.json();
+        const e = await safeJson(r);
+        const msg = pickError(e, `Delete failed (HTTP ${r.status}).`);
         if (isDeployed && !dbOnly) {
-          setInfraOp(prev => ({ ...prev, status: "error", message: e.detail || "Delete failed." }));
+          setInfraOp(prev => ({ ...prev, status: "error", message: msg }));
         } else {
-          toast.error(e.detail || "Delete failed.");
+          toast.error(msg);
         }
       }
     } catch (err: unknown) {
