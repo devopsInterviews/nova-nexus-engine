@@ -1134,7 +1134,7 @@ export default function Marketplace() {
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    const isDeployed = deleteTarget.deployment_status === "DEPLOYED";
+    const isDeployed = deleteTarget.deployment_status === "DEPLOYED" || deleteTarget.deployment_status === "ERROR";
     const dbOnly = deleteDbOnly;
 
     // Close confirmation dialog first

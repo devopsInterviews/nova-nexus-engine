@@ -1372,10 +1372,10 @@ def delete_marketplace_item(
             reason="manual_user_deletion",
             raise_on_error=(item.deployment_status == "DEPLOYED"),
         )
-        if infra_error and item.deployment_status != "DEPLOYED":
+        if infra_error:
             logger.warning(
-                "[MARKETPLACE] Infra undeploy warning during delete for '%s' (id=%d): %s",
-                item.name, item_id, infra_error,
+                "[MARKETPLACE] Infra undeploy warning during delete for '%s' (id=%d, status=%s): %s",
+                item.name, item_id, item.deployment_status, infra_error,
             )
 
     db.delete(item)
@@ -1476,7 +1476,7 @@ def _call_infra_undeploy(
     Returns an error message string if the call fails and raise_on_error is False.
     Raises HTTPException if raise_on_error is True and the call fails.
     """
-    if item.deployment_status != "DEPLOYED":
+    if item.deployment_status not in ("DEPLOYED", "ERROR"):
         return None
 
     infra = _infra_url()
