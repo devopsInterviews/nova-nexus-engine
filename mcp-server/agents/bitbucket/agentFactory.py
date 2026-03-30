@@ -7,17 +7,21 @@ from appConfig import AppConfig, config
 
 class BitbucketAgentFactory:
     """Responsible for building and configuring the Bitbucket Agent."""
-    
+
     SYSTEM_INSTRUCTION = (
-        "You are an autonomous agent that is capable of solving all matter of bitbucket requests.\n"
-        "When tasked with a request about bitbucket, use your available tools in order to solve it,\n"
-        "if you dont have the right tool for the task, return that you are not capable of it."
+        "You are an autonomous agent with deep expertise in Bitbucket and source control workflows.\n"
+        "Your goal is to fully understand and resolve any Bitbucket-related request you are given.\n"
+        "Always use your available tools to investigate, gather the necessary information, and deliver "
+        "a complete and accurate answer.\n"
+        "Think step by step — break complex requests into smaller actions and work through them "
+        "methodically before presenting your final response.\n"
+        "If a request is beyond what you can do with your available tools, say so clearly."
     )
-    
+
     AGENT_DESCRIPTION = (
-        "A bitbucket AI assistant, ready to help and solve bitbucket related issues. use this agent "
-        "in order to gather data about the internal bitbucket, about repos, files inside those repos "
-        "and everything that could be related to the upstream server of bitbucket."
+        "An autonomous Bitbucket AI assistant with broad knowledge of source control, repositories, "
+        "and development workflows. Use this agent to investigate, analyse, and resolve any request "
+        "related to the internal Bitbucket server or the projects and code hosted on it."
     )
 
     @classmethod

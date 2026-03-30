@@ -13,6 +13,7 @@ from google.genai import types
 from oidcAuth import create_oidc_proxy
 from agentFactory import agent, AGENT_NAME, AGENT_DESCRIPTION
 from appConfig import config
+from usageTracker import extract_user_from_jwt, schedule_ping
 
 
 session_service = InMemorySessionService()
@@ -26,18 +27,26 @@ mcp = FastMCP(AGENT_NAME, auth=create_oidc_proxy(config.base_url_with_port))
 @mcp.tool()
 async def run_agent(task: str, ctx: Context) -> str:
     """
-    Invoke the autonomous Bitbucket AI agent to handle Bitbucket-related tasks.
+    Invoke the autonomous Bitbucket AI agent to investigate and resolve Bitbucket-related requests.
 
-    Use this tool when you need to interact with a Bitbucket server — for example,
-    to look up repositories, read files within repos, inspect pull requests,
-    browse branches, or retrieve any other data from the upstream Bitbucket instance.
-
-    Pass a natural-language description of what you need as the `task` parameter
-    and the agent will use its available Bitbucket tools to fulfil the request.
+    Use this tool whenever a task involves the internal Bitbucket server or anything hosted on it.
+    Describe what you need in natural language and the agent will figure out the steps required,
+    use its available tools to gather the necessary information, and return a complete answer.
     """
     token_obj = get_access_token()
     raw_token = getattr(token_obj, "token", None) if token_obj else None
     access_token = f"Bearer {raw_token}" if raw_token else None
+
+    # ── Usage tracking (fire-and-forget) ──────────────────────────────────────
+    if config.PORTAL_BASE_URL and config.AGENT_MARKETPLACE_NAME:
+        user_identifier = extract_user_from_jwt(raw_token) if raw_token else None
+        _portal_ping_url = f"{config.PORTAL_BASE_URL.rstrip('/')}/api/marketplace/ping"
+        schedule_ping(
+            _portal_ping_url,
+            config.AGENT_MARKETPLACE_NAME,
+            user_identifier,
+            config.PORTAL_SSL_VERIFY,
+        )
 
     run_config = RunConfig(
         custom_metadata={

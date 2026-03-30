@@ -15,6 +15,13 @@ class AppConfig:
     BASE_URL = os.getenv("BASE_URL", "127.0.0.1")
     PROTOCOL = os.getenv("PROTOCOL", "https")
 
+    # ── Usage tracking (optional) ──────────────────────────────────────────────
+    PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "")
+    AGENT_MARKETPLACE_NAME = os.getenv("AGENT_MARKETPLACE_NAME", "")
+    PORTAL_SSL_VERIFY = os.getenv("PORTAL_SSL_VERIFY", "true").strip().lower() in {
+        "true", "1", "yes", "y", "on",
+    }
+
     @property
     def base_url_with_port(self):
         default_ports = {"https": 443, "http": 80}
