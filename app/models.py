@@ -988,8 +988,10 @@ class MarketplaceItem(Base):
     # For MCP servers
     tools_exposed = Column(JSON, default=list, nullable=True)
 
-    # Lifecycle status
+    # Lifecycle status — BUILT / DEPLOYED / ERROR
     deployment_status = Column(String(50), default="CREATED", nullable=False)
+    # Stores the infra API error message when deployment_status is ERROR
+    last_error = Column(Text, nullable=True)
     version = Column(String(50), default="", nullable=False)
     environment = Column(String(50), default="dev", nullable=False)  # 'dev' or 'release'
     # Artifactory chart name selected during last deploy (e.g. "jira-integration-mcp")
@@ -1036,6 +1038,7 @@ class MarketplaceItem(Base):
             "url_to_connect": self.url_to_connect,
             "tools_exposed": self.tools_exposed,
             "deployment_status": self.deployment_status,
+            "last_error": self.last_error,
             "version": self.version,
             "environment": self.environment,
             "chart_name": self.chart_name,

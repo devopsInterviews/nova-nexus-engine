@@ -87,7 +87,8 @@ interface MarketplaceItem {
   how_to_use: string | null;
   url_to_connect: string | null;
   tools_exposed: { name: string; description?: string }[];
-  deployment_status: "BUILT" | "DEPLOYED";
+  deployment_status: "BUILT" | "DEPLOYED" | "ERROR";
+  last_error: string | null;
   version: string;
   environment: "dev" | "release";
   chart_name: string | null;
@@ -136,7 +137,7 @@ interface MarketplaceConfig {
 type StatusFilter = "all" | "built" | "deployed" | "expiring" | "release";
 
 function getStatusCategory(item: MarketplaceItem): Exclude<StatusFilter, "all"> {
-  if (item.deployment_status === "BUILT") return "built";
+  if (item.deployment_status === "BUILT" || item.deployment_status === "ERROR") return "built";
   if (item.environment === "release") return "release";
   const r = item.ttl_remaining_days;
   if (r !== null && r <= 7) return "expiring";
@@ -150,6 +151,14 @@ function getItemStyle(item: MarketplaceItem) {
   const topBar = "bg-gradient-primary";
   const hoverShadow = "hover:shadow-[0_12px_32px_rgba(85,197,226,0.15)]";
 
+  if (item.deployment_status === "ERROR") {
+    return {
+      topBar, ring, hoverShadow,
+      badge: "bg-[#F16C6C]/10 text-[#c03232] border-[#F16C6C]/35 dark:bg-[#F16C6C]/20 dark:text-[#F16C6C] dark:border-[#F16C6C]/40",
+      label: "Error", dot: "bg-[#F16C6C]", pulse: false,
+      envPill: "bg-border/30 text-muted-foreground border-border/50 dark:bg-muted/20 dark:text-muted-foreground dark:border-border/40",
+    };
+  }
   if (item.deployment_status === "DEPLOYED") {
     if (item.environment === "release") {
       return {
@@ -355,6 +364,11 @@ const ItemCard = memo(function ItemCard({
             <span className={`flex items-center gap-1 text-[10px] font-bold ${st.badge} px-2.5 py-1 rounded-full border`}>
               <span className={`w-1.5 h-1.5 rounded-full ${st.dot} ${st.pulse ? "animate-pulse" : ""}`} />
               RUNNING
+            </span>
+          ) : item.deployment_status === "ERROR" ? (
+            <span className={`flex items-center gap-1 text-[10px] font-bold ${st.badge} px-2.5 py-1 rounded-full border`}>
+              <AlertTriangle size={10} />
+              ERROR
             </span>
           ) : (
             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.badge}`}>BUILT</span>
@@ -1400,6 +1414,11 @@ export default function Marketplace() {
                             <Sparkles size={9} /> Persistent · No expiry
                           </span>
                         )}
+                        {item.deployment_status === "ERROR" && (
+                          <span className="flex items-center gap-1 text-[#c03232] dark:text-[#F16C6C] text-[10px] font-bold">
+                            <AlertTriangle size={10} /> Deploy failed
+                          </span>
+                        )}
                       </DialogDescription>
                     </div>
                     {canManage && !editMode && (
@@ -1419,6 +1438,14 @@ export default function Marketplace() {
 
                 {/* Body */}
                 <div className="px-7 py-5 space-y-4">
+                  {item.deployment_status === "ERROR" && item.last_error && (
+                    <div className="px-3 py-3 bg-[#F16C6C]/10 border border-[#F16C6C]/30 rounded-xl">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#c03232] dark:text-[#F16C6C] mb-1 flex items-center gap-1.5">
+                        <AlertTriangle size={11} /> Last deploy error
+                      </p>
+                      <p className="text-xs text-foreground/80 break-words leading-relaxed">{item.last_error}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">Description</p>
                     {editMode
@@ -1557,6 +1584,18 @@ export default function Marketplace() {
                             <Rocket size={13} /> Deploy Release
                           </Button>
                         </>)}
+                        {canManage && item.deployment_status === "ERROR" && (<>
+                          <Button size="sm" variant="outline"
+                            className="gap-1.5 border-[#FFB24C]/40 text-[#935900] dark:text-[#FFB24C] hover:bg-[#FFB24C] hover:text-white hover:border-[#FFB24C]"
+                            onClick={() => { setDetailItem(null); openDeploy(item, true, "dev"); }}>
+                            <Cloud size={13} /> Retry Dev
+                          </Button>
+                          <Button size="sm" variant="outline"
+                            className="gap-1.5 border-[#00C986]/40 text-[#007a52] dark:text-[#00C986] hover:bg-[#00C986] hover:text-white hover:border-[#00C986]"
+                            onClick={() => { setDetailItem(null); openDeploy(item, true, "release"); }}>
+                            <Rocket size={13} /> Retry Release
+                          </Button>
+                        </>)}
                         {canManage && item.deployment_status === "DEPLOYED" && (<>
                           <Button size="sm" variant="outline"
                             className="gap-1.5 border-[#FFB24C]/40 text-[#935900] dark:text-[#FFB24C] hover:bg-[#FFB24C] hover:text-white hover:border-[#FFB24C]"
@@ -1571,7 +1610,7 @@ export default function Marketplace() {
                             </Button>
                           )}
                         </>)}
-                        {(item.deployment_status === "BUILT" || item.deployment_status === "DEPLOYED") && (
+                        {(item.deployment_status === "BUILT" || item.deployment_status === "DEPLOYED" || item.deployment_status === "ERROR") && (
                           <Button size="sm" variant="outline" className="gap-1.5"
                             onClick={() => openForkDialog(item)}>
                             <Copy size={13} /> Fork

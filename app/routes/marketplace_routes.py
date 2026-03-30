@@ -437,6 +437,25 @@ def _infra_url() -> Optional[str]:
     return srv if srv.startswith("http") else f"http://{srv}"
 
 
+def _persist_deploy_error(item: MarketplaceItem, db: Session, error_msg: str) -> None:
+    """Persist ERROR status and the error message to the DB.
+
+    Called inside every infra exception handler so the card immediately
+    reflects the failure instead of staying in BUILT/DEPLOYED.  Wrapped in
+    its own try/except so a DB hiccup never masks the original exception.
+    """
+    try:
+        item.deployment_status = "ERROR"
+        item.last_error = error_msg
+        db.commit()
+    except Exception as persist_exc:
+        logger.warning(
+            "[MARKETPLACE] Could not persist ERROR status for item id=%s: %s",
+            getattr(item, "id", "?"), persist_exc,
+        )
+        db.rollback()
+
+
 # ─── Helper: enrich item dict with usage counts ───────────────────────────────
 
 def _enrich_item(item: MarketplaceItem, db: Session) -> Dict[str, Any]:
@@ -862,6 +881,7 @@ def deploy_marketplace_item(
                 "Target: %s/api/infra/deploy",
                 INFRA_API_TIMEOUT_SECONDS, item.name, item.id, infra,
             )
+            _persist_deploy_error(item, db, "Infra API did not respond within 5 minutes. Please try again.")
             raise HTTPException(
                 status_code=504,
                 detail="Infra API did not respond within 5 minutes. Please try again.",
@@ -871,6 +891,7 @@ def deploy_marketplace_item(
                 "[MARKETPLACE][DEPLOY] ✗ CONNECTION ERROR for '%s' (id=%d) → %s/api/infra/deploy: %s",
                 item.name, item.id, infra, exc,
             )
+            _persist_deploy_error(item, db, f"Could not reach the infra API server: {exc}")
             raise HTTPException(
                 status_code=502,
                 detail=f"Could not reach the infra API server: {exc}",
@@ -892,6 +913,7 @@ def deploy_marketplace_item(
                 exc.response.status_code if exc.response is not None else -1,
                 item.name, item.id, raw_body,
             )
+            _persist_deploy_error(item, db, f"Infra API error: {error_detail}")
             raise HTTPException(
                 status_code=502,
                 detail=f"Infra API error: {error_detail}",
@@ -901,10 +923,12 @@ def deploy_marketplace_item(
                 "[MARKETPLACE][DEPLOY] ✗ UNEXPECTED ERROR for '%s' (id=%d): %s",
                 item.name, item.id, exc, exc_info=True,
             )
+            _persist_deploy_error(item, db, f"Unexpected error calling infra API: {exc}")
             raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API: {exc}")
     # ────────────────────────────────────────────────────────────────────────
 
     item.deployment_status = "DEPLOYED"
+    item.last_error = None
     item.environment = req.environment
     item.chart_name = req.chart_name or item.name
     item.chart_version = req.chart_version
@@ -969,10 +993,10 @@ def redeploy_marketplace_item(
         raise HTTPException(status_code=404, detail="Item not found")
     if item.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to redeploy this item")
-    if item.deployment_status != "DEPLOYED":
+    if item.deployment_status not in ("DEPLOYED", "ERROR"):
         raise HTTPException(
             status_code=400,
-            detail="Only DEPLOYED items can be upgraded. Deploy it first.",
+            detail="Only DEPLOYED or ERROR items can be upgraded. Deploy it first.",
         )
 
     old_chart = item.chart_name
@@ -1047,12 +1071,14 @@ def redeploy_marketplace_item(
                 "[MARKETPLACE][REDEPLOY] ✗ TIMEOUT for '%s' (id=%d) → %s/api/infra/deploy",
                 item.name, item.id, infra,
             )
+            _persist_deploy_error(item, db, "Infra API did not respond within 5 minutes.")
             raise HTTPException(status_code=504, detail="Infra API did not respond within 5 minutes.")
         except http_requests.exceptions.ConnectionError as exc:
             logger.error(
                 "[MARKETPLACE][REDEPLOY] ✗ CONNECTION ERROR for '%s' (id=%d): %s",
                 item.name, item.id, exc,
             )
+            _persist_deploy_error(item, db, f"Could not reach the infra API server: {exc}")
             raise HTTPException(status_code=502, detail=f"Could not reach the infra API server: {exc}")
         except http_requests.exceptions.HTTPError as exc:
             raw_body = exc.response.text if exc.response is not None else ""
@@ -1071,15 +1097,19 @@ def redeploy_marketplace_item(
                 exc.response.status_code if exc.response is not None else -1,
                 item.name, item.id, raw_body,
             )
+            _persist_deploy_error(item, db, f"Infra API error: {error_detail}")
             raise HTTPException(status_code=502, detail=f"Infra API error: {error_detail}")
         except Exception as exc:
             logger.error(
                 "[MARKETPLACE][REDEPLOY] ✗ UNEXPECTED ERROR for '%s' (id=%d): %s",
                 item.name, item.id, exc, exc_info=True,
             )
+            _persist_deploy_error(item, db, f"Unexpected error calling infra API: {exc}")
             raise HTTPException(status_code=500, detail=f"Unexpected error calling infra API: {exc}")
     # ────────────────────────────────────────────────────────────────────────
 
+    item.deployment_status = "DEPLOYED"
+    item.last_error = None
     item.environment = req.environment
     item.chart_name = req.chart_name or item.chart_name
     item.chart_version = req.chart_version

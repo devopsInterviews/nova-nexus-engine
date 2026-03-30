@@ -126,6 +126,13 @@ def _run_schema_migrations(engine) -> None:
             "is_admin",
             "ALTER TABLE sso_groups ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE",
         ),
+        # v3.x → last_error stores the infra API error message when a deploy fails,
+        #         so status can be set to ERROR instead of silently reverting to BUILT.
+        (
+            "marketplace_items",
+            "last_error",
+            "ALTER TABLE marketplace_items ADD COLUMN last_error TEXT",
+        ),
     ]
 
     with engine.connect() as conn:
