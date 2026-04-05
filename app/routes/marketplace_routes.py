@@ -57,7 +57,8 @@ MARKETPLACE_DEV_TTL_DAYS: int = int(os.getenv("MARKETPLACE_DEV_TTL_DAYS", "10"))
 MARKETPLACE_TTL_ENABLED: bool = os.getenv("MARKETPLACE_TTL_ENABLED", "false").lower() == "true"
 INFRA_CHARTS_API_SERVER: Optional[str] = os.getenv("INFRA_CHARTS_API_SERVER")
 
-# 5-minute timeout for infra API calls (deploy/delete can take a while)
+# Timeout for infra API calls — deploy/delete can take several minutes.
+# Keep this in sync with the frontend AbortController (ui/src/pages/Marketplace.tsx).
 INFRA_API_TIMEOUT_SECONDS: int = 500
 
 # When LOG_LEVEL=DEBUG the full request payload and response body are logged
@@ -881,10 +882,10 @@ def deploy_marketplace_item(
                 "Target: %s/api/infra/deploy",
                 INFRA_API_TIMEOUT_SECONDS, item.name, item.id, infra,
             )
-            _persist_deploy_error(item, db, "Infra API did not respond within 5 minutes. Please try again.")
+            _persist_deploy_error(item, db, f"Infra API did not respond within {INFRA_API_TIMEOUT_SECONDS}s. Please try again.")
             raise HTTPException(
                 status_code=504,
-                detail="Infra API did not respond within 5 minutes. Please try again.",
+                detail=f"Infra API did not respond within {INFRA_API_TIMEOUT_SECONDS}s. Please try again.",
             )
         except http_requests.exceptions.ConnectionError as exc:
             logger.error(
@@ -1071,8 +1072,8 @@ def redeploy_marketplace_item(
                 "[MARKETPLACE][REDEPLOY] ✗ TIMEOUT for '%s' (id=%d) → %s/api/infra/deploy",
                 item.name, item.id, infra,
             )
-            _persist_deploy_error(item, db, "Infra API did not respond within 5 minutes.")
-            raise HTTPException(status_code=504, detail="Infra API did not respond within 5 minutes.")
+            _persist_deploy_error(item, db, f"Infra API did not respond within {INFRA_API_TIMEOUT_SECONDS}s.")
+            raise HTTPException(status_code=504, detail=f"Infra API did not respond within {INFRA_API_TIMEOUT_SECONDS}s.")
         except http_requests.exceptions.ConnectionError as exc:
             logger.error(
                 "[MARKETPLACE][REDEPLOY] ✗ CONNECTION ERROR for '%s' (id=%d): %s",
@@ -1520,7 +1521,7 @@ def _call_infra_undeploy(
         )
         return None
     except http_requests.exceptions.Timeout:
-        msg = "Infra API did not respond within 5 minutes."
+        msg = f"Infra API did not respond within {INFRA_API_TIMEOUT_SECONDS}s."
         logger.error(
             "[MARKETPLACE][DELETE] ✗ TIMEOUT — infra did not respond within %ds for '%s' (id=%d). "
             "Target: %s/api/infra/delete",

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import difflib
-import requests
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -125,6 +124,19 @@ class BitbucketClient:
     #  Repository information
     # --------------------------------------------------------------------- #
 
+    async def list_projects(
+        self,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        List all Bitbucket projects visible to the authenticated user.
+
+        :param limit: Maximum number of projects to return.
+        :returns:     List of project dicts (key, name, description, type).
+        """
+        api_path = "/rest/api/1.0/projects"
+        return await self._paginate_get(api_path, {"limit": str(limit)}, limit=limit)
+
     async def list_repositories(
         self,
         project: str,
@@ -154,6 +166,26 @@ class BitbucketClient:
         """
         api_path = f"{self._repo_base(project, repo)}"
         return await self._async_get(api_path)
+
+    async def list_branches(
+        self,
+        project: str,
+        repo: str,
+        filter_text: str = "",
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        List branches in a repository.
+
+        :param filter_text: Optional substring to filter branch names.
+        :param limit:       Maximum number of branches to return.
+        :returns:           List of branch dicts (id, displayId, isDefault, latestCommit).
+        """
+        api_path = f"{self._repo_base(project, repo)}/branches"
+        params: Dict[str, str] = {"limit": str(limit), "orderBy": "MODIFICATION"}
+        if filter_text:
+            params["filterText"] = filter_text
+        return await self._paginate_get(api_path, params, limit=limit)
 
     async def get_default_branch(
         self,
@@ -208,7 +240,7 @@ class BitbucketClient:
         :param project:   Bitbucket project key.
         :param repo:      Repository slug.
         :param file_path: Path inside the repo (e.g. ``src/main.py``).
-        :param branch:    Branch / tag / commit ref.  ``None`` → server default.
+        :param branch:    Branch / tag / commit ref.  ``None`` -> server default.
         :param as_text:   Decode to ``str`` when *True*, return ``bytes`` otherwise.
         :param encoding:  Encoding used when *as_text* is True.
         :returns:         File content as ``str`` or ``bytes``.
@@ -221,7 +253,7 @@ class BitbucketClient:
                 repo,
                 file_path,
                 branch,
-                None,  # markup → keep raw
+                None,  # markup -> keep raw
             )
             if as_text and isinstance(data, (bytes, bytearray)):
                 return data.decode(encoding, errors="replace")
@@ -246,7 +278,7 @@ class BitbucketClient:
         :param project: Bitbucket project key.
         :param repo:    Repository slug.
         :param path:    File path inside the repository.
-        :param at_ref:  Branch, tag, or commit (``refs/heads/…`` or short name).
+        :param at_ref:  Branch, tag, or commit (``refs/heads/...`` or short name).
         :returns:       The file content as a string.
         """
         if not at_ref.startswith("refs/"):
@@ -367,19 +399,48 @@ class BitbucketClient:
     ) -> Dict[int, dict]:
         """
         Return blame info per line: ``{line_number: {author, commit}}``.
-        """
-        api_path = f"{self._repo_base(project, repo)}/annotate"
-        params = {"path": path.lstrip("/"), "at": at_ref}
-        resp = await self._async_get(api_path, params)
 
+        Uses the browse endpoint with ``blame=true&noContent=true``.
+        The API returns span objects in a ``lines`` array; each span covers
+        one or more consecutive lines with the same blame attribution.
+        Fields per span: ``lineNumber`` (1-based start), ``spannedLines``,
+        ``authorName``, ``commitId``, ``commitDisplayId``.
+        """
+        api_path = f"{self._repo_base(project, repo)}/browse/{path.lstrip('/')}"
         blame_map: Dict[int, dict] = {}
-        for seg in (resp or {}).get("segments", []):
-            author = seg.get("author", {}).get("name", "unknown")
-            commit = seg.get("commit", {}).get("id", "unknown")
-            start = seg.get("startLine", 0)
-            count = seg.get("lineCount", 0)
-            for i in range(start, start + count):
-                blame_map[i] = {"author": author, "commit": commit}
+        start = 0
+
+        while True:
+            params: Dict[str, str] = {
+                "at": at_ref,
+                "blame": "true",
+                "noContent": "true",
+                "limit": "5000",
+                "start": str(start),
+            }
+            resp = await self._async_get(api_path, params)
+            if not isinstance(resp, dict):
+                break
+
+            for entry in resp.get("lines", []):
+                if not isinstance(entry, dict):
+                    continue
+                line_num = entry.get("lineNumber", 0)
+                spanned = entry.get("spannedLines", 1)
+                author = entry.get("authorName", "unknown")
+                commit = entry.get("commitId", "unknown")
+                commit_display = entry.get("commitDisplayId", commit[:8] if commit != "unknown" else "unknown")
+                for i in range(line_num, line_num + spanned):
+                    blame_map[i] = {
+                        "author": author,
+                        "commit": commit,
+                        "commitDisplayId": commit_display,
+                    }
+
+            if resp.get("isLastPage", True):
+                break
+            start = resp.get("nextPageStart", start + 5000)
+
         return blame_map
 
     # --------------------------------------------------------------------- #
@@ -480,9 +541,9 @@ class BitbucketClient:
         endpoint return HTTP 406 in many proxy / older-server setups.
 
         This implementation uses **only** endpoints that are proven to work:
-        - ``/pull-requests/{id}``           → PR metadata (same as get_pull_request tool)
-        - ``/pull-requests/{id}/changes``   → changed files  (same as list_pull_request_files tool)
-        - ``/browse/{path}?at={commit}``    → file content as paginated JSON lines
+        - ``/pull-requests/{id}``           -> PR metadata (same as get_pull_request tool)
+        - ``/pull-requests/{id}/changes``   -> changed files  (same as list_pull_request_files tool)
+        - ``/browse/{path}?at={commit}``    -> file content as paginated JSON lines
                                               (JSON endpoint, same Accept: application/json
                                                pattern as every other working tool)
 
@@ -490,7 +551,7 @@ class BitbucketClient:
         """
         repo_base = self._repo_base(project, repo)
 
-        # ── 1. Resolve commit SHAs from PR metadata ───────────────────────────
+        # -- 1. Resolve commit SHAs from PR metadata ---------------------------
         logger.info(
             "get_pull_request_diff: fetching PR metadata  project=%s repo=%s pr=%d",
             project, repo, pr_id,
@@ -519,7 +580,7 @@ class BitbucketClient:
                 f"fromRef={from_ref}  toRef={to_ref}"
             )
 
-        # ── 2. Build file list ────────────────────────────────────────────────
+        # -- 2. Build file list ------------------------------------------------
         if file_path:
             entries: List[Tuple[str, str, str]] = [
                 (src_path or file_path, file_path, "MODIFY")
@@ -538,7 +599,7 @@ class BitbucketClient:
             ]
         logger.info("get_pull_request_diff: %d file(s) to diff", len(entries))
 
-        # ── 3. File-content helper via /browse/{path} ─────────────────────────
+        # -- 3. File-content helper via /browse/{path} -------------------------
         async def _browse_lines(path: str, ref: str) -> List[str]:
             """
             Fetch file content using the /browse endpoint, which returns JSON
@@ -584,7 +645,7 @@ class BitbucketClient:
                 )
                 return []
 
-        # ── 4. Diff each file concurrently ────────────────────────────────────
+        # -- 4. Diff each file concurrently ------------------------------------
         async def _diff_one(old_p: str, new_p: str, change_type: str) -> str:
             old_lines: List[str] = (
                 [] if change_type == "ADD"
@@ -616,6 +677,52 @@ class BitbucketClient:
         )
         return "\n".join(diff_parts) if diff_parts else "(no changes)"
 
+    async def create_pull_request(
+        self,
+        project: str,
+        repo: str,
+        title: str,
+        from_branch: str,
+        to_branch: str,
+        description: str = "",
+        reviewers: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Open a new pull request.
+
+        :param title:       PR title.
+        :param from_branch: Source branch display name (e.g. ``feature/my-work``).
+        :param to_branch:   Target branch display name (e.g. ``main``).
+        :param description: Optional PR description.
+        :param reviewers:   Optional list of reviewer username slugs.
+        :returns:           The PR payload from Bitbucket.
+        """
+        api_path = self._pr_base(project, repo)
+        data: Dict[str, Any] = {
+            "title": title,
+            "description": description,
+            "state": "OPEN",
+            "open": True,
+            "closed": False,
+            "locked": False,
+            "fromRef": {
+                "id": f"refs/heads/{from_branch}",
+                "repository": {
+                    "slug": repo,
+                    "project": {"key": project},
+                },
+            },
+            "toRef": {
+                "id": f"refs/heads/{to_branch}",
+                "repository": {
+                    "slug": repo,
+                    "project": {"key": project},
+                },
+            },
+            "reviewers": [{"user": {"name": r}} for r in (reviewers or [])],
+        }
+        return await self._async_post(api_path, data)
+
     # --------------------------------------------------------------------- #
     #  PR comments
     # --------------------------------------------------------------------- #
@@ -626,13 +733,13 @@ class BitbucketClient:
 
         :returns: *True* if Bitbucket accepted the comment.
         """
-        logger.debug("Attempting to comment on PR #%d → %s/%s", pr_id, project, repo)
+        logger.debug("Attempting to comment on PR #%d -> %s/%s", pr_id, project, repo)
 
         if not self.ping(project):
-            logger.error("Bitbucket unreachable – aborting comment post.")
+            logger.error("Bitbucket unreachable - aborting comment post.")
             return False
         if not self.pr_exists(project, repo, pr_id):
-            logger.error("PR #%d does not exist – cannot post comment.", pr_id)
+            logger.error("PR #%d does not exist - cannot post comment.", pr_id)
             return False
 
         try:

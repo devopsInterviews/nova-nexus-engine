@@ -1057,7 +1057,9 @@ export default function Marketplace() {
     });
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000 + 10_000); // 5min + buffer
+    // Back-end infra timeout is 500 s — give it an extra 20 s to return its
+    // own error response before the browser hard-aborts the request.
+    const timeoutId = setTimeout(() => controller.abort(), 520_000);
 
     try {
       const endpoint = isRedeploy ? "/api/marketplace/redeploy" : "/api/marketplace/deploy";
@@ -1094,7 +1096,7 @@ export default function Marketplace() {
       }
     } catch (err: unknown) {
       const msg = (err instanceof Error && err.name === "AbortError")
-        ? "Request timed out after 5 minutes."
+        ? "Request timed out — the infra server did not respond in time. Check the server logs and try again."
         : String(err);
       setInfraOp(prev => ({ ...prev, status: "error", message: msg }));
     } finally {
@@ -1170,7 +1172,9 @@ export default function Marketplace() {
 
     const url = `/api/marketplace/items/${deleteTarget.id}${dbOnly ? "?db_only=true" : ""}`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000 + 10_000);
+    // Back-end infra timeout is 500 s — give it an extra 20 s to return its
+    // own error response before the browser hard-aborts the request.
+    const timeoutId = setTimeout(() => controller.abort(), 520_000);
 
     try {
       const r = await fetch(url, {
@@ -1204,7 +1208,7 @@ export default function Marketplace() {
       }
     } catch (err: unknown) {
       const msg = (err instanceof Error && err.name === "AbortError")
-        ? "Request timed out after 5 minutes."
+        ? "Request timed out — the infra server did not respond in time. Check the server logs and try again."
         : String(err);
       if (isDeployed && !dbOnly) {
         setInfraOp(prev => ({ ...prev, status: "error", message: msg }));

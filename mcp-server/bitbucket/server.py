@@ -5,28 +5,32 @@ FastMCP-based Bitbucket Server MCP gateway.
 
 Exposes a rich set of tools for interacting with Bitbucket Server:
 
-Repository operations
-    - ``list_repositories``         – list all repos in a project
-    - ``get_repository_info``       – metadata, default branch, clone URLs
-    - ``list_bitbucket_files``      – list files in a repo directory
-    - ``get_bitbucket_file``        – fetch decoded / base64 file content
-    - ``get_file_content``          – fetch raw file content (text)
-    - ``search_repository``         – search code / config / patterns
+Discovery / repository operations
+    - ``list_projects``             - list all accessible Bitbucket projects
+    - ``list_repositories``         - list all repos in a project
+    - ``get_repository_info``       - metadata, default branch, clone URLs
+    - ``list_branches``             - list branches in a repository
+    - ``list_bitbucket_files``      - list files in a repo directory
+    - ``get_bitbucket_file``        - fetch decoded / base64 file content
+    - ``get_file_content``          - fetch raw file content (text)
+    - ``get_file_blame``            - blame info (author/commit) per line
+    - ``search_repository``         - search code / config / patterns
 
 Pull-request operations
-    - ``list_pull_requests``        – list PRs (open / merged / declined)
-    - ``get_pull_request``          – PR title, description, author, state, reviewers, branches
-    - ``list_pull_request_files``   – changed files in a PR
-    - ``get_pull_request_diff``     – unified diff (full or per-file)
-    - ``get_pull_request_comments`` – existing PR comments
-    - ``get_pull_request_activities`` – approvals, updates, reviews
-    - ``get_build_status``          – CI / pipeline / scan results
-    - ``get_commit_list``           – commits in a PR
-    - ``get_pull_request_tasks``    – open review tasks
-    - ``create_pr_comment_draft``   – compose a local draft (no network)
-    - ``post_pr_comment``           – post a general comment
-    - ``post_inline_pr_comment``    – comment on a specific file + line
-    - ``add_pull_request_task``     – create a review task
+    - ``list_pull_requests``        - list PRs (open / merged / declined)
+    - ``get_pull_request``          - PR title, description, author, state, reviewers, branches
+    - ``list_pull_request_files``   - changed files in a PR
+    - ``get_pull_request_diff``     - unified diff (full or per-file)
+    - ``get_pull_request_comments`` - existing PR comments
+    - ``get_pull_request_activities`` - approvals, updates, reviews
+    - ``get_build_status``          - CI / pipeline / scan results
+    - ``get_commit_list``           - commits in a PR
+    - ``get_pull_request_tasks``    - open review tasks
+    - ``create_pull_request``       - open a new pull request
+    - ``create_pr_comment_draft``   - compose a local draft (no network)
+    - ``post_pr_comment``           - post a general comment
+    - ``post_inline_pr_comment``    - comment on a specific file + line
+    - ``add_pull_request_task``     - create a review task
 """
 
 from __future__ import annotations
@@ -56,7 +60,7 @@ configure_logging()
 # ------------------------------------------------------------------ #
 
 mcp = FastMCP(name="Bitbucket McpServer")
-logger.info("✅  MCP Server started successfully")
+logger.info("OK  MCP Server started successfully")
 
 mcp_app = mcp.http_app()
 
@@ -70,7 +74,7 @@ async def combined_lifespan(app: FastAPI):
 app = FastAPI(lifespan=combined_lifespan)
 
 # ------------------------------------------------------------------ #
-#  Usage-tracking middleware (optional — requires portal env vars)    #
+#  Usage-tracking middleware (optional - requires portal env vars)    #
 # ------------------------------------------------------------------ #
 
 if settings.portal_base_url and settings.mcp_server_marketplace_name:
@@ -142,6 +146,76 @@ async def health_check(request: Request) -> PlainTextResponse:
 
 
 # ================================================================== #
+#                     DISCOVERY TOOLS                                 #
+# ================================================================== #
+
+@mcp.tool()
+async def list_projects(
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """
+    List all Bitbucket projects accessible with the current credentials.
+
+    :param limit: Maximum number of projects to return (default 100).
+
+    :returns: ``{status, projects: [{key, name, description, type}, ...]}``.
+    :raises ValueError: On failure.
+    """
+    client = get_bitbucket_client()
+    try:
+        raw = await client.list_projects(limit)
+        projects = [
+            {
+                "key": p.get("key", ""),
+                "name": p.get("name", ""),
+                "description": p.get("description", ""),
+                "type": p.get("type", ""),
+            }
+            for p in raw
+        ]
+        return {"status": "success", "projects": projects}
+    except Exception as e:
+        logger.error("list_projects failed: %s", e)
+        raise ValueError(f"Failed to list projects: {e}") from e
+
+
+@mcp.tool()
+async def list_branches(
+    project: str,
+    repo: str,
+    filter_text: str = "",
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """
+    List branches in a Bitbucket repository.
+
+    :param project:     Bitbucket project key.
+    :param repo:        Repository slug.
+    :param filter_text: Optional substring to filter branch names.
+    :param limit:       Maximum number of branches to return (default 100).
+
+    :returns: ``{status, project, repo, branches: [{id, displayId, isDefault, latestCommit}, ...]}``.
+    :raises ValueError: On failure.
+    """
+    client = get_bitbucket_client()
+    try:
+        raw = await client.list_branches(project, repo, filter_text, limit)
+        branches = [
+            {
+                "id": b.get("id", ""),
+                "displayId": b.get("displayId", ""),
+                "isDefault": b.get("isDefault", False),
+                "latestCommit": b.get("latestCommit", ""),
+            }
+            for b in raw
+        ]
+        return {"status": "success", "project": project, "repo": repo, "branches": branches}
+    except Exception as e:
+        logger.error("list_branches failed for %s/%s: %s", project, repo, e)
+        raise ValueError(f"Failed to list branches for '{project}/{repo}': {e}") from e
+
+
+# ================================================================== #
 #                        FILE TOOLS                                   #
 # ================================================================== #
 
@@ -160,8 +234,8 @@ async def get_bitbucket_file(
     :param file_path: Path inside the repo (e.g. ``src/main.py``).
     :param repo:      Repository slug.
     :param project:   Bitbucket project key.
-    :param as_text:   If True  → decoded text in ``content``.
-                      If False → base64-encoded bytes in ``content_b64``.
+    :param as_text:   If True  -> decoded text in ``content``.
+                      If False -> base64-encoded bytes in ``content_b64``.
     :param encoding:  Text encoding when *as_text* is True (default ``utf-8``).
     :param branch:    Branch / tag / commit (default ``master``).
 
@@ -266,10 +340,10 @@ async def list_bitbucket_files(
 
     :param project: Bitbucket project key.
     :param repo:    Repository slug.
-    :param path:    Sub-directory to list (empty → entire repo).
+    :param path:    Sub-directory to list (empty -> entire repo).
     :param at_ref:  Branch reference.
 
-    :returns: ``{"files": ["path1", "path2", …]}``.
+    :returns: ``{"files": ["path1", "path2", ...]}``.
     """
     client = get_bitbucket_client()
     files = await client.list_files(project, repo, path, at_ref)
@@ -288,7 +362,7 @@ async def list_repositories(
     :param project: Bitbucket project key.
     :param limit:   Maximum number of repos to return (default 100).
 
-    :returns: ``{status, project, repos: [{slug, name, description, state, defaultBranch, cloneUrls}, …]}``.
+    :returns: ``{status, project, repos: [{slug, name, description, state, defaultBranch, cloneUrls}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -370,7 +444,7 @@ async def search_repository(
     :param at_ref:      Branch reference.
     :param max_matches: Maximum number of results.
 
-    :returns: ``{status, results: [{path, hitCount, lines}, …]}``.
+    :returns: ``{status, results: [{path, hitCount, lines}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -381,6 +455,40 @@ async def search_repository(
     except Exception as e:
         logger.error("search_repository failed: %s", e)
         raise ValueError(f"Repository search failed: {e}") from e
+
+
+@mcp.tool()
+async def get_file_blame(
+    project: str,
+    repo: str,
+    path: str,
+    at_ref: str = "refs/heads/master",
+) -> Dict[str, Any]:
+    """
+    Return blame information for a file: which author and commit last changed each line.
+
+    :param project: Bitbucket project key.
+    :param repo:    Repository slug.
+    :param path:    File path inside the repository.
+    :param at_ref:  Branch, tag, or commit ref.
+
+    :returns: ``{status, project, repo, path, at_ref, blame: {line_number: {author, commit}, ...}}``.
+    :raises ValueError: On failure.
+    """
+    client = get_bitbucket_client()
+    try:
+        raw = await client.get_blame_line(project, repo, path, at_ref)
+        return {
+            "status": "success",
+            "project": project,
+            "repo": repo,
+            "path": path,
+            "at_ref": at_ref,
+            "blame": raw,
+        }
+    except Exception as e:
+        logger.error("get_file_blame failed for %s/%s:%s: %s", project, repo, path, e)
+        raise ValueError(f"Failed to get blame for '{path}': {e}") from e
 
 
 # ================================================================== #
@@ -402,7 +510,7 @@ async def list_pull_requests(
     :param state:   ``OPEN`` (default), ``MERGED``, ``DECLINED``, or ``ALL``.
     :param limit:   Maximum number of PRs to return (default 25).
 
-    :returns: ``{status, prs: [{id, title, state, author, fromBranch, toBranch, createdDate}, …]}``.
+    :returns: ``{status, prs: [{id, title, state, author, fromBranch, toBranch, createdDate}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -504,7 +612,7 @@ async def list_pull_request_files(
     :param path_prefix:      Only return files under this directory prefix.
     :param extension_filter: Only return files with this extension (e.g. ``sql``).
 
-    :returns: ``{"files": [{path, type, srcPath?}, …]}``.
+    :returns: ``{"files": [{path, type, srcPath?}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -584,7 +692,7 @@ async def get_pull_request_comments(
     :param repo:    Repository slug.
     :param pr_id:   Pull request ID.
 
-    :returns: ``{status, comments: [{id, text, author, createdDate, anchor?}, …]}``.
+    :returns: ``{status, comments: [{id, text, author, createdDate, anchor?}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -630,7 +738,7 @@ async def get_pull_request_activities(
     :param repo:    Repository slug.
     :param pr_id:   Pull request ID.
 
-    :returns: ``{status, activities: [{id, action, createdDate, user, …}, …]}``.
+    :returns: ``{status, activities: [{id, action, createdDate, user, ...}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -669,7 +777,7 @@ async def get_build_status(
     Retrieve CI / pipeline / build statuses for a commit or the latest commit
     on a pull request.
 
-    Covers pipeline results, security scan results, lint/test summaries – any
+    Covers pipeline results, security scan results, lint/test summaries - any
     status reported via the Bitbucket Build Status API.
 
     :param project:   Bitbucket project key.
@@ -677,7 +785,7 @@ async def get_build_status(
     :param pr_id:     Pull request ID (used to find the latest commit).
     :param commit_id: Explicit commit hash.  Takes priority over *pr_id*.
 
-    :returns: ``{status, commit_id, builds: [{state, key, name, url, description}, …]}``.
+    :returns: ``{status, commit_id, builds: [{state, key, name, url, description}, ...]}``.
     :raises ValueError: If neither *pr_id* nor *commit_id* is provided.
     """
     if not pr_id and not commit_id:
@@ -726,7 +834,7 @@ async def get_commit_list(
     :param repo:    Repository slug.
     :param pr_id:   Pull request ID.
 
-    :returns: ``{status, commits: [{id, displayId, message, author, timestamp}, …]}``.
+    :returns: ``{status, commits: [{id, displayId, message, author, timestamp}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -761,7 +869,7 @@ async def get_pull_request_tasks(
     :param repo:    Repository slug.
     :param pr_id:   Pull request ID.
 
-    :returns: ``{status, tasks: [{id, text, state, author}, …]}``.
+    :returns: ``{status, tasks: [{id, text, state, author}, ...]}``.
     """
     client = get_bitbucket_client()
     try:
@@ -782,6 +890,60 @@ async def get_pull_request_tasks(
         raise ValueError(f"Failed to fetch tasks for PR #{pr_id}: {e}") from e
 
 
+@mcp.tool()
+async def create_pull_request(
+    project: str,
+    repo: str,
+    title: str,
+    from_branch: str,
+    to_branch: str,
+    description: str = "",
+    reviewers: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Open a new pull request in a Bitbucket repository.
+
+    :param project:     Bitbucket project key.
+    :param repo:        Repository slug.
+    :param title:       Pull request title.
+    :param from_branch: Source branch (the feature / bugfix branch).
+    :param to_branch:   Target branch to merge into (e.g. main, master).
+    :param description: Optional PR description (Markdown supported).
+    :param reviewers:   Optional list of reviewer usernames (Bitbucket slugs).
+
+    :returns: ``{status, id, title, url, state, from_branch, to_branch}``.
+    :raises ValueError: If creation fails.
+    """
+    client = get_bitbucket_client()
+    try:
+        result = await client.create_pull_request(
+            project=project,
+            repo=repo,
+            title=title,
+            from_branch=from_branch,
+            to_branch=to_branch,
+            description=description,
+            reviewers=reviewers or [],
+        )
+        links = result.get("links", {})
+        pr_url = ""
+        self_links = links.get("self", [])
+        if self_links:
+            pr_url = self_links[0].get("href", "")
+        return {
+            "status": "success",
+            "id": result.get("id"),
+            "title": result.get("title", ""),
+            "state": result.get("state", ""),
+            "from_branch": result.get("fromRef", {}).get("displayId", from_branch),
+            "to_branch": result.get("toRef", {}).get("displayId", to_branch),
+            "url": pr_url,
+        }
+    except Exception as e:
+        logger.error("create_pull_request failed for %s/%s: %s", project, repo, e)
+        raise ValueError(f"Failed to create pull request in '{project}/{repo}': {e}") from e
+
+
 # ================================================================== #
 #                   COMMENT / TASK TOOLS                              #
 # ================================================================== #
@@ -796,7 +958,7 @@ async def create_pr_comment_draft(
     line: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    Create a **local** draft comment — does NOT post to Bitbucket.
+    Create a **local** draft comment - does NOT post to Bitbucket.
 
     This is useful for composing and previewing comments before submitting.
     Use ``post_pr_comment`` or ``post_inline_pr_comment`` to actually send.
@@ -943,31 +1105,6 @@ async def add_pull_request_task(
         logger.error("add_pull_request_task failed for PR #%d: %s", pr_id, e)
         raise ValueError(f"Failed to create task on PR #{pr_id}: {e}") from e
 
-
-# ================================================================== #
-#  Legacy tool kept for backward-compatibility (now delegates)        #
-# ================================================================== #
-
-@mcp.tool()
-async def post_bitbucket_comment(
-    pr_id: int,
-    comment: str,
-    project: str,
-    repo: str,
-) -> dict:
-    """
-    **Legacy wrapper** – posts a top-level PR comment.
-    Prefer ``post_pr_comment`` for new integrations.
-
-    :param pr_id:   Pull request ID.
-    :param comment: Comment body.
-    :param project: Bitbucket project key.
-    :param repo:    Repository slug.
-
-    :returns: ``{status, message}``.
-    :raises ValueError: If posting fails.
-    """
-    return await post_pr_comment(pr_id, comment, project, repo)
 
 
 # ================================================================== #
