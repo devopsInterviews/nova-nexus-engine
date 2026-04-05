@@ -1,0 +1,1 @@
+**Legacy wrapper** â posts a top-level PR comment. Prefer ``post_pr_comment`` for new integrations. :param pr_id: Pull request ID. :param comment: Comment body. :param project: Bitbucket project key. :param repo: Repository slug. :returns: ``{status, message}``. :raises ValueError: If posting fails.
