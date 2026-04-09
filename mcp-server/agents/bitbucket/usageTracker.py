@@ -28,11 +28,14 @@ import asyncio
 import base64
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+# Strong references kept until each task finishes, preventing premature GC.
+_background_tasks: Set[asyncio.Task] = set()
 
 
 # ─── JWT helpers ──────────────────────────────────────────────────────────────
@@ -114,9 +117,7 @@ async def fire_ping(
     ssl_verify: bool = True,
 ) -> None:
     """Async wrapper: runs the blocking HTTP call in the default thread pool."""
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(
-        None,
+    await asyncio.to_thread(
         _post_ping_sync,
         portal_ping_url,
         entity_name,
@@ -140,9 +141,11 @@ def schedule_ping(
     """
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(
+        task = loop.create_task(
             fire_ping(portal_ping_url, entity_name, user_identifier, ssl_verify),
             name=f"usage-ping-{entity_name}",
         )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         pass
