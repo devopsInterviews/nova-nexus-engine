@@ -264,7 +264,7 @@ const EntityIcon = memo(function EntityIcon({
 });
 
 /** Displays a connection URL with an inline copy-to-clipboard button. */
-function ConnectionUrlTile({ url }: { url: string }) {
+function ConnectionUrlTile({ url, label = "Connection URL" }: { url: string; label?: string }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
@@ -278,7 +278,7 @@ function ConnectionUrlTile({ url }: { url: string }) {
     <div className="flex items-start gap-2.5 bg-muted/30 border border-border/50 rounded-xl p-3">
       <ExternalLink size={14} className="mt-0.5 text-muted-foreground/60 shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">Connection URL</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-0.5">{label}</p>
         <a href={url} target="_blank" rel="noreferrer"
           className="text-sm text-primary hover:underline truncate block">{url}</a>
       </div>
@@ -1548,7 +1548,18 @@ export default function Marketplace() {
                           </div>
                         </div>
                       )}
-                      {item.url_to_connect && (
+                      {item.url_to_connect && item.item_type === "agent" && (
+                        <>
+                          <ConnectionUrlTile
+                            url={`${item.url_to_connect.replace(/\/\.well-known\/agent-card\.json$/, "").replace(/\/$/, "")}/mcp`}
+                          />
+                          <ConnectionUrlTile
+                            url={item.url_to_connect}
+                            label="Agent Card URL"
+                          />
+                        </>
+                      )}
+                      {item.url_to_connect && item.item_type !== "agent" && (
                         <ConnectionUrlTile url={item.url_to_connect} />
                       )}
                       <InfoTile label="Created" icon={<Calendar size={14} />}
