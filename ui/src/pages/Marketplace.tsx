@@ -1551,7 +1551,7 @@ export default function Marketplace() {
                       {item.url_to_connect && item.item_type === "agent" && (
                         <>
                           <ConnectionUrlTile
-                            url={`${item.url_to_connect.replace(/\/\.well-known\/agent-card\.json$/, "").replace(/\/$/, "")}/mcp`}
+                            url={`${item.url_to_connect.replace(/\/\.well-known\/.*$/, "").replace(/\/$/, "")}/mcp`}
                           />
                           <ConnectionUrlTile
                             url={item.url_to_connect}
