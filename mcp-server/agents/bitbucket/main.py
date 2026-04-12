@@ -13,7 +13,7 @@ from google.genai import types
 from oidcAuth import create_oidc_proxy
 from agentFactory import agent, AGENT_NAME, AGENT_DESCRIPTION
 from appConfig import config
-from usageTracker import extract_user_from_jwt, schedule_ping
+from usageTracker import AgentUsageTrackingMiddleware
 
 
 session_service = InMemorySessionService()
@@ -36,17 +36,6 @@ async def run_agent(task: str, ctx: Context) -> str:
     token_obj = get_access_token()
     raw_token = getattr(token_obj, "token", None) if token_obj else None
     access_token = f"Bearer {raw_token}" if raw_token else None
-
-    # ── Usage tracking (fire-and-forget) ──────────────────────────────────────
-    if config.PORTAL_BASE_URL and config.AGENT_MARKETPLACE_NAME:
-        user_identifier = extract_user_from_jwt(raw_token) if raw_token else None
-        _portal_ping_url = f"{config.PORTAL_BASE_URL.rstrip('/')}/api/marketplace/ping"
-        schedule_ping(
-            _portal_ping_url,
-            config.AGENT_MARKETPLACE_NAME,
-            user_identifier,
-            config.PORTAL_SSL_VERIFY,
-        )
 
     run_config = RunConfig(
         custom_metadata={
@@ -94,6 +83,21 @@ async def mcp_health(request):
     return JSONResponse({"status": "healthy", "protocol": "mcp"})
 
 mcp_app = mcp.http_app()
+
+if config.PORTAL_BASE_URL and config.AGENT_MARKETPLACE_NAME:
+    _portal_ping_url = f"{config.PORTAL_BASE_URL.rstrip('/')}/api/marketplace/ping"
+    mcp_app = AgentUsageTrackingMiddleware(
+        mcp_app,
+        portal_ping_url=_portal_ping_url,
+        entity_name=config.AGENT_MARKETPLACE_NAME,
+        ssl_verify=config.PORTAL_SSL_VERIFY,
+    )
+else:
+    import logging as _logging
+    _logging.getLogger(__name__).info(
+        "Agent usage tracking disabled "
+        "(set PORTAL_BASE_URL and AGENT_MARKETPLACE_NAME to enable)"
+    )
 
 
 @a2a_app.route("/health")

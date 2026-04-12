@@ -28,7 +28,7 @@ import asyncio
 import base64
 import json
 import logging
-from typing import Any, Dict, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import requests
 
@@ -149,3 +149,129 @@ def schedule_ping(
         task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         pass
+
+
+# ─── ASGI middleware ───────────────────────────────────────────────────────────
+
+class AgentUsageTrackingMiddleware:
+    """
+    Pure ASGI middleware that intercepts MCP ``tools/call`` JSON-RPC requests
+    to the agent's MCP server and fires a non-blocking usage ping to the portal
+    marketplace.
+
+    Mirrors the ``UsageTrackingMiddleware`` used by the Bitbucket MCP server,
+    adapted for the agent entity type (``entity_type=agent``, ``action=call``).
+
+    Wrapping strategy
+    -----------------
+    1. For every HTTP POST the body is fully buffered.
+    2. If the JSON-RPC ``method`` is ``tools/call`` a background task is
+       scheduled immediately (before the tool starts executing).
+    3. The buffered body is replayed verbatim to the underlying MCP app so
+       the tool receives its arguments unchanged.
+    4. The response pipeline is **not touched** — SSE and chunked responses
+       stream through unmodified.
+    """
+
+    _MCP_CALL_METHOD = "tools/call"
+
+    def __init__(
+        self,
+        app: Any,
+        portal_ping_url: str,
+        entity_name: str,
+        ssl_verify: bool = True,
+    ) -> None:
+        self.app = app
+        self.portal_ping_url = portal_ping_url
+        self.entity_name = entity_name
+        self.ssl_verify = ssl_verify
+        logger.info(
+            "AgentUsageTrackingMiddleware active  entity='%s'  ping_url=%s",
+            entity_name,
+            portal_ping_url,
+        )
+
+    async def __call__(
+        self,
+        scope: Dict[str, Any],
+        receive: Callable,
+        send: Callable,
+    ) -> None:
+        if scope.get("type") != "http" or scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+
+        # ── Buffer the full request body ──────────────────────────────────────
+        chunks: List[bytes] = []
+        while True:
+            message = await receive()
+            chunks.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+        body = b"".join(chunks)
+
+        # ── Schedule usage ping BEFORE forwarding (non-blocking) ─────────────
+        self._maybe_schedule_ping(scope, body)
+
+        # ── Replay buffered body back to the MCP handler ─────────────────────
+        replayed = False
+
+        async def replay_receive() -> Dict[str, Any]:
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay_receive, send)
+
+    # ── Internal helpers ──────────────────────────────────────────────────────
+
+    def _extract_auth_token(self, scope: Dict[str, Any]) -> Optional[str]:
+        """Return the raw Bearer token from the request headers, or None."""
+        headers: List[Tuple[bytes, bytes]] = scope.get("headers", [])
+        for name, value in headers:
+            if name.lower() == b"authorization":
+                auth = value.decode("utf-8", errors="replace")
+                if auth.lower().startswith("bearer "):
+                    return auth.split(" ", 1)[1].strip()
+        return None
+
+    def _maybe_schedule_ping(self, scope: Dict[str, Any], body: bytes) -> None:
+        """
+        Parse the JSON-RPC body; if it is a ``tools/call`` request schedule
+        a background ping task.  Any error is silently discarded.
+        """
+        try:
+            data: Dict[str, Any] = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return
+
+        if data.get("method") != self._MCP_CALL_METHOD:
+            return
+
+        token = self._extract_auth_token(scope)
+        user_identifier = extract_user_from_jwt(token) if token else None
+
+        logger.debug(
+            "Agent usage ping scheduled  entity=%s  user=%s",
+            self.entity_name,
+            user_identifier or "anonymous",
+        )
+
+        try:
+            loop = asyncio.get_running_loop()
+            task = loop.create_task(
+                fire_ping(
+                    self.portal_ping_url,
+                    self.entity_name,
+                    user_identifier,
+                    self.ssl_verify,
+                ),
+                name=f"usage-ping-{self.entity_name}",
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+        except RuntimeError:
+            pass
