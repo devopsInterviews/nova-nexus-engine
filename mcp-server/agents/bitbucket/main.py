@@ -1,3 +1,4 @@
+import logging
 import uuid
 import asyncio
 import uvicorn
@@ -12,8 +13,11 @@ from google.genai import types
 
 from oidcAuth import create_oidc_proxy
 from agentFactory import agent, AGENT_NAME, AGENT_DESCRIPTION
-from appConfig import config
+from appConfig import config, configure_logging
 from usageTracker import AgentUsageTrackingMiddleware
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 session_service = InMemorySessionService()
@@ -93,10 +97,12 @@ if config.PORTAL_BASE_URL and config.AGENT_MARKETPLACE_NAME:
         ssl_verify=config.PORTAL_SSL_VERIFY,
     )
 else:
-    import logging as _logging
-    _logging.getLogger(__name__).info(
-        "Agent usage tracking disabled "
-        "(set PORTAL_BASE_URL and AGENT_MARKETPLACE_NAME to enable)"
+    logger.warning(
+        "Agent usage tracking DISABLED  "
+        "PORTAL_BASE_URL=%r  AGENT_MARKETPLACE_NAME=%r  "
+        "(set both env vars to enable)",
+        config.PORTAL_BASE_URL or "<not set>",
+        config.AGENT_MARKETPLACE_NAME or "<not set>",
     )
 
 

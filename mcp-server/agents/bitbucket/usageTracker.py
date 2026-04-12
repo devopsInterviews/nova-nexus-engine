@@ -94,20 +94,20 @@ def _post_ping_sync(
             timeout=5,
         )
         if resp.status_code == 200:
-            logger.debug(
+            logger.info(
                 "Usage ping OK  entity=%s  user=%s",
                 entity_name,
                 user_identifier or "anonymous",
             )
         else:
-            logger.debug(
+            logger.warning(
                 "Usage ping → HTTP %d  entity=%s  user=%s",
                 resp.status_code,
                 entity_name,
                 user_identifier or "anonymous",
             )
     except Exception as exc:
-        logger.debug("Usage ping failed  entity=%s: %s", entity_name, exc)
+        logger.warning("Usage ping failed  entity=%s: %s", entity_name, exc)
 
 
 async def fire_ping(
@@ -186,7 +186,7 @@ class AgentUsageTrackingMiddleware:
         self.portal_ping_url = portal_ping_url
         self.entity_name = entity_name
         self.ssl_verify = ssl_verify
-        logger.info(
+        logger.warning(
             "AgentUsageTrackingMiddleware active  entity='%s'  ping_url=%s",
             entity_name,
             portal_ping_url,
@@ -254,7 +254,7 @@ class AgentUsageTrackingMiddleware:
         token = self._extract_auth_token(scope)
         user_identifier = extract_user_from_jwt(token) if token else None
 
-        logger.debug(
+        logger.info(
             "Agent usage ping scheduled  entity=%s  user=%s",
             self.entity_name,
             user_identifier or "anonymous",
